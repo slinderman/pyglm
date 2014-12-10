@@ -1,0 +1,11 @@
+\BOOKMARK [1][-]{section.1}{Introduction}{}% 1
+\BOOKMARK [1][-]{section.2}{Model}{}% 2
+\BOOKMARK [2][-]{subsection.2.1}{Modeling the Network}{section.2}% 3
+\BOOKMARK [2][-]{figure.caption.1}{Interpretable Latent Network Structure}{section.2}% 4
+\BOOKMARK [1][-]{section.3}{Bayesian Inference}{}% 5
+\BOOKMARK [2][-]{subsection.3.1}{Gibbs Sampling the Latent Network Parameters}{section.3}% 6
+\BOOKMARK [1][-]{section.4}{Collapsing Gibbs Sampling of the Latent Network Parameters}{}% 7
+\BOOKMARK [1][-]{section.5}{Results}{}% 8
+\BOOKMARK [1][-]{section.6}{Conclusion}{}% 9
+\BOOKMARK [1][-]{section*.10}{References}{}% 10
+\BOOKMARK [1][-]{section*.11}{Author's addresses}{}% 11
