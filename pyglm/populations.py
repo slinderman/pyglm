@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from deps.pybasicbayes.abstractions import GibbsSampling, ModelGibbsSampling
-from deps.pybasicbayes.distributions import ScalarGaussianNIX
+from deps.pybasicbayes.distributions import ScalarGaussianNIX, Gaussian
 from latent import LatentClass, _LatentVariableBase
 from pyglm.neuron import NegativeBinomialSparseNeuron, BernoulliSparseNeuron
 from pyglm.networks import ErdosRenyiNetwork, StochasticBlockNetwork
@@ -26,7 +26,7 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
                  network_hypers={},
                  global_bias_class=ScalarGaussianNIX,
                  global_bias_hypers={'mu_0' : 0.0, 'kappa_0' : 1.0, 'sigmasq_0' : 0.1, 'nu_0' : 10.0},
-                 use_ipython_parallel=False
+                 n_iters_per_resample=1
                  ):
         self.N = N
 
@@ -57,6 +57,8 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
         # so that they can get the global priors.
         self.neuron_models = [neuron_class(n, self, **neuron_hypers)
                               for n in range(N)]
+
+        self.n_iters_per_resample = n_iters_per_resample
     @property
     def biases(self):
         return np.array([neuron.bias for neuron in self.neuron_models])
@@ -150,6 +152,10 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
         for neuron in self.neuron_models:
             neuron.add_data(data)
 
+    def pop_data(self):
+        for neuron in self.neuron_models:
+            neuron.pop_data()
+
     def initialize_to_empty(self):
         for n,neuron in enumerate(self.neuron_models):
             M = np.sum([d.counts for d in neuron.data_list])
@@ -205,7 +211,13 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
 
                 assert len(neuron.data_list) == 0
 
-    def resample_model(self):
+    def resample_model(self,
+                       do_resample_latent=True,
+                       do_resample_network=True,
+                       do_resample_bias_prior=True,
+                       do_resample_bias=True,
+                       do_resample_sigma=True,
+                       do_resample_synapses=True):
         """
         Resample the parameter of the model.
 
@@ -217,16 +229,21 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
 
         # Resample the spike train models
         for n,neuron in enumerate(self.neuron_models):
-            neuron.resample_model()
+            neuron.resample_model(do_resample_bias=do_resample_bias,
+                                  do_resample_sigma=do_resample_sigma,
+                                  do_resample_synapses=do_resample_synapses)
 
         # Resample the network parameters with the given weights
-        self.resample_network()
+        if do_resample_network:
+            self.resample_network()
 
         # Resample latent variables of the population
-        self.resample_latent()
+        if do_resample_latent:
+            self.resample_latent()
 
         # Resample global priors
-        self.resample_bias_prior()
+        if do_resample_bias_prior:
+            self.resample_bias_prior()
         # sys.stdout.write('\n')
         # sys.stdout.flush()
 
@@ -246,9 +263,9 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
         self.bias_prior.resample(data=self.biases)
         for neuron in self.neuron_models:
             neuron.bias_model.mu_0=np.reshape(self.bias_prior.mu, (1,))
-            neuron.bias_model.lmbda_0=np.reshape(1./self.bias_prior.sigmasq, (1,1)),
+            neuron.bias_model.lmbda_0=np.reshape(self.bias_prior.sigmasq, (1,1)),
 
-    def generate(self, keep=True, size=100, X_bkgd=None):
+    def generate(self, keep=True, size=100, X_bkgd=None, verbose=False):
         """
         Simulate a spike train.
 
@@ -281,10 +298,12 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
         n_exceptions = 0
 
         # Iterate over each time step and generate spikes
-        print "Simulating %d time bins" % T
+        if verbose:
+            print "Simulating %d time bins" % T
         for t in np.arange(T):
-            if np.mod(t,10000)==0:
-                print "t=%d" % t
+            if verbose:
+                if np.mod(t,10000)==0:
+                    print "t=%d" % t
 
             # Sample from the observation model for each spike train
             for n,neuron in enumerate(self.neuron_models):
@@ -304,7 +323,8 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
                 print "More than 10 spikes in a bin! Decrease variance on impulse weights or decrease simulation bin width."
                 import pdb; pdb.set_trace()
 
-        print "Number of exceptions arising from multiple spikes per bin: %d" % n_exceptions
+        if verbose:
+            print "Number of exceptions arising from multiple spikes per bin: %d" % n_exceptions
 
         if keep:
             Xs = [X[:T,:] for X in Xs]
@@ -476,6 +496,7 @@ class ErdosRenyiBernoulliPopulation(_PopulationOfNeuronsBase):
                  basis,
                  neuron_hypers={},
                  network_hypers={},
+                 global_bias_class=ScalarGaussianNIX,
                  global_bias_hypers={'mu_0' : 0.0, 'kappa_0' : 1.0, 'sigmasq_0' : 0.1, 'nu_0' : 10.0}
                  ):
         super(ErdosRenyiBernoulliPopulation, self).\
@@ -485,6 +506,7 @@ class ErdosRenyiBernoulliPopulation(_PopulationOfNeuronsBase):
                      neuron_hypers=neuron_hypers,
                      network_class=ErdosRenyiNetwork,
                      network_hypers=network_hypers,
+                     global_bias_class=global_bias_class,
                      global_bias_hypers=global_bias_hypers
                      )
 

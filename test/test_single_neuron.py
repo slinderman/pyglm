@@ -17,13 +17,13 @@ np.random.seed(seed)
 ################
 #  parameters  #
 ################
-N = 5
+N = 1
 dt = 0.001
-T = 1000
+T = 10000
 N_samples = 1000
 
 # Basis parameters
-B = 5       # Number of basis functions
+B = 2       # Number of basis functions
 dt_max = 0.1      # Number of time bins over which the basis extends
 basis_parameters = {'type' : 'cosine',
                     'n_eye' : 0,
@@ -40,10 +40,7 @@ basis = Basis(B, dt, dt_max, basis_parameters)
 #  generate synthetic data  #
 #############################
 observation = 'bernoulli'
-if observation == 'negative_binomial':
-    spike_train_hypers = {'xi' : 10}
-else:
-    spike_train_hypers = {}
+spike_train_hypers = {}
 
 # global_bias_class = GaussianFixed
 # global_bias_hypers= {'mu' : -3,
@@ -51,19 +48,11 @@ else:
 global_bias_hypers = {
                      'mu_0' : -3.0,
                      'kappa_0' : 1.0,
-                     'sigmasq_0' : 0.5,
+                     'sigmasq_0' : 1.0,
                      'nu_0' : 1.0
                     }
 
 network_hypers = {'rho' : 0.5,
-                  # 'weight_prior_class' : Gaussian,
-                  # 'weight_prior_hypers' :
-                  #     {
-                  #         'mu_0' : 0.0 * np.ones((basis.B,)),
-                  #         'sigma_0' : 0.1 * np.eye(basis.B),
-                  #         'nu_0' : basis.B+1,
-                  #         'kappa_0' : 1.0
-                  #     },
                   'weight_prior_class' : DiagonalGaussian,
                   'weight_prior_hypers' :
                       {
@@ -72,15 +61,9 @@ network_hypers = {'rho' : 0.5,
                           'alphas_0' : 10.0,
                           'betas_0' : 10.0
                       },
-                  'refractory_rho' : 0.9,
+                  'refractory_rho' : 0.5,
                   'refractory_prior_class' : DiagonalGaussian,
                   'refractory_prior_hypers' :
-                      # {
-                      #     'mu_0' : -3.0 * np.ones((basis.B,)),
-                      #     'sigma_0' : 0.1 * np.eye(basis.B),
-                      #     'nu_0' : basis.B+1,
-                      #     'kappa_0' : 1.0
-                      # }
                       {
                           'mu_0' : -3.0 * np.ones((basis.B,)),
                           'nus_0' : 1.0/N,
@@ -88,34 +71,19 @@ network_hypers = {'rho' : 0.5,
                           'betas_0' : 10.
                       },
                  }
-if observation == 'negative_binomial':
-    population = ErdosRenyiNegativeBinomialPopulation(
-            N, basis,
-            global_bias_hypers=global_bias_hypers,
-            neuron_hypers=spike_train_hypers,
-            network_hypers=network_hypers,
-            )
+population = ErdosRenyiBernoulliPopulation(
+        N, basis,
+        global_bias_hypers=global_bias_hypers,
+        neuron_hypers=spike_train_hypers,
+        network_hypers=network_hypers,
+        )
 
-    inf_population = ErdosRenyiNegativeBinomialPopulation(
-            N, basis,
-            global_bias_hypers=global_bias_hypers,
-            neuron_hypers=spike_train_hypers,
-            network_hypers=network_hypers,
-            )
-else:
-    population = ErdosRenyiBernoulliPopulation(
-            N, basis,
-            global_bias_hypers=global_bias_hypers,
-            neuron_hypers=spike_train_hypers,
-            network_hypers=network_hypers,
-            )
-
-    inf_population = ErdosRenyiBernoulliPopulation(
-            N, basis,
-            global_bias_hypers=global_bias_hypers,
-            neuron_hypers=spike_train_hypers,
-            network_hypers=network_hypers,
-            )
+inf_population = ErdosRenyiBernoulliPopulation(
+        N, basis,
+        global_bias_hypers=global_bias_hypers,
+        neuron_hypers=spike_train_hypers,
+        network_hypers=network_hypers,
+        )
 
 S, Xs = population.generate(size=T)
 Xs = [X[:T,:] for X in Xs]
@@ -134,7 +102,7 @@ print ""
 print "Spike counts: "
 print S.sum(0)
 print ""
-
+raw_input("Press any key to continue")
 #
 # Debug
 #

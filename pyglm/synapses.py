@@ -163,39 +163,34 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed):
         # The marginal distribution for multivariate Gaussian mean and
         #  fixed covariance is another multivariate Gaussian.
         if isinstance(data, list):
-            return np.array([self.log_marginal_likelihood(d) for d in data])
+            out = np.array([self.log_marginal_likelihood(d) for d in data])
         elif isinstance(data, np.ndarray):
             N = data.shape[0]
             X,y = data[:,:-1], data[:,-1]
 
-            # TODO: Implement this with matrix inversion lemma
-            use_mi_lemma = True
-            if use_mi_lemma:
-                # Compute log marginal likelihood with matrix inversion lemma
+            # We've implement this with matrix inversion lemma
+            # Compute the marginal distribution parameters
+            mu_marg = X.dot(self.mu_w.T).reshape((N,))
 
-                # Compute the marginal distribution parameters
-                mu_marg = X.dot(self.mu_w.T).reshape((N,))
+            from utils.utils import logdet_low_rank2, quad_form_diag_plus_lr2
+            # Ainv = 1.0/np.asscalar(self.sigma) * np.eye(N)
+            d = np.asscalar(self.sigma) * np.ones((N,))
+            Ainv = 1.0/d
 
-                from utils.utils import logdet_low_rank2, quad_form_diag_plus_lr2
-                # Ainv = 1.0/np.asscalar(self.sigma) * np.eye(N)
-                d = np.asscalar(self.sigma) * np.ones((N,))
-                Ainv = 1.0/d
+            # Sig_marg_inv = invert_low_rank(Ainv, X, self.Sigma_A, X.T, diag=True)
+            yy = y-mu_marg
+            tmp = -1./2. * quad_form_diag_plus_lr2(yy, d, X, self.Sigma_w, X.T)
+            out = tmp \
+                  - N/2*np.log(2*np.pi) \
+                  - 0.5 * logdet_low_rank2(Ainv, X, self.Sigma_w, X.T, diag=True)
 
-                # Sig_marg_inv = invert_low_rank(Ainv, X, self.Sigma_A, X.T, diag=True)
-                yy = y-mu_marg
-                tmp = -1./2. * quad_form_diag_plus_lr2(yy, d, X, self.Sigma_w, X.T)
-                out = tmp \
-                      - N/2*np.log(2*np.pi) \
-                      - 0.5 * logdet_low_rank2(Ainv, X, self.Sigma_w, X.T, diag=True)
-
-            else:
-                # Compute the marginal distribution parameters
-                mu_marg = X.dot(self.mu_w.T).reshape((N,))
-                # Covariances add
-                Sig_marg = np.asscalar(self.sigma) * np.eye(N) + X.dot(self.Sigma_w.dot(X.T))
-
-                # Compute the marginal log likelihood
-                out = GaussianFixed(mu_marg, Sig_marg).log_likelihood(y)
-            return out
+            # # Compute the marginal distribution parameters
+            # mu_marg = X.dot(self.mu_w.T).reshape((N,))
+            # # Covariances add
+            # Sig_marg = np.asscalar(self.sigma) * np.eye(N) + X.dot(self.Sigma_w.dot(X.T))
+            # # Compute the marginal log likelihood
+            # out = GaussianFixed(mu_marg, Sig_marg).log_likelihood(y)
         else:
             raise Exception("Data must be list of numpy arrays or numpy array")
+
+        return out

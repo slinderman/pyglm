@@ -1,6 +1,6 @@
 import numpy as np
 
-from nb.models import ScalarRegressionFixedCov, SpikeAndSlabLogisticRegression
+from pyglm.neuron import BernoulliSparseNeuron
 from deps.pybasicbayes.distributions import Gaussian, GaussianFixedCov, GaussianFixedMean
 
 
@@ -60,7 +60,7 @@ def demo_ss_nbregression(T=1000, N=20, B=5, N_samples=100, do_plot=False, burnin
 
     # Fit with the same model
     inf_noise_model  = GaussianFixedMean(mu=np.zeros(1,), nu_0=1, lmbda_0=1*np.eye(1))
-    inf_bias_model = GaussianFixedCov(mu_0=np.zeros((1,)), lmbda_0=np.ones((1,1)), sigma=inf_noise_model.sigma)
+    inf_bias_model = GaussianFixedCov(mu_0=np.zeros((1,)), sigma_0=np.ones((1,1)), sigma=inf_noise_model.sigma)
     inf_regression_models = [ScalarRegressionFixedCov(weights_prior=w_prior,
                                                       sigma=inf_noise_model.sigma)
                              for _ in range(N)]
