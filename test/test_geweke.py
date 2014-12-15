@@ -39,7 +39,6 @@ basis = Basis(B, dt, dt_max, basis_parameters)
 #############################
 #  generate synthetic data  #
 #############################
-observation = 'bernoulli'
 spike_train_hypers = {}
 
 # global_bias_class = GaussianFixed
@@ -114,8 +113,8 @@ for s in range(N_samples):
                               do_resample_bias_prior=False,
                               do_resample_latent=False,
                               do_resample_network=False,
-                              do_resample_sigma=True,
-                              do_resample_synapses=False)
+                              do_resample_sigma=False,
+                              do_resample_synapses=True)
 
     # Remove old data
     population.pop_data()

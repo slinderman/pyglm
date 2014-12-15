@@ -32,7 +32,7 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         # self.noise_model  = GaussianFixed(mu=np.zeros(1,), sigma=1.0 * np.eye(1))
 
         self.bias_model = GaussianFixedCov(mu_0=np.reshape(self.population.bias_prior.mu, (1,)),
-                                      sigma_0=np.reshape(self.population.bias_prior.sigmasq, (1,1)),
+                                      lmbda_0=np.reshape(self.population.bias_prior.sigmasq, (1,1)),
                                       sigma=self.noise_model.sigma)
 
         self.synapse_models = []
