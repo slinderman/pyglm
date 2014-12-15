@@ -38,7 +38,7 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed):
     def weights_prior(self):
         return self.neuron_model.population.\
                      network.weights_prior(self.n_pre,
-                                            self.neuron_model.n)
+                                           self.neuron_model.n)
 
     @property
     def mu_w(self):
@@ -194,3 +194,10 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed):
             raise Exception("Data must be list of numpy arrays or numpy array")
 
         return out
+
+
+# TODO: Implement weighted, normalized synapses
+
+# TODO: Implement synapses with learning rules
+
+# TODO: Implement horseshoe, L1 synapses

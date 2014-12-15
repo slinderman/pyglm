@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 from deps.pybasicbayes.abstractions import GibbsSampling, ModelGibbsSampling
 from deps.pybasicbayes.distributions import ScalarGaussianNIX, Gaussian
 from latent import LatentClass, _LatentVariableBase
-from pyglm.neuron import NegativeBinomialSparseNeuron, BernoulliSparseNeuron
-from pyglm.networks import ErdosRenyiNetwork, StochasticBlockNetwork
+from pyglm.neuron import NegativeBinomialSparseNeuron, BernoulliSparseNeuron, BernoulliNeuron, NegativeBinomialNeuron
+from pyglm.networks import ErdosRenyiNetwork, StochasticBlockNetwork, CompleteNetwork
 
 class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
     """
@@ -164,7 +164,9 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
                 p = np.float(M) / T
                 # neuron.bias = np.array([logit(p)])
                 neuron.weights *= 0
-                neuron.An *= 0
+
+                if hasattr(neuron, 'An'):
+                    neuron.An *= 0
 
     def initialize_with_logistic_regression(self):
         from sklearn.linear_model import LogisticRegression
@@ -472,6 +474,46 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
             lns.set_data(np.kron(Weff, np.ones((10,10))))
 
         return ax, lns
+
+
+class CompleteBernoulliPopulation(_PopulationOfNeuronsBase):
+    def __init__(self, N,
+                 basis,
+                 neuron_hypers={},
+                 network_hypers={},
+                 global_bias_class=ScalarGaussianNIX,
+                 global_bias_hypers={'mu_0' : 0.0, 'kappa_0' : 1.0, 'sigmasq_0' : 0.1, 'nu_0' : 10.0}
+                 ):
+        super(CompleteBernoulliPopulation, self).\
+            __init__(N,
+                     basis=basis,
+                     neuron_class=BernoulliNeuron,
+                     neuron_hypers=neuron_hypers,
+                     network_class=CompleteNetwork,
+                     network_hypers=network_hypers,
+                     global_bias_class=global_bias_class,
+                     global_bias_hypers=global_bias_hypers
+                     )
+
+
+class CompleteNegativeBinomialPopulation(_PopulationOfNeuronsBase):
+    def __init__(self, N,
+                 basis,
+                 neuron_hypers={},
+                 network_hypers={},
+                 global_bias_class=ScalarGaussianNIX,
+                 global_bias_hypers={'mu_0' : 0.0, 'kappa_0' : 1.0, 'sigmasq_0' : 0.1, 'nu_0' : 10.0}
+                 ):
+        super(CompleteNegativeBinomialPopulation, self).\
+            __init__(N,
+                     basis=basis,
+                     neuron_class=NegativeBinomialNeuron,
+                     neuron_hypers=neuron_hypers,
+                     network_class=CompleteNetwork,
+                     network_hypers=network_hypers,
+                     global_bias_class=global_bias_class,
+                     global_bias_hypers=global_bias_hypers
+                     )
 
 
 class ErdosRenyiNegativeBinomialPopulation(_PopulationOfNeuronsBase):

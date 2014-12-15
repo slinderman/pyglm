@@ -3,8 +3,7 @@ from __future__ import division
 import numpy as np
 import matplotlib.pyplot as plt
 
-from pyglm.populations import ErdosRenyiNegativeBinomialPopulation, \
-                        ErdosRenyiBernoulliPopulation
+from pyglm.populations import *
 from pyglm.deps.pybasicbayes.distributions import DiagonalGaussian, GaussianFixed
 from pyglm.utils.basis import  Basis
 
@@ -51,7 +50,9 @@ global_bias_hypers= {'mu' : -3,
 #                      'nu_0' : 1.0
 #                     }
 
-network_hypers = {'rho' : 0.5,
+sigma_w = 0.001
+network_hypers = {
+                  # 'rho' : 1.0,
                   'weight_prior_class' : DiagonalGaussian,
                   'weight_prior_hypers' :
                       {
@@ -60,17 +61,24 @@ network_hypers = {'rho' : 0.5,
                           'alphas_0' : 10.0,
                           'betas_0' : 10.0
                       },
-                  'refractory_rho' : 0.5,
+
+                  # 'refractory_rho' : 0.5,
                   'refractory_prior_class' : DiagonalGaussian,
+                  # 'refractory_prior_hypers' :
+                  #     {
+                  #         'mu_0' : 0.0 * np.ones((basis.B,)),
+                  #         'nus_0' : 1.0/N,
+                  #         'alphas_0' : 1.,
+                  #         'betas_0' : 1.
+                  #     },
                   'refractory_prior_hypers' :
                       {
-                          'mu_0' : 0.0 * np.ones((basis.B,)),
-                          'nus_0' : 1.0/N,
-                          'alphas_0' : 1.,
-                          'betas_0' : 1.
+                          'mu' : 0.0 * np.ones((basis.B,)),
+                          'sigmas' : sigma_w * np.ones(basis.B)
                       },
                  }
-population = ErdosRenyiBernoulliPopulation(
+
+population = CompleteBernoulliPopulation(
         N, basis,
         global_bias_hypers=global_bias_hypers,
         neuron_hypers=spike_train_hypers,
@@ -146,10 +154,4 @@ print "Mean bias: ", bias_mean
 sigma_mean = np.array(sigma_samples).mean(0)
 print "Mean sigma: ", sigma_mean
 
-plt.figure()
-plt.plot(np.array(ll_samples))
-plt.show()
-
-# for itr in progprint_xrange(25,perline=5):
-#     model.resample_model()
 

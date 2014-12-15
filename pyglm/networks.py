@@ -163,6 +163,26 @@ class ErdosRenyiNetwork(_NetworkBase):
         # Update the regression model priors
         # self.update_spike_train_priors()
 
+class CompleteNetwork(ErdosRenyiNetwork):
+    """
+    Simplest nontrivial network model you can think of.
+    Each connection is an iid Bernoulli r.v. with parameter rho.
+    The weights of the edges are also i.i.d.
+    """
+    def __init__(self, population,
+                 weight_prior_class=Gaussian,
+                 weight_prior_hypers={},
+                 refractory_prior_class=Gaussian,
+                 refractory_prior_hypers={}
+                ):
+
+        super(CompleteNetwork, self).__init__(population, rho=1.0,
+                                              weight_prior_class=weight_prior_class,
+                                              weight_prior_hypers=weight_prior_hypers,
+                                              refractory_rho=1.0,
+                                              refractory_prior_class=refractory_prior_class,
+                                              refractory_prior_hypers=refractory_prior_hypers)
+
 class StochasticBlockNetwork(_NetworkBase):
     """
     Stochastic block network: neurons have a latent class, c_n.

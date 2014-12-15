@@ -19,14 +19,13 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         self.n = n
         self.population = population
         self.N = self.population.N
-        self.B = self.population.B
         self.n_iters_per_resample = n_iters_per_resample
 
         # Keep a list of spike train data
         self.data_list = []
 
         # Create the components of the neuron
-        self.noise_model  = GaussianFixedMean(mu=np.zeros(1,),
+        self.noise_model = GaussianFixedMean(mu=np.zeros(1,),
                                          nu_0=1,
                                          lmbda_0=1*np.eye(1))
         # self.noise_model  = GaussianFixed(mu=np.zeros(1,), sigma=1.0 * np.eye(1))
@@ -43,6 +42,10 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
                                       sigma=self.noise_model.sigma,
                                       ))
 
+
+        # TODO: B and Ds are redundant. Switch to Ds since it is more flexible
+        # and will eventually allow us to handle stimuli
+        self.B = self.population.B
         self.Ds = np.array([syn.D_in for syn in self.synapse_models])
 
     @property
@@ -66,6 +69,14 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         self.bias_model.mu = value
 
     @property
+    def An(self):
+        return np.ones(self.N)
+
+    @An.setter
+    def An(self, value):
+        pass
+
+    @property
     def weights(self):
         return np.array([syn.w for syn in self.synapse_models])
 
@@ -76,11 +87,11 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
 
     @property
     def parameters(self):
-        return self.An, self.weights, self.sigma, self.bias
+        return self.weights, self.sigma, self.bias
 
     @parameters.setter
     def parameters(self, value):
-        self.An, self.weights, self.sigma, self.bias = value
+        self.weights, self.sigma, self.bias = value
 
     ## These must be implemented by base classes
     def mean(self, Xs):
@@ -237,7 +248,7 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
                 syn.resample(X_and_residuals)
 
 
-class _SparseNeuronBase(_NeuronBase):
+class _SparseNeuronMixin(_NeuronBase):
     """
     Encapsulates the shared functionality of neurons with sparse connectivity
     to the rest of the population. The observation model (e.g. Bernoulli,
@@ -250,12 +261,14 @@ class _SparseNeuronBase(_NeuronBase):
                  rho_s=None,
                  An=None):
 
-        super(_SparseNeuronBase, self).__init__(n, population, n_iters_per_resample)
+        super(_SparseNeuronMixin, self).__init__(n, population, n_iters_per_resample)
 
         if rho_s is not None:
             self.rho_s = rho_s
+        elif population is not None:
+            self.rho_s = self.population.network.rho[:,self.n]
         else:
-            self.rho_s = self.network.rho[:,self.n]
+            raise Exception("Rho must be specified or population must be given")
 
         self._An = An
 
@@ -265,16 +278,20 @@ class _SparseNeuronBase(_NeuronBase):
             self.resample_synapse_models()
 
     @property
-    def network(self):
-        return self.population.network
-
-    @property
     def An(self):
         return self._An
 
     @An.setter
     def An(self, value):
         self._An = value
+
+    @property
+    def parameters(self):
+        return self.An, self.weights, self.sigma, self.bias
+
+    @parameters.setter
+    def parameters(self, value):
+        self.An, self.weights, self.sigma, self.bias = value
 
     def mean_activation(self, Xs):
         T = Xs[0].shape[0]
@@ -348,10 +365,10 @@ class _AugmentedDataMixin:
         # Return an augmented counts object
         return observation_class(Xs, counts, self)
 
+class BernoulliNeuron(_NeuronBase, _AugmentedDataMixin):
 
-class BernoulliSparseNeuron(_SparseNeuronBase, _AugmentedDataMixin):
     def __init__(self, n, population, n_iters_per_resample=1, ):
-        super(BernoulliSparseNeuron, self).\
+        super(BernoulliNeuron, self).\
             __init__(n, population,
                      n_iters_per_resample=n_iters_per_resample)
 
@@ -392,10 +409,15 @@ class BernoulliSparseNeuron(_SparseNeuronBase, _AugmentedDataMixin):
         return ll
 
 
-class NegativeBinomialSparseNeuron(_SparseNeuronBase, _AugmentedDataMixin):
+class BernoulliSparseNeuron(BernoulliNeuron, _SparseNeuronMixin, _AugmentedDataMixin):
+    pass
+
+
+
+class NegativeBinomialNeuron(_NeuronBase, _AugmentedDataMixin):
     def __init__(self, n, population, xi=10,
                  n_iters_per_resample=1):
-        super(NegativeBinomialSparseNeuron, self).\
+        super(NegativeBinomialNeuron, self).\
             __init__(n, population, n_iters_per_resample=n_iters_per_resample)
 
         self.xi = xi
@@ -438,3 +460,7 @@ class NegativeBinomialSparseNeuron(_SparseNeuronBase, _AugmentedDataMixin):
              self.xi * np.log(1.0-p) + (y*np.log(p))
 
         return ll
+
+
+class NegativeBinomialSparseNeuron(NegativeBinomialNeuron, _SparseNeuronMixin, _AugmentedDataMixin):
+    pass
