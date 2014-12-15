@@ -413,7 +413,6 @@ class BernoulliSparseNeuron(BernoulliNeuron, _SparseNeuronMixin, _AugmentedDataM
     pass
 
 
-
 class NegativeBinomialNeuron(_NeuronBase, _AugmentedDataMixin):
     def __init__(self, n, population, xi=10,
                  n_iters_per_resample=1):

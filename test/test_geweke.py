@@ -2,6 +2,7 @@ from __future__ import division
 
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.stats import norm, probplot
 
 from pyglm.populations import *
 from pyglm.deps.pybasicbayes.distributions import DiagonalGaussian, GaussianFixed
@@ -19,7 +20,7 @@ np.random.seed(seed)
 N = 1
 dt = 0.001
 T = 100
-N_samples = 1000
+N_samples = 10000
 
 # Basis parameters
 B = 2       # Number of basis functions
@@ -41,8 +42,10 @@ basis = Basis(B, dt, dt_max, basis_parameters)
 spike_train_hypers = {}
 
 # global_bias_class = GaussianFixed
-global_bias_hypers= {'mu' : -3,
-                     'sigmasq' : 0.001}
+mu_bias = -3
+sigma_bias = 0.001
+global_bias_hypers= {'mu' : mu_bias,
+                     'sigmasq' : sigma_bias}
 # global_bias_hypers = {
 #                      'mu_0' : -3.0,
 #                      'kappa_0' : 1.0,
@@ -50,7 +53,8 @@ global_bias_hypers= {'mu' : -3,
 #                      'nu_0' : 1.0
 #                     }
 
-sigma_w = 0.001
+mu_w = 0
+sigma_w = 1.0
 network_hypers = {
                   # 'rho' : 1.0,
                   'weight_prior_class' : DiagonalGaussian,
@@ -73,7 +77,7 @@ network_hypers = {
                   #     },
                   'refractory_prior_hypers' :
                       {
-                          'mu' : 0.0 * np.ones((basis.B,)),
+                          'mu' : mu_w * np.ones((basis.B,)),
                           'sigmas' : sigma_w * np.ones(basis.B)
                       },
                  }
@@ -142,16 +146,30 @@ for s in range(N_samples):
     sigma_samples.append(population.sigmas.copy())
     w_samples.append(population.weights.copy())
 
-A_mean = np.array(A_samples).mean(0)
+# Convert samples to arrays
+A_samples = np.array(A_samples)
+w_samples = np.array(w_samples)
+bias_samples = np.array(bias_samples)
+sigma_samples = np.array(sigma_samples)
+
+# Make Q-Q plots
+fig = plt.figure()
+A_mean = A_samples.mean(0)
 print "Mean A: \n", A_mean
 
-w_mean = np.array(w_samples).mean(0)
+w_mean = w_samples.mean(0)
 print "Mean w: \n", w_mean
+w_ax = fig.add_subplot(111)
+w_dist = norm(0, sigma_w)
+probplot(w_samples[:,0,0,0], dist=w_dist, plot=w_ax)
 
-bias_mean = np.array(bias_samples).mean(0)
+bias_mean = bias_samples.mean(0)
 print "Mean bias: ", bias_mean
 
-sigma_mean = np.array(sigma_samples).mean(0)
+sigma_mean = sigma_samples.mean(0)
 print "Mean sigma: ", sigma_mean
+
+plt.show()
+
 
 
