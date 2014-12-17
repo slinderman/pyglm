@@ -34,6 +34,8 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed):
             assert self.mu_w.ndim == 1
             self.resample() # initialize from prior
 
+        print self.w
+
     @property
     def weights_prior(self):
         return self.neuron_model.population.\
@@ -121,20 +123,19 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed):
         return np.hstack((x,y[:,None])) if return_xy else y
 
     ### Gibbs sampling
-
     def resample(self,data=[],stats=None):
-        # import pdb; pdb.set_trace()
         ss = self._get_statistics(data) if stats is None else stats
         yxT = ss[1]
         xxT = ss[2]
 
         # Posterior mean of a Gaussian
         Sigma_w_inv = np.linalg.inv(self.Sigma_w)
-        Sigma_w_post = np.linalg.inv(xxT + Sigma_w_inv)
-        mu_w_post = ((yxT + self.mu_w.dot(Sigma_w_inv)).dot(Sigma_w_post)).reshape((self.D_in,))
+        Sigma_w_post = np.linalg.inv(xxT / self.neuron_model.sigma + Sigma_w_inv)
+        mu_w_post = ((yxT/self.neuron_model.sigma + self.mu_w.dot(Sigma_w_inv)).dot(Sigma_w_post)).reshape((self.D_in,))
         w = GaussianFixed(mu_w_post, Sigma_w_post).rvs()[0,:]
 
         self.set_weights(w)
+
 
     ### Prediction
     def predict(self, X):

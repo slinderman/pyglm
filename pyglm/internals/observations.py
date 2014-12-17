@@ -1,10 +1,12 @@
 import numpy as np
 from scipy.special import gammaln
 
-from hips.inference.hmc import hmc
+from hips.distributions.polya_gamma import polya_gamma
 
 from pyglm.deps.pybasicbayes.abstractions import GibbsSampling
 from pypolyagamma import pgdrawv, PyRNG
+
+from hips.inference.log_sum_exp import log_sum_exp_sample
 
 class _PolyaGammaAugmentedCountsBase(GibbsSampling):
     """
@@ -23,8 +25,16 @@ class _PolyaGammaAugmentedCountsBase(GibbsSampling):
         self.model = nbmodel
 
         # Initialize auxiliary variables
+        sigma = np.asscalar(self.model.sigma)
+        self.psi = self.model.mean_activation(X) + \
+                   np.sqrt(sigma) * np.random.randn(self.T)
+        #
+        # self.omega = polya_gamma(np.ones(self.T),
+        #                          self.psi.reshape(self.T),
+        #                          200).reshape((self.T,))
         self.omega = np.ones(self.T)
-        self.psi = self.model.mean_activation(X)
+        rng = PyRNG()
+        pgdrawv(np.ones(self.T, dtype=np.int32), self.psi, self.omega, rng)
 
     def log_likelihood(self, x):
         return 0
@@ -38,23 +48,24 @@ class AugmentedNegativeBinomialCounts(_PolyaGammaAugmentedCountsBase):
         """
         Resample omega given xi and psi, then resample psi given omega, X, w, and sigma
         """
-        # Create a PyPolyaGamma object
-        seed = np.random.randint(2**16)
-        # ppg = PyPolyaGamma(seed, self.model.trunc)
-        rng = PyRNG()
 
         xi = np.int32(self.model.xi)
         mu = self.model.mean_activation(self.X)
         sigma = self.model.sigma
-
         sigma = np.asscalar(sigma)
-        # Resample the auxiliary variables, omega
+
+        # Resample the auxiliary variables, omega, in Python
         # self.omega = polya_gamma(self.counts.reshape(self.T)+xi,
         #                          self.psi.reshape(self.T),
-        #                          self.model.trunc).reshape((self.T,))
+        #                          200).reshape((self.T,))
 
-        # Resample with the C code
+        # Create a PyPolyaGamma object and resample with the C code
+        # seed = np.random.randint(2**16)
+        # ppg = PyPolyaGamma(seed, self.model.trunc)
         # ppg.draw_vec(self.counts+xi, self.psi, self.omega)
+
+        # Resample with Jesse Windle's ported code
+        rng = PyRNG()
         pgdrawv(self.counts+xi, self.psi, self.omega, rng)
 
         # Resample the rates, psi given omega and the regression parameters
@@ -62,6 +73,17 @@ class AugmentedNegativeBinomialCounts(_PolyaGammaAugmentedCountsBase):
         mu_post = sig_post * ((self.counts-xi)/2.0 + mu / sigma)
         self.psi = mu_post + np.sqrt(sig_post) * np.random.normal(size=(self.T,))
 
+    def geweke_resample_counts(self, trunc=100):
+        """
+        Resample the counts given omega and psi.
+        Given omega, the distribution over y is no longer negative binomial.
+        Instead, it takes a pretty ugly form. We have,
+        log p(y | xi, psi, omega) = c + log Gamma(y+xi) - log y! - y + psi * (y-xi)/2
+        """
+        xi = self.model.xi
+        ys = np.arange(trunc)[:,None]
+        lp = gammaln(ys+xi) - gammaln(ys+1) - ys + (ys-xi) / 2.0 * self.psi[None,:]
+        self.counts = log_sum_exp_sample(lp, axis=0)
 
 
 # We can also do logistic regression as a special case!
@@ -70,13 +92,20 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
         """
         Resample omega given xi and psi, then resample psi given omega, X, w, and sigma
         """
-        # Create a PyPolyaGamma object
-        seed = np.random.randint(2**16)
-        # ppg = PyPolyaGamma(seed, self.model.trunc)
-        rng = PyRNG()
+
+        # Resample the auxiliary variables, omega, in Python
+        # self.omega = polya_gamma(np.ones(self.T),
+        #                          self.psi.reshape(self.T),
+        #                          200).reshape((self.T,))
 
         # Resample with the C code
+        # Create a PyPolyaGamma object
+        # seed = np.random.randint(2**16)
+        # ppg = PyPolyaGamma(seed, self.model.trunc)
         # ppg.draw_vec(np.ones(self.T, dtype=np.int32), self.psi, self.omega)
+
+        # Resample with Jesse Windle's code
+        rng = PyRNG()
         pgdrawv(np.ones(self.T, dtype=np.int32), self.psi, self.omega, rng)
 
         # Resample the rates, psi given omega and the regression parameters
@@ -87,6 +116,21 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
         sig_post = 1.0 / (1.0/sigma_prior + self.omega)
         mu_post = sig_post * (self.counts-0.5 + mu_prior / sigma_prior)
         self.psi = mu_post + np.sqrt(sig_post) * np.random.normal(size=(self.T,))
+
+    def geweke_resample_counts(self):
+        """
+        Resample the counts given omega and psi.
+        Given omega, the distribution over y is no longer negative binomial.
+        Instead, it takes a pretty ugly form. We have,
+        log p(y | xi, psi, omega) = c + log Gamma(y+xi) - log y! - y + psi * (y-xi)/2
+        """
+        ys = np.arange(2)[None,:]
+        psi = self.psi[:,None]
+        # omega = self.omega[:,None]
+        # lp = -np.log(2.0) + (ys-0.5) * psi - omega * psi**2 / 2.0
+        lp = (ys-0.5) * psi
+        for t in xrange(self.T):
+            self.counts[t] = log_sum_exp_sample(lp[t,:])
 
 
 # Finally, support the standard Poisson observations, but to be

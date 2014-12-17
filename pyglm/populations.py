@@ -153,8 +153,11 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
             neuron.add_data(data)
 
     def pop_data(self):
+        datas = []
         for neuron in self.neuron_models:
-            neuron.pop_data()
+            datas.append(neuron.pop_data())
+
+        return datas
 
     def initialize_to_empty(self):
         for n,neuron in enumerate(self.neuron_models):
@@ -219,7 +222,9 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
                        do_resample_bias_prior=True,
                        do_resample_bias=True,
                        do_resample_sigma=True,
-                       do_resample_synapses=True):
+                       do_resample_synapses=True,
+                       do_resample_data=True,
+                       do_resample_counts=False):
         """
         Resample the parameter of the model.
 
@@ -233,7 +238,9 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
         for n,neuron in enumerate(self.neuron_models):
             neuron.resample_model(do_resample_bias=do_resample_bias,
                                   do_resample_sigma=do_resample_sigma,
-                                  do_resample_synapses=do_resample_synapses)
+                                  do_resample_synapses=do_resample_synapses,
+                                  do_resample_data=do_resample_data,
+                                  do_resample_counts=do_resample_counts)
 
         # Resample the network parameters with the given weights
         if do_resample_network:

@@ -25,10 +25,10 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         self.data_list = []
 
         # Create the components of the neuron
-        self.noise_model = GaussianFixedMean(mu=np.zeros(1,),
-                                         nu_0=1,
-                                         lmbda_0=1*np.eye(1))
-        # self.noise_model  = GaussianFixed(mu=np.zeros(1,), sigma=1.0 * np.eye(1))
+        # self.noise_model = GaussianFixedMean(mu=np.zeros(1,),
+        #                                  nu_0=10,
+        #                                  lmbda_0=10*np.eye(1))
+        self.noise_model  = GaussianFixed(mu=np.zeros(1,), sigma=1.0 * np.eye(1))
 
         self.bias_model = GaussianFixedCov(mu_0=np.reshape(self.population.bias_prior.mu, (1,)),
                                       lmbda_0=np.reshape(self.population.bias_prior.sigmasq, (1,1)),
@@ -123,7 +123,7 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         return d[:,-self.N:]
 
     def pop_data(self):
-        self.data_list.pop()
+        return self.data_list.pop()
 
     def log_likelihood(self, x):
         return self._internal_log_likelihood(
@@ -177,10 +177,10 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
                        do_resample_data=True,
                        do_resample_bias=True,
                        do_resample_synapses=True,
-                       do_resample_sigma=True):
+                       do_resample_sigma=True,
+                       do_resample_counts=False):
 
         # TODO: Cache the X \dot w calculations
-
         if do_resample_data:
             for augmented_data in self.data_list:
                 # Sample omega given the data and the psi's derived from A, sigma, and X
@@ -240,10 +240,18 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         for n_pre in range(self.N):
             syn = self.synapse_models[n_pre]
 
-            # Compute residual
+            # Compute covariates and the predictions
             if len(self.data_list) > 0:
-                residuals = np.vstack([(d.psi - self.mean_activation(d.X))[:,None] for d in self.data_list])
-                Xs = np.vstack([d.X[n_pre] for d in self.data_list])
+                Xs = []
+                residuals = []
+                for d in self.data_list:
+                    Xs.append(d.X[n_pre])
+                    residual = (d.psi - (self.mean_activation(d.X) - syn.predict(d.X[n_pre])))[:,None]
+                    residuals.append(residual)
+
+                Xs = np.vstack(Xs)
+                residuals = np.vstack(residuals)
+
                 X_and_residuals = np.hstack((Xs,residuals))
                 syn.resample(X_and_residuals)
 
@@ -316,7 +324,9 @@ class _SparseNeuronMixin(_NeuronBase):
             # Compute residual
             self.An[n_pre] = 0  # Make sure mu is computed without the current regression model
             if len(self.data_list) > 0:
-                residuals = np.vstack([(d.psi - self.mean_activation(d.X))[:,None] for d in self.data_list])
+                # residuals = np.vstack([(d.psi - self.mean_activation(d.X))[:,None] for d in self.data_list])
+                residuals = np.vstack([(d.psi - (self.mean_activation(d.X) - synapse.predict(d.X[n_pre])))[:,None]
+                                       for d in self.data_list])
                 Xs = np.vstack([d.X[n_pre] for d in self.data_list])
                 X_and_residuals = np.hstack((Xs,residuals))
 
@@ -335,7 +345,7 @@ class _SparseNeuronMixin(_NeuronBase):
                 lp_A[0] = np.log(1.0-rho)
                 lp_A[1] = np.log(rho)
 
-                X_and_residuals = np.zeros((0, synapse.D_in+1))
+                X_and_residuals = []
 
 
             # Sample the spike variable
