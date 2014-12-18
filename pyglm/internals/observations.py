@@ -44,34 +44,37 @@ class _PolyaGammaAugmentedCountsBase(GibbsSampling):
 
 class AugmentedNegativeBinomialCounts(_PolyaGammaAugmentedCountsBase):
 
-    def resample(self, data=None, stats=None):
+    def resample(self, data=None, stats=None,
+                 do_resample_psi=True,
+                 do_resample_aux=True):
         """
         Resample omega given xi and psi, then resample psi given omega, X, w, and sigma
         """
-
         xi = np.int32(self.model.xi)
         mu = self.model.mean_activation(self.X)
         sigma = self.model.sigma
         sigma = np.asscalar(sigma)
 
-        # Resample the auxiliary variables, omega, in Python
-        # self.omega = polya_gamma(self.counts.reshape(self.T)+xi,
-        #                          self.psi.reshape(self.T),
-        #                          200).reshape((self.T,))
+        if do_resample_aux:
+            # Resample the auxiliary variables, omega, in Python
+            # self.omega = polya_gamma(self.counts.reshape(self.T)+xi,
+            #                          self.psi.reshape(self.T),
+            #                          200).reshape((self.T,))
 
-        # Create a PyPolyaGamma object and resample with the C code
-        # seed = np.random.randint(2**16)
-        # ppg = PyPolyaGamma(seed, self.model.trunc)
-        # ppg.draw_vec(self.counts+xi, self.psi, self.omega)
+            # Create a PyPolyaGamma object and resample with the C code
+            # seed = np.random.randint(2**16)
+            # ppg = PyPolyaGamma(seed, self.model.trunc)
+            # ppg.draw_vec(self.counts+xi, self.psi, self.omega)
 
-        # Resample with Jesse Windle's ported code
-        rng = PyRNG()
-        pgdrawv(self.counts+xi, self.psi, self.omega, rng)
+            # Resample with Jesse Windle's ported code
+            rng = PyRNG()
+            pgdrawv(self.counts+xi, self.psi, self.omega, rng)
 
         # Resample the rates, psi given omega and the regression parameters
-        sig_post = 1.0 / (1.0/sigma + self.omega)
-        mu_post = sig_post * ((self.counts-xi)/2.0 + mu / sigma)
-        self.psi = mu_post + np.sqrt(sig_post) * np.random.normal(size=(self.T,))
+        if do_resample_psi:
+            sig_post = 1.0 / (1.0/sigma + self.omega)
+            mu_post = sig_post * ((self.counts-xi)/2.0 + mu / sigma)
+            self.psi = mu_post + np.sqrt(sig_post) * np.random.normal(size=(self.T,))
 
     def geweke_resample_counts(self, trunc=100):
         """
@@ -88,34 +91,67 @@ class AugmentedNegativeBinomialCounts(_PolyaGammaAugmentedCountsBase):
 
 # We can also do logistic regression as a special case!
 class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
-    def resample(self, data=None, stats=None):
+    def resample(self, data=None, stats=None,
+                 do_resample_psi=True,
+                 do_resample_psi_from_prior=False,
+                 do_resample_aux=True):
         """
         Resample omega given xi and psi, then resample psi given omega, X, w, and sigma
         """
+        if do_resample_aux:
+            # Resample the auxiliary variables, omega, in Python
+            # self.omega = polya_gamma(np.ones(self.T),
+            #                          self.psi.reshape(self.T),
+            #                          200).reshape((self.T,))
 
-        # Resample the auxiliary variables, omega, in Python
-        # self.omega = polya_gamma(np.ones(self.T),
-        #                          self.psi.reshape(self.T),
-        #                          200).reshape((self.T,))
+            # Resample with the C code
+            # Create a PyPolyaGamma object
+            # seed = np.random.randint(2**16)
+            # ppg = PyPolyaGamma(seed, self.model.trunc)
+            # ppg.draw_vec(np.ones(self.T, dtype=np.int32), self.psi, self.omega)
 
-        # Resample with the C code
-        # Create a PyPolyaGamma object
-        # seed = np.random.randint(2**16)
-        # ppg = PyPolyaGamma(seed, self.model.trunc)
-        # ppg.draw_vec(np.ones(self.T, dtype=np.int32), self.psi, self.omega)
-
-        # Resample with Jesse Windle's code
-        rng = PyRNG()
-        pgdrawv(np.ones(self.T, dtype=np.int32), self.psi, self.omega, rng)
+            # Resample with Jesse Windle's code
+            rng = PyRNG()
+            pgdrawv(np.ones(self.T, dtype=np.int32), self.psi, self.omega, rng)
 
         # Resample the rates, psi given omega and the regression parameters
+        if do_resample_psi:
+            mu_prior = self.model.mean_activation(self.X)
+            sigma_prior = self.model.sigma
+            sigma_prior = np.asscalar(sigma_prior)
+
+            sig_post = 1.0 / (1.0/sigma_prior + self.omega)
+            mu_post = sig_post * (self.counts-0.5 + mu_prior / sigma_prior)
+            self.psi = mu_post + np.sqrt(sig_post) * np.random.normal(size=(self.T,))
+
+        # For Geweke testing, just resample psi from the forward model
+        elif do_resample_psi_from_prior:
+            mu_prior = self.model.mean_activation(self.X)
+            sigma_prior = self.model.sigma
+            sigma_prior = np.asscalar(sigma_prior)
+            self.psi = mu_prior + np.sqrt(sigma_prior) * np.random.normal(size=(self.T,))
+
+    def cond_omega(self):
+        """
+        Compute the conditional distribution of omega given the counts and psi
+        :return:
+        """
+        # TODO: Finish this for unit testing
+        return PolyaGamma(np.ones(self.T, dtype=np.int32), self.psi)
+
+    def cond_psi(self):
+        """
+        Compute the conditional distribution of psi given the counts and omega
+        :return:
+        """
+        # TODO: Finish this for unit testing
         mu_prior = self.model.mean_activation(self.X)
         sigma_prior = self.model.sigma
         sigma_prior = np.asscalar(sigma_prior)
 
         sig_post = 1.0 / (1.0/sigma_prior + self.omega)
         mu_post = sig_post * (self.counts-0.5 + mu_prior / sigma_prior)
-        self.psi = mu_post + np.sqrt(sig_post) * np.random.normal(size=(self.T,))
+        return DiagonalGaussian(mu_post, sig_post)
 
     def geweke_resample_counts(self):
         """
@@ -132,6 +168,10 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
         for t in xrange(self.T):
             self.counts[t] = log_sum_exp_sample(lp[t,:])
 
+
+    def rvs(self, size=[]):
+        p = np.exp(self.psi) / (1.0 + np.exp(self.psi))
+        return np.random.rand(*p.shape) < p
 
 # Finally, support the standard Poisson observations, but to be
 # consistent with the NB and Bernoulli models we add a bit of
@@ -204,11 +244,16 @@ class _LinearNonlinearPoissonCountsBase(GibbsSampling):
 
         return -1.0/sigma_prior * (x-mu_prior) + self.grad_log_likelihood(x)
 
-    def resample(self, data=None, stats=None):
+    def resample(self, data=None, stats=None,
+                 do_resample_psi=True,
+                 do_resample_aux=True):
         """
         Resample the activation psi given the counts and the model prior
         using Hamiltonian Monte Carlo
         """
+        if not do_resample_psi:
+            return
+
         psi_orig = self.psi
         nsteps = self.nsteps
         step_sz = self.step_sz

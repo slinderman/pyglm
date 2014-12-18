@@ -10,203 +10,208 @@ from pyglm.utils.basis import  Basis
 
 
 seed = np.random.randint(2**16)
-# seed = 1234
 print "Setting random seed to ", seed
 np.random.seed(seed)
 
 ################
 #  parameters  #
 ################
-N = 1
-dt = 0.001
-T = 100
-N_samples = 10000
-thin = 100
+def create_simple_population(mu_bias=-3.0, sigma_bias=0.5**2,
+                             mu_w=-0.5, sigma_w=0.5**2):
+    N = 1
+    dt = 0.001
+    T = 100
 
-# Basis parameters
-B = 1       # Number of basis functions
-dt_max = 0.1      # Number of time bins over which the basis extends
-basis_parameters = {'type' : 'cosine',
-                    'n_eye' : 0,
-                    'n_bas' : B,
-                    'a' : 1.0/120,
-                    'b' : 0.5,
-                    'L' : 100,
-                    'orth' : False,
-                    'norm' : False
-                    }
-basis = Basis(B, dt, dt_max, basis_parameters)
+    # Basis parameters
+    B = 1       # Number of basis functions
+    dt_max = 0.1      # Number of time bins over which the basis extends
+    basis_parameters = {'type' : 'cosine',
+                        'n_eye' : 0,
+                        'n_bas' : B,
+                        'a' : 1.0/120,
+                        'b' : 0.5,
+                        'L' : 100,
+                        'orth' : False,
+                        'norm' : False
+                        }
+    basis = Basis(B, dt, dt_max, basis_parameters)
 
-#############################
-#  generate synthetic data  #
-#############################
-spike_train_hypers = {}
+    spike_train_hypers = {}
 
-# global_bias_class = GaussianFixed
-mu_bias = -3.0
-sigma_bias = 0.5**2
-global_bias_hypers= {'mu' : mu_bias,
-                     'sigmasq' : sigma_bias}
-# global_bias_hypers = {
-#                      'mu_0' : -3.0,
-#                      'kappa_0' : 1.0,
-#                      'sigmasq_0' : 1.0,
-#                      'nu_0' : 1.0
-#                     }
+    global_bias_hypers= {'mu' : mu_bias,
+                         'sigmasq' : sigma_bias}
 
-mu_w = -0.5
-sigma_w = 0.5**2
-network_hypers = {
-                  # 'rho' : 1.0,
-                  'weight_prior_class' : DiagonalGaussian,
-                  'weight_prior_hypers' :
-                      # {
-                      #     'mu_0' : 0.0 * np.ones((basis.B,)),
-                      #     'nus_0' : 1.0/N**2,
-                      #     'alphas_0' : 10.0,
-                      #     'betas_0' : 10.0
-                      # },
-                      {
-                          'mu' : mu_w * np.ones((basis.B,)),
-                          'sigmas' : sigma_w * np.ones(basis.B)
-                      },
+    network_hypers = {'weight_prior_class' : DiagonalGaussian,
+                      'weight_prior_hypers' :
+                          {
+                              'mu' : mu_w * np.ones((basis.B,)),
+                              'sigmas' : sigma_w * np.ones(basis.B)
+                          },
 
-                  # 'refractory_rho' : 0.5,
-                  'refractory_prior_class' : DiagonalGaussian,
-                  # 'refractory_prior_hypers' :
-                  #     {
-                  #         'mu_0' : 0.0 * np.ones((basis.B,)),
-                  #         'nus_0' : 1.0/N,
-                  #         'alphas_0' : 1.,
-                  #         'betas_0' : 1.
-                  #     },
-                  'refractory_prior_hypers' :
-                      {
-                          'mu' : mu_w * np.ones((basis.B,)),
-                          'sigmas' : sigma_w * np.ones(basis.B)
-                      },
-                 }
+                      'refractory_prior_class' : DiagonalGaussian,
+                      'refractory_prior_hypers' :
+                          {
+                              'mu' : mu_w * np.ones((basis.B,)),
+                              'sigmas' : sigma_w * np.ones(basis.B)
+                          },
+                     }
 
-population = CompleteBernoulliPopulation(
-        N, basis,
-        global_bias_hypers=global_bias_hypers,
-        neuron_hypers=spike_train_hypers,
-        network_hypers=network_hypers,
-        )
+    population = CompleteBernoulliPopulation(
+            N, basis,
+            global_bias_hypers=global_bias_hypers,
+            neuron_hypers=spike_train_hypers,
+            network_hypers=network_hypers,
+            )
 
-S, Xs = population.generate(size=T, keep=False)
-Xs = [X[:T,:] for X in Xs]
-data = np.hstack(Xs + [S])
-
-##############
-# plotting  #
-#############
-# t_lim = [0,1]
-# axs, true_lns = population.plot_mean_spike_counts(Xs, dt=dt, S=S, color='k', t_lim=t_lim)
-# plt.ion()
-# plt.show()
-# plt.pause(0.01)
-
-
-#############
-#  sample!  #
-#############
-# Initialize the parameters with an empty network
-population.add_data(data)
-
-ll_samples = []
-A_samples = []
-w_samples = []
-bias_samples = []
-sigma_samples = []
-
-for s in xrange(N_samples):
-    print "Iteration ", s
-    ll = population.heldout_log_likelihood(data)
-    print "LL: ", ll
-
-    # Resampling is trickier because of the augmentation.
-    # Here we're trying to integrate out omega by thinning.
-    for _ in xrange(thin):
-        population.resample_model(do_resample_bias=False,
-                                  do_resample_bias_prior=False,
-                                  do_resample_latent=False,
-                                  do_resample_network=False,
-                                  do_resample_sigma=False,
-                                  do_resample_synapses=True,
-                                  do_resample_counts=False)
-
-    # # Remove old data, filter it, and add it back
-    # for n in population.neuron_models:
-    #     S = n.data_list[0].counts[:,None]
-    #     fS = population.filter_spike_train(S)
-    #     n.data_list[0].X = fS
-
-    # Remove old data
-    population.pop_data()
-
-    # Generate new data (Geweke step)
-    S, Xs = population.generate(size=T, keep=True)
+    S, Xs = population.generate(size=T, keep=False)
     Xs = [X[:T,:] for X in Xs]
     data = np.hstack(Xs + [S])
-    print "N spikes: ", S.sum()
+    population.add_data(data)
 
-    # Plot this sample
-    # population.plot_mean_spike_counts(Xs, dt=dt, lns=true_lns)
+    return population
 
-    # Collect samples
-    ll_samples.append(ll)
-    A_samples.append(population.A.copy())
-    bias_samples.append(population.biases.copy())
-    sigma_samples.append(population.sigmas.copy())
-    w_samples.append(population.weights.copy())
-    print "W: ", population.weights
+def test_bias_geweke(N_samples=100000, thin=1):
+    mu_bias = -3.0
+    sigma_bias = 0.5**2
+    population = create_simple_population(mu_bias=mu_bias, sigma_bias=sigma_bias)
 
-# Convert samples to arrays
-A_samples = np.array(A_samples)
-w_samples = np.array(w_samples)
-bias_samples = np.array(bias_samples)
-sigma_samples = np.array(sigma_samples)
+    bias_samples = []
+    for s in xrange(N_samples):
+        print "Iteration: ", s
+        for _ in xrange(thin):
+            population.resample_model(do_resample_bias=True,
+                                      do_resample_bias_prior=False,
+                                      do_resample_latent=False,
+                                      do_resample_network=False,
+                                      do_resample_sigma=False,
+                                      do_resample_synapses=False,
+                                      do_resample_psi=False,
+                                      do_resample_psi_from_prior=True,
+                                      do_resample_aux=False)
 
-A_mean = A_samples.mean(0)
-print "Mean A: \n", A_mean
+        # Collect samples
+        bias_samples.append(population.biases.copy())
 
-w_mean = w_samples.mean(0)
-w_std = w_samples.std(0)
-print "Mean w: \n", w_mean, " +- ", w_std
+    # Convert samples to arrays
+    bias_samples = np.array(bias_samples)
 
-# Make Q-Q plots
-fig = plt.figure()
-w_ax = fig.add_subplot(121)
-w_dist = norm(mu_w, np.sqrt(sigma_w))
-probplot(w_samples[:,0,0,0], dist=w_dist, plot=w_ax)
+    bias_mean = bias_samples.mean(0)
+    bias_std = bias_samples.std(0)
+    bias_dist = norm(mu_bias, np.sqrt(sigma_bias))
+    print "Mean bias: ", bias_mean, " +- ", bias_std
+    # Make Q-Q plots
+    fig = plt.figure()
+    bias_ax = fig.add_subplot(121)
+    probplot(bias_samples[:,0,0], dist=bias_dist, plot=bias_ax)
 
-fig.add_subplot(122)
-_, bins, _ = plt.hist(w_samples[:,0,0,0], 20, normed=True, alpha=0.2)
-bincenters = 0.5*(bins[1:]+bins[:-1])
-plt.plot(bincenters, w_dist.pdf(bincenters), 'r--', linewidth=1)
-plt.show()
+    fig.add_subplot(122)
+    _, bins, _ = plt.hist(bias_samples[:,0,0], 20, normed=True, alpha=0.2)
+    bincenters = 0.5*(bins[1:]+bins[:-1])
+    plt.plot(bincenters, bias_dist.pdf(bincenters), 'r--', linewidth=1)
+    plt.show()
 
-bias_mean = bias_samples.mean(0)
-bias_std = bias_samples.std(0)
-bias_dist = norm(mu_bias, np.sqrt(sigma_bias))
-print "Mean bias: ", bias_mean, " +- ", bias_std
-# Make Q-Q plots
-fig = plt.figure()
-bias_ax = fig.add_subplot(121)
-probplot(bias_samples[:,0,0], dist=bias_dist, plot=bias_ax)
+def test_weights_geweke(N_samples=100000, thin=1):
+    mu_w = -3.0
+    sigma_w = 0.5**2
+    population = create_simple_population(mu_w=mu_w, sigma_w=sigma_w)
 
-fig.add_subplot(122)
-_, bins, _ = plt.hist(bias_samples[:,0,0], 20, normed=True, alpha=0.2)
-bincenters = 0.5*(bins[1:]+bins[:-1])
-plt.plot(bincenters, bias_dist.pdf(bincenters), 'r--', linewidth=1)
-plt.show()
+    w_samples = []
+    for s in xrange(N_samples):
+        print "Iteration: ", s
+        # Resampling is trickier because of the augmentation.
+        for _ in xrange(thin):
+            population.resample_model(do_resample_bias=True,
+                                      do_resample_bias_prior=False,
+                                      do_resample_latent=False,
+                                      do_resample_network=False,
+                                      do_resample_sigma=False,
+                                      do_resample_synapses=True,
+                                      do_resample_psi=False,
+                                      do_resample_psi_from_prior=True,
+                                      do_resample_aux=False)
+
+        # Collect samples
+        w_samples.append(population.weights.copy())
+
+    # Convert samples to arrays
+    w_samples = np.array(w_samples)
+    w_mean = w_samples.mean(0)
+    w_std = w_samples.std(0)
+    print "Mean w: \n", w_mean, " +- ", w_std
+
+    # Make Q-Q plots
+    fig = plt.figure()
+    w_ax = fig.add_subplot(121)
+    w_dist = norm(mu_w, np.sqrt(sigma_w))
+    probplot(w_samples[:,0,0,0], dist=w_dist, plot=w_ax)
+
+    fig.add_subplot(122)
+    _, bins, _ = plt.hist(w_samples[:,0,0,0], 20, normed=True, alpha=0.2)
+    bincenters = 0.5*(bins[1:]+bins[:-1])
+    plt.plot(bincenters, w_dist.pdf(bincenters), 'r--', linewidth=1)
+    plt.show()
+
+def test_polya_gamma_geweke(N_samples=10000, thin=1, T=1):
+    """
+    Test the PolyaGamma augmentation with geweke sampling
+
+    :return:
+    """
+    from pyglm.internals.observations import AugmentedBernoulliCounts
+
+    mu_psi = 0.0
+    sigma_psi = 1.0
+    class DummyNeuron:
+        sigma = np.array(sigma_psi)
+        def mean_activation(self, X):
+            return mu_psi * np.ones(T)
+
+    # Make a counts object
+    neuron = DummyNeuron()
+    X = np.zeros(T)
+    S = np.zeros(T)
+    counts = AugmentedBernoulliCounts(X, S, neuron)
+    S = counts.rvs()
+    counts.counts = S
+
+    psi_samples = []
+    for s in xrange(N_samples):
+        print "Iteration ", s
+        # Resampling is trickier because of the augmentation.
+        for _ in xrange(thin):
+            # Resample psi and omega given counts
+            counts.resample()
+
+            # Resample counts given psi
+            S = counts.rvs()
+            counts.counts = S
+
+        # Collect samples
+        psi_samples.append(counts.psi.copy())
+
+    # Convert samples to arrays
+    psi_samples = np.array(psi_samples)
+    psi_mean = psi_samples.mean(0)
+    psi_std = psi_samples.std(0)
+    print "Mean psi: \n", psi_mean, " +- ", psi_std
+
+    # Make Q-Q plots
+    fig = plt.figure()
+    psi_ax = fig.add_subplot(121)
+    psi_dist = norm(mu_psi, np.sqrt(sigma_psi))
+    probplot(psi_samples[:,0], dist=psi_dist, plot=psi_ax)
+
+    fig.add_subplot(122)
+    _, bins, _ = plt.hist(psi_samples[:,0], 20, normed=True, alpha=0.2)
+    bincenters = 0.5*(bins[1:]+bins[:-1])
+    plt.plot(bincenters, psi_dist.pdf(bincenters), 'r--', linewidth=1)
+    plt.show()
 
 
-sigma_mean = sigma_samples.mean(0)
-print "Mean sigma: ", sigma_mean
 
-plt.show()
 
+# test_bias_geweke()
+test_weights_geweke()
+# test_polya_gamma_geweke()
 
 

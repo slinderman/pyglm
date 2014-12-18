@@ -223,8 +223,9 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
                        do_resample_bias=True,
                        do_resample_sigma=True,
                        do_resample_synapses=True,
-                       do_resample_data=True,
-                       do_resample_counts=False):
+                       do_resample_psi=True,
+                       do_resample_psi_from_prior=False,
+                       do_resample_aux=True):
         """
         Resample the parameter of the model.
 
@@ -239,8 +240,9 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
             neuron.resample_model(do_resample_bias=do_resample_bias,
                                   do_resample_sigma=do_resample_sigma,
                                   do_resample_synapses=do_resample_synapses,
-                                  do_resample_data=do_resample_data,
-                                  do_resample_counts=do_resample_counts)
+                                  do_resample_psi=do_resample_psi,
+                                  do_resample_psi_from_prior=do_resample_psi_from_prior,
+                                  do_resample_aux=do_resample_aux)
 
         # Resample the network parameters with the given weights
         if do_resample_network:

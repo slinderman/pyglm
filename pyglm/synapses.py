@@ -123,7 +123,7 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed):
         return np.hstack((x,y[:,None])) if return_xy else y
 
     ### Gibbs sampling
-    def resample(self,data=[],stats=None):
+    def cond_w(self, data=[], stats=None):
         ss = self._get_statistics(data) if stats is None else stats
         yxT = ss[1]
         xxT = ss[2]
@@ -132,8 +132,11 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed):
         Sigma_w_inv = np.linalg.inv(self.Sigma_w)
         Sigma_w_post = np.linalg.inv(xxT / self.neuron_model.sigma + Sigma_w_inv)
         mu_w_post = ((yxT/self.neuron_model.sigma + self.mu_w.dot(Sigma_w_inv)).dot(Sigma_w_post)).reshape((self.D_in,))
-        w = GaussianFixed(mu_w_post, Sigma_w_post).rvs()[0,:]
+        return GaussianFixed(mu_w_post, Sigma_w_post)
 
+    def resample(self,data=[],stats=None):
+        dist = self.cond_w(data=data, stats=stats)
+        w = dist.rvs()[0,:]
         self.set_weights(w)
 
 

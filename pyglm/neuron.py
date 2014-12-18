@@ -31,7 +31,7 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         self.noise_model  = GaussianFixed(mu=np.zeros(1,), sigma=1.0 * np.eye(1))
 
         self.bias_model = GaussianFixedCov(mu_0=np.reshape(self.population.bias_prior.mu, (1,)),
-                                      lmbda_0=np.reshape(self.population.bias_prior.sigmasq, (1,1)),
+                                      sigma_0=np.reshape(self.population.bias_prior.sigmasq, (1,1)),
                                       sigma=self.noise_model.sigma)
 
         self.synapse_models = []
@@ -174,17 +174,18 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         assert len(self.data_list) == 0
 
     def resample_model(self,
-                       do_resample_data=True,
+                       do_resample_psi=True,
+                       do_resample_psi_from_prior=False,
+                       do_resample_aux=True,
                        do_resample_bias=True,
                        do_resample_synapses=True,
-                       do_resample_sigma=True,
-                       do_resample_counts=False):
+                       do_resample_sigma=True):
 
-        # TODO: Cache the X \dot w calculations
-        if do_resample_data:
-            for augmented_data in self.data_list:
-                # Sample omega given the data and the psi's derived from A, sigma, and X
-                augmented_data.resample()
+        for augmented_data in self.data_list:
+            # Sample omega given the data and the psi's derived from A, sigma, and X
+            augmented_data.resample(do_resample_psi=do_resample_psi,
+                                    do_resample_psi_from_prior=do_resample_psi_from_prior,
+                                    do_resample_aux=do_resample_aux)
 
         # Resample the bias model and the synapse models
         if do_resample_bias:
