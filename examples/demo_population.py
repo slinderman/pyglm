@@ -17,24 +17,14 @@ np.random.seed(seed)
 ################
 #  parameters  #
 ################
-N = 5
+N = 2
 dt = 0.001
-T = 1000
+T = 10000
 N_samples = 1000
 
 # Basis parameters
 B = 5       # Number of basis functions
-dt_max = 0.1      # Number of time bins over which the basis extends
-basis_parameters = {'type' : 'cosine',
-                    'n_eye' : 0,
-                    'n_bas' : B,
-                    'a' : 1.0/120,
-                    'b' : 0.5,
-                    'L' : 100,
-                    'orth' : False,
-                    'norm' : False
-                    }
-basis = Basis(B, dt, dt_max, basis_parameters)
+dt_max = 0.1
 
 #############################
 #  generate synthetic data  #
@@ -67,7 +57,7 @@ network_hypers = {'rho' : 0.5,
                   'weight_prior_class' : DiagonalGaussian,
                   'weight_prior_hypers' :
                       {
-                          'mu_0' : 0.0 * np.ones((basis.B,)),
+                          'mu_0' : 0.0 * np.ones((B,)),
                           'nus_0' : 1.0/N**2,
                           'alphas_0' : 10.0,
                           'betas_0' : 10.0
@@ -82,7 +72,7 @@ network_hypers = {'rho' : 0.5,
                       #     'kappa_0' : 1.0
                       # }
                       {
-                          'mu_0' : -3.0 * np.ones((basis.B,)),
+                          'mu_0' : -3.0 * np.ones((B,)),
                           'nus_0' : 1.0/N,
                           'alphas_0' : 10.,
                           'betas_0' : 10.
@@ -90,28 +80,28 @@ network_hypers = {'rho' : 0.5,
                  }
 if observation == 'negative_binomial':
     population = ErdosRenyiNegativeBinomialPopulation(
-            N, basis,
+            N, B=B, dt=dt,
             global_bias_hypers=global_bias_hypers,
             neuron_hypers=spike_train_hypers,
             network_hypers=network_hypers,
             )
 
     inf_population = ErdosRenyiNegativeBinomialPopulation(
-            N, basis,
+            N, B=B, dt=dt,
             global_bias_hypers=global_bias_hypers,
             neuron_hypers=spike_train_hypers,
             network_hypers=network_hypers,
             )
 else:
     population = ErdosRenyiBernoulliPopulation(
-            N, basis,
+            N, B=B, dt=dt,
             global_bias_hypers=global_bias_hypers,
             neuron_hypers=spike_train_hypers,
             network_hypers=network_hypers,
             )
 
     inf_population = ErdosRenyiBernoulliPopulation(
-            N, basis,
+            N, B=B, dt=dt,
             global_bias_hypers=global_bias_hypers,
             neuron_hypers=spike_train_hypers,
             network_hypers=network_hypers,
@@ -155,7 +145,7 @@ plt.pause(0.01)
 #  sample!  #
 #############
 # Initialize the parameters with an empty network
-inf_population.add_data(data)
+inf_population.add_data(S)
 inf_population.initialize_to_empty()
 
 

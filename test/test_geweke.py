@@ -6,7 +6,6 @@ from scipy.stats import norm, probplot
 
 from pyglm.populations import *
 from pyglm.deps.pybasicbayes.distributions import DiagonalGaussian, GaussianFixed
-from pyglm.utils.basis import  Basis
 
 
 seed = np.random.randint(2**16)
@@ -17,49 +16,40 @@ np.random.seed(seed)
 #  parameters  #
 ################
 def create_simple_population(mu_bias=-3.0, sigma_bias=0.5**2,
-                             mu_w=-0.5, sigma_w=0.5**2):
+                             mu_w=-0.5, sigma_w=0.5**2,
+                             rho=0.5):
     N = 1
     dt = 0.001
     T = 100
 
-    # Basis parameters
+    # Set the model parameters
     B = 1       # Number of basis functions
-    dt_max = 0.1      # Number of time bins over which the basis extends
-    basis_parameters = {'type' : 'cosine',
-                        'n_eye' : 0,
-                        'n_bas' : B,
-                        'a' : 1.0/120,
-                        'b' : 0.5,
-                        'L' : 100,
-                        'orth' : False,
-                        'norm' : False
-                        }
-    basis = Basis(B, dt, dt_max, basis_parameters)
-
-    spike_train_hypers = {}
+    neuron_hypers = {}
 
     global_bias_hypers= {'mu' : mu_bias,
                          'sigmasq' : sigma_bias}
 
-    network_hypers = {'weight_prior_class' : DiagonalGaussian,
+    network_hypers = {'rho' : rho,
+                      'weight_prior_class' : DiagonalGaussian,
                       'weight_prior_hypers' :
                           {
-                              'mu' : mu_w * np.ones((basis.B,)),
-                              'sigmas' : sigma_w * np.ones(basis.B)
+                              'mu' : mu_w * np.ones((B,)),
+                              'sigmas' : sigma_w * np.ones(B)
                           },
 
+                      'refractory_rho' : rho,
                       'refractory_prior_class' : DiagonalGaussian,
                       'refractory_prior_hypers' :
                           {
-                              'mu' : mu_w * np.ones((basis.B,)),
-                              'sigmas' : sigma_w * np.ones(basis.B)
+                              'mu' : mu_w * np.ones((B,)),
+                              'sigmas' : sigma_w * np.ones(B)
                           },
                      }
 
-    population = CompleteBernoulliPopulation(
-            N, basis,
+    population = ErdosRenyiBernoulliPopulation(
+            N, B=B, dt=dt,
             global_bias_hypers=global_bias_hypers,
-            neuron_hypers=spike_train_hypers,
+            neuron_hypers=neuron_hypers,
             network_hypers=network_hypers,
             )
 
@@ -115,6 +105,7 @@ def test_weights_geweke(N_samples=100000, thin=1):
     sigma_w = 0.5**2
     population = create_simple_population(mu_w=mu_w, sigma_w=sigma_w)
 
+    A_samples = []
     w_samples = []
     for s in xrange(N_samples):
         print "Iteration: ", s
@@ -131,6 +122,7 @@ def test_weights_geweke(N_samples=100000, thin=1):
                                       do_resample_aux=False)
 
         # Collect samples
+        A_samples.append(population.A.copy())
         w_samples.append(population.weights.copy())
 
     # Convert samples to arrays
@@ -138,6 +130,10 @@ def test_weights_geweke(N_samples=100000, thin=1):
     w_mean = w_samples.mean(0)
     w_std = w_samples.std(0)
     print "Mean w: \n", w_mean, " +- ", w_std
+
+    A_samples = np.array(A_samples)
+    A_mean = A_samples.mean(0)
+    print "Mean A: \n", A_mean
 
     # Make Q-Q plots
     fig = plt.figure()
@@ -211,7 +207,7 @@ def test_polya_gamma_geweke(N_samples=10000, thin=1, T=1):
 
 
 # test_bias_geweke()
-test_weights_geweke()
+test_weights_geweke(N_samples=10000)
 # test_polya_gamma_geweke()
 
 

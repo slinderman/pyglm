@@ -25,10 +25,10 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         self.data_list = []
 
         # Create the components of the neuron
-        # self.noise_model = GaussianFixedMean(mu=np.zeros(1,),
-        #                                  nu_0=10,
-        #                                  lmbda_0=10*np.eye(1))
-        self.noise_model  = GaussianFixed(mu=np.zeros(1,), sigma=1.0 * np.eye(1))
+        self.noise_model = GaussianFixedMean(mu=np.zeros(1,),
+                                         nu_0=10,
+                                         lmbda_0=10*np.eye(1))
+        # self.noise_model  = GaussianFixed(mu=np.zeros(1,), sigma=0.1 * np.eye(1))
 
         self.bias_model = GaussianFixedCov(mu_0=np.reshape(self.population.bias_prior.mu, (1,)),
                                       sigma_0=np.reshape(self.population.bias_prior.sigmasq, (1,1)),
@@ -323,12 +323,16 @@ class _SparseNeuronMixin(_NeuronBase):
             synapse = self.synapse_models[n_pre]
 
             # Compute residual
-            self.An[n_pre] = 0  # Make sure mu is computed without the current regression model
             if len(self.data_list) > 0:
-                # residuals = np.vstack([(d.psi - self.mean_activation(d.X))[:,None] for d in self.data_list])
-                residuals = np.vstack([(d.psi - (self.mean_activation(d.X) - synapse.predict(d.X[n_pre])))[:,None]
-                                       for d in self.data_list])
-                Xs = np.vstack([d.X[n_pre] for d in self.data_list])
+                Xs = []
+                residuals = []
+                for d in self.data_list:
+                    Xs.append(d.X[n_pre])
+                    residual = (d.psi - (self.mean_activation(d.X) - synapse.predict(d.X[n_pre])))[:,None]
+                    residuals.append(residual)
+
+                Xs = np.vstack(Xs)
+                residuals = np.vstack(residuals)
                 X_and_residuals = np.hstack((Xs,residuals))
 
                 # Compute log Pr(A=0|...) and log Pr(A=1|...)
@@ -337,6 +341,11 @@ class _SparseNeuronMixin(_NeuronBase):
                     lp_A[0] = np.log(1.0-rho) + GaussianFixed(np.array([0]), self.noise_model.sigma)\
                                                     .log_likelihood(residuals).sum()
                     lp_A[1] = np.log(rho) + synapse.log_marginal_likelihood(X_and_residuals).sum()
+
+                    # if self.n == 1 and n_pre == 0 and lp_A[1] > lp_A[0]:
+                    #     import pdb; pdb.set_trace()
+                    #     print lp_A
+
                 else:
                     lp_A = np.log([1.,0.])
 
@@ -348,14 +357,16 @@ class _SparseNeuronMixin(_NeuronBase):
 
                 X_and_residuals = []
 
+            if not np.any(np.isfinite(lp_A)):
+                import pdb; pdb.set_trace()
 
             # Sample the spike variable
             # self.As[m] = log_sum_exp_sample(lp_A)
             self.An[n_pre] = sample_discrete_from_log(lp_A)
 
             # Sample the slab variable
-            if self.An[n_pre]:
-                synapse.resample(X_and_residuals)
+            # if self.An[n_pre]:
+            synapse.resample(X_and_residuals)
 
 
 class _AugmentedDataMixin:

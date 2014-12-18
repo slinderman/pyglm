@@ -6,18 +6,20 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
-from deps.pybasicbayes.abstractions import GibbsSampling, ModelGibbsSampling
-from deps.pybasicbayes.distributions import ScalarGaussianNIX, Gaussian
-from latent import LatentClass, _LatentVariableBase
+from pyglm.deps.pybasicbayes.abstractions import GibbsSampling, ModelGibbsSampling
+from pyglm.deps.pybasicbayes.distributions import ScalarGaussianNIX, Gaussian
+from pyglm.latent import LatentClass, _LatentVariableBase
 from pyglm.neuron import NegativeBinomialSparseNeuron, BernoulliSparseNeuron, BernoulliNeuron, NegativeBinomialNeuron
 from pyglm.networks import ErdosRenyiNetwork, StochasticBlockNetwork, CompleteNetwork
+from pyglm.utils.basis import  CosineBasis
 
 class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
     """
     Base class for a population spike train
     """
     def __init__(self, N,
-                 basis,
+                 basis=None,
+                 B=4, dt_max=0.1, dt=0.001,
                  latent_variable_class=None,
                  latent_variable_hypers={},
                  neuron_class=None,
@@ -31,7 +33,11 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
         self.N = N
 
         # Instantiate a basis for filtering the spike trains
-        self.basis = basis
+        if basis is None and None not in [B, dt_max, dt]:
+            self.basis = CosineBasis(B, dt, dt_max)
+        else:
+            self.basis = basis
+
         self.B = self.basis.B
 
         # Instantiate a model of latent variables, for example, types of neurons
@@ -145,12 +151,26 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
         """
         return sum(neuron.heldout_log_likelihood(data) for neuron in self.neuron_models)
 
-    def add_data(self, data=[]):
+    def add_data(self, data=[], filtered=False):
+        """
+        Add a spike train.
+
+        :param data:
+        :return:
+        """
         if isinstance(data, np.ndarray):
             data = [data]
 
+        # Filter the data
+        filtered_data = []
+        for d in data:
+            T, N = d.shape
+            assert N == self.N, "Data must be T time bins by N neurons"
+            fS = self.filter_spike_train(d)
+            filtered_data.append(np.hstack((np.hstack(fS), d)))
+
         for neuron in self.neuron_models:
-            neuron.add_data(data)
+            neuron.add_data(filtered_data)
 
     def pop_data(self):
         datas = []
@@ -338,9 +358,9 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
             print "Number of exceptions arising from multiple spikes per bin: %d" % n_exceptions
 
         if keep:
-            Xs = [X[:T,:] for X in Xs]
-            data = np.hstack(Xs + [S])
-            self.add_data(data)
+            # Xs = [X[:T,:] for X in Xs]
+            # data = np.hstack(Xs + [S])
+            self.add_data(S)
 
         return S, Xs
 
@@ -426,7 +446,7 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
                 else:
                     ymax = np.amax([ymax, np.amax(mu)+0.1])
 
-            ymax = 200/1.2
+            # ymax = 200/1.2
             S_height = 1.1 * ymax
 
             for i,n in enumerate(inds):
@@ -487,7 +507,8 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
 
 class CompleteBernoulliPopulation(_PopulationOfNeuronsBase):
     def __init__(self, N,
-                 basis,
+                 basis=None,
+                 B=4, dt_max=0.1, dt=0.001,
                  neuron_hypers={},
                  network_hypers={},
                  global_bias_class=ScalarGaussianNIX,
@@ -496,6 +517,7 @@ class CompleteBernoulliPopulation(_PopulationOfNeuronsBase):
         super(CompleteBernoulliPopulation, self).\
             __init__(N,
                      basis=basis,
+                     B=B, dt_max=dt_max, dt=dt,
                      neuron_class=BernoulliNeuron,
                      neuron_hypers=neuron_hypers,
                      network_class=CompleteNetwork,
@@ -507,7 +529,8 @@ class CompleteBernoulliPopulation(_PopulationOfNeuronsBase):
 
 class CompleteNegativeBinomialPopulation(_PopulationOfNeuronsBase):
     def __init__(self, N,
-                 basis,
+                 basis=None,
+                 B=4, dt_max=0.1, dt=0.001,
                  neuron_hypers={},
                  network_hypers={},
                  global_bias_class=ScalarGaussianNIX,
@@ -516,6 +539,7 @@ class CompleteNegativeBinomialPopulation(_PopulationOfNeuronsBase):
         super(CompleteNegativeBinomialPopulation, self).\
             __init__(N,
                      basis=basis,
+                     B=B, dt_max=dt_max, dt=dt,
                      neuron_class=NegativeBinomialNeuron,
                      neuron_hypers=neuron_hypers,
                      network_class=CompleteNetwork,
@@ -527,7 +551,8 @@ class CompleteNegativeBinomialPopulation(_PopulationOfNeuronsBase):
 
 class ErdosRenyiNegativeBinomialPopulation(_PopulationOfNeuronsBase):
     def __init__(self, N,
-                 basis,
+                 basis=None,
+                 B=4, dt_max=0.1, dt=0.001,
                  neuron_hypers={},
                  network_hypers={},
                  global_bias_hypers={'mu_0' : 0.0, 'kappa_0' : 1.0, 'sigmasq_0' : 0.1, 'nu_0' : 10.0}
@@ -535,6 +560,7 @@ class ErdosRenyiNegativeBinomialPopulation(_PopulationOfNeuronsBase):
         super(ErdosRenyiNegativeBinomialPopulation, self).\
             __init__(N,
                      basis=basis,
+                     B=B, dt_max=dt_max, dt=dt,
                      neuron_class=NegativeBinomialSparseNeuron,
                      neuron_hypers=neuron_hypers,
                      network_class=ErdosRenyiNetwork,
@@ -544,7 +570,8 @@ class ErdosRenyiNegativeBinomialPopulation(_PopulationOfNeuronsBase):
 
 class ErdosRenyiBernoulliPopulation(_PopulationOfNeuronsBase):
     def __init__(self, N,
-                 basis,
+                 basis=None,
+                 B=4, dt_max=0.1, dt=0.001,
                  neuron_hypers={},
                  network_hypers={},
                  global_bias_class=ScalarGaussianNIX,
@@ -553,6 +580,7 @@ class ErdosRenyiBernoulliPopulation(_PopulationOfNeuronsBase):
         super(ErdosRenyiBernoulliPopulation, self).\
             __init__(N,
                      basis=basis,
+                     B=B, dt_max=dt_max, dt=dt,
                      neuron_class=BernoulliSparseNeuron,
                      neuron_hypers=neuron_hypers,
                      network_class=ErdosRenyiNetwork,
@@ -634,7 +662,8 @@ class _SBMPopulationBase(_PopulationOfNeuronsBase):
 
 class SBMNegativeBinomialPopulation(_SBMPopulationBase):
     def __init__(self, N,
-                 basis,
+                 basis=None,
+                 B=4, dt_max=0.1, dt=0.001,
                  latent_variable_hypers={},
                  neuron_hypers={},
                  network_hypers={},
@@ -643,6 +672,7 @@ class SBMNegativeBinomialPopulation(_SBMPopulationBase):
         super(SBMNegativeBinomialPopulation, self).\
             __init__(N,
                      basis=basis,
+                     B=B, dt_max=dt_max, dt=dt,
                      latent_variable_class=LatentClass,
                      latent_variable_hypers=latent_variable_hypers,
                      neuron_class=NegativeBinomialSparseNeuron,
@@ -655,7 +685,8 @@ class SBMNegativeBinomialPopulation(_SBMPopulationBase):
 
 class SBMBernoulliPopulation(_SBMPopulationBase):
     def __init__(self, N,
-                 basis,
+                 basis=None,
+                 B=4, dt_max=0.1, dt=0.001,
                  latent_variable_hypers={},
                  neuron_hypers={},
                  network_hypers={},
@@ -664,6 +695,7 @@ class SBMBernoulliPopulation(_SBMPopulationBase):
         super(SBMBernoulliPopulation, self).\
             __init__(N,
                      basis=basis,
+                     B=B, dt_max=dt_max, dt=dt,
                      latent_variable_class=LatentClass,
                      latent_variable_hypers=latent_variable_hypers,
                      neuron_class=BernoulliSparseNeuron,
