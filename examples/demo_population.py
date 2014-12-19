@@ -20,10 +20,10 @@ np.random.seed(seed)
 N = 2
 dt = 0.001
 T = 10000
-N_samples = 1000
+N_samples = 10000
 
 # Basis parameters
-B = 5       # Number of basis functions
+B = 2       # Number of basis functions
 dt_max = 0.1
 
 #############################
@@ -31,9 +31,9 @@ dt_max = 0.1
 #############################
 observation = 'bernoulli'
 if observation == 'negative_binomial':
-    spike_train_hypers = {'xi' : 10}
+    neuron_hypers = {'xi' : 10}
 else:
-    spike_train_hypers = {}
+    neuron_hypers = {'alpha_0' : 3.0, 'beta_0' : 1.0}
 
 # global_bias_class = GaussianFixed
 # global_bias_hypers= {'mu' : -3,
@@ -46,64 +46,60 @@ global_bias_hypers = {
                     }
 
 network_hypers = {'rho' : 0.5,
-                  # 'weight_prior_class' : Gaussian,
+                  'weight_prior_class' : DiagonalGaussian,
                   # 'weight_prior_hypers' :
                   #     {
-                  #         'mu_0' : 0.0 * np.ones((basis.B,)),
-                  #         'sigma_0' : 0.1 * np.eye(basis.B),
-                  #         'nu_0' : basis.B+1,
-                  #         'kappa_0' : 1.0
+                  #         'mu_0' : 0.0 * np.ones((B,)),
+                  #         'nus_0' : 1.0/N**2,
+                  #         'alphas_0' : 10.0,
+                  #         'betas_0' : 10.0
                   #     },
-                  'weight_prior_class' : DiagonalGaussian,
                   'weight_prior_hypers' :
                       {
-                          'mu_0' : 0.0 * np.ones((B,)),
-                          'nus_0' : 1.0/N**2,
-                          'alphas_0' : 10.0,
-                          'betas_0' : 10.0
+                          'mu' : 0.0 * np.ones((B,)),
+                          'sigmas' : 1.0/N**2 * np.ones(B)
                       },
                   'refractory_rho' : 0.9,
                   'refractory_prior_class' : DiagonalGaussian,
                   'refractory_prior_hypers' :
-                      # {
-                      #     'mu_0' : -3.0 * np.ones((basis.B,)),
-                      #     'sigma_0' : 0.1 * np.eye(basis.B),
-                      #     'nu_0' : basis.B+1,
-                      #     'kappa_0' : 1.0
-                      # }
                       {
-                          'mu_0' : -3.0 * np.ones((B,)),
-                          'nus_0' : 1.0/N,
-                          'alphas_0' : 10.,
-                          'betas_0' : 10.
+                          'mu' : -1.0 * np.ones((B,)),
+                          'sigmas' : 1.0/N**2 * np.ones(B)
                       },
+
+                      # {
+                      #     'mu_0' : -3.0 * np.ones((B,)),
+                      #     'nus_0' : 1.0/N,
+                      #     'alphas_0' : 10.,
+                      #     'betas_0' : 10.
+                      # },
                  }
 if observation == 'negative_binomial':
     population = ErdosRenyiNegativeBinomialPopulation(
             N, B=B, dt=dt,
             global_bias_hypers=global_bias_hypers,
-            neuron_hypers=spike_train_hypers,
+            neuron_hypers=neuron_hypers,
             network_hypers=network_hypers,
             )
 
     inf_population = ErdosRenyiNegativeBinomialPopulation(
             N, B=B, dt=dt,
             global_bias_hypers=global_bias_hypers,
-            neuron_hypers=spike_train_hypers,
+            neuron_hypers=neuron_hypers,
             network_hypers=network_hypers,
             )
 else:
     population = ErdosRenyiBernoulliPopulation(
             N, B=B, dt=dt,
             global_bias_hypers=global_bias_hypers,
-            neuron_hypers=spike_train_hypers,
+            neuron_hypers=neuron_hypers,
             network_hypers=network_hypers,
             )
 
     inf_population = ErdosRenyiBernoulliPopulation(
             N, B=B, dt=dt,
             global_bias_hypers=global_bias_hypers,
-            neuron_hypers=spike_train_hypers,
+            neuron_hypers=neuron_hypers,
             network_hypers=network_hypers,
             )
 
@@ -158,17 +154,18 @@ for s in range(N_samples):
     print "Iteration ", s
     ll = inf_population.heldout_log_likelihood(data)
     print "LL: ", ll
-    inf_population.resample_model()
+    inf_population.resample_model(do_resample_network=False)
 
-    # Plot this sample
-    inf_population.plot_mean_spike_counts(Xs, dt=dt, lns=inf_lns)
 
     # Collect samples
     ll_samples.append(ll)
     A_samples.append(inf_population.A.copy())
     bias_samples.append(inf_population.biases.copy())
 
-    plt.pause(0.01)
+    if s % 5 == 0:
+        # Plot this sample
+        inf_population.plot_mean_spike_counts(Xs, dt=dt, lns=inf_lns)
+        plt.pause(0.001)
 
     # DEBUG
     # print inf_population.network.refractory_prior

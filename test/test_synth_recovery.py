@@ -23,7 +23,7 @@ def create_simple_population(N=1,
 
     # Set the model parameters
     B = 1       # Number of basis functions
-    neuron_hypers = {}
+    neuron_hypers = {'alpha_0' : 3.0, 'beta_0' : 0.1}
 
     global_bias_hypers= {'mu' : mu_bias,
                          'sigmasq' : sigma_bias}
@@ -58,6 +58,7 @@ def test_synth_recovery(N=2, T=10000, N_samples=1000):
     # Create two populations
     true_population = create_simple_population(N=N)
     test_population = create_simple_population(N=N)
+    test_population.initialize_to_empty()
 
     print "true A: ", true_population.A
 
@@ -69,6 +70,7 @@ def test_synth_recovery(N=2, T=10000, N_samples=1000):
     test_population.add_data(S)
 
     bias_samples = []
+    sigmas_samples = []
     A_samples = []
     w_samples = []
 
@@ -80,12 +82,16 @@ def test_synth_recovery(N=2, T=10000, N_samples=1000):
 
         # Collect samples
         bias_samples.append(test_population.biases.copy())
+        sigmas_samples.append(test_population.sigmas)
         A_samples.append(test_population.A.copy())
         w_samples.append(test_population.weights.copy())
+
+        print "Sigma: ", test_population.sigmas
 
     # Convert samples to arrays
     offset = N_samples // 2
     bias_samples = np.array(bias_samples)[offset:,...]
+    sigmas_samples = np.array(bias_samples)
     w_samples = np.array(w_samples)[offset:,...]
     A_samples = np.array(A_samples)[offset:,...]
 
@@ -103,6 +109,8 @@ def test_synth_recovery(N=2, T=10000, N_samples=1000):
     A_mean = A_samples.mean(0)
     print "True A: \n", true_population.A
     print "Mean A: \n", A_mean
+
+    plt.plot(sigmas_samples[:,0,0])
 
 test_synth_recovery()
 

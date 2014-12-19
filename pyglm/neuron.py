@@ -1,9 +1,10 @@
 import numpy as np
 from scipy.special import gammaln
 
-from deps.pybasicbayes.abstractions import GibbsSampling, ModelGibbsSampling
-from deps.pybasicbayes.distributions import GaussianFixedMean, GaussianFixedCov, GaussianFixed
-from deps.pybasicbayes.util.stats import sample_discrete_from_log
+from pyglm.deps.pybasicbayes.abstractions import GibbsSampling, ModelGibbsSampling
+from pyglm.deps.pybasicbayes.distributions import GaussianFixedCov, GaussianFixed
+from pyglm.deps.pybasicbayes.util.stats import sample_discrete_from_log
+from pyglm.internals.distributions import InverseGamma
 from pyglm.internals.observations import AugmentedNegativeBinomialCounts, AugmentedBernoulliCounts
 from pyglm.synapses import GaussianVectorSynapse
 
@@ -15,7 +16,8 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
     Poisson, Negative Binomial) need not be specified.
     """
     def __init__(self, n, population,
-                 n_iters_per_resample=1):
+                 n_iters_per_resample=1,
+                 alpha_0=3.0, beta_0=0.5):
         self.n = n
         self.population = population
         self.N = self.population.N
@@ -25,21 +27,22 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         self.data_list = []
 
         # Create the components of the neuron
-        self.noise_model = GaussianFixedMean(mu=np.zeros(1,),
-                                         nu_0=10,
-                                         lmbda_0=10*np.eye(1))
+        # self.noise_model = GaussianFixedMean(mu=np.zeros(1,),
+        #                                  nu_0=1,
+        #                                  lmbda_0=1*np.eye(1))
+        self.noise_model = InverseGamma(alpha_0=alpha_0, beta_0=beta_0)
         # self.noise_model  = GaussianFixed(mu=np.zeros(1,), sigma=0.1 * np.eye(1))
 
         self.bias_model = GaussianFixedCov(mu_0=np.reshape(self.population.bias_prior.mu, (1,)),
                                       sigma_0=np.reshape(self.population.bias_prior.sigmasq, (1,1)),
-                                      sigma=self.noise_model.sigma)
+                                      sigma=self.noise_model.sigma * np.eye(1))
 
         self.synapse_models = []
         for n_pre in range(self.N):
             self.synapse_models.append(
                 GaussianVectorSynapse(self,
                                       n_pre,
-                                      sigma=self.noise_model.sigma,
+                                      sigma=self.noise_model.sigma * np.eye(1),
                                       ))
 
 
@@ -54,11 +57,11 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
 
     @sigma.setter
     def sigma(self, value):
-        self.noise_model.setsigma(value)
+        self.noise_model.sigma = value
 
-        self.bias_model.setsigma(self.noise_model.sigma)
+        self.bias_model.setsigma(self.noise_model.sigma * np.eye(1))
         for syn in self.synapse_models:
-            syn.sigma = self.noise_model.sigma
+            syn.sigma = self.noise_model.sigma * np.eye(1)
 
     @property
     def bias(self):
@@ -136,7 +139,7 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
 
 
     def rvs(self, X=None, Xs=None, size=1, return_xy=False):
-        sigma = np.asscalar(self.noise_model.sigma)
+        sigma = self.noise_model.sigma
         if X is None and Xs is None:
             T = size
             Xs = []
@@ -181,22 +184,35 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
                        do_resample_synapses=True,
                        do_resample_sigma=True):
 
+        # import matplotlib.pyplot as plt
         for augmented_data in self.data_list:
             # Sample omega given the data and the psi's derived from A, sigma, and X
             augmented_data.resample(do_resample_psi=do_resample_psi,
                                     do_resample_psi_from_prior=do_resample_psi_from_prior,
                                     do_resample_aux=do_resample_aux)
 
+
+        # d0 = self.data_list[0]
+        # plt.plot(d0.psi, label='psi')
+        # plt.plot(self.mean_activation(d0.X), label='act0')
+
         # Resample the bias model and the synapse models
         if do_resample_bias:
             self.resample_bias()
 
+        # plt.plot(self.mean_activation(d0.X),'--r', label='act1')
+
         if do_resample_synapses:
             self.resample_synapse_models()
+
+        # plt.plot(self.mean_activation(d0.X), '-m', label='act2')
 
         # Resample the noise variance sigma
         if do_resample_sigma:
             self.resample_sigma()
+
+        # plt.legend()
+        # plt.show()
 
     def resample_sigma(self):
         """
@@ -204,6 +220,7 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
 
         :return:
         """
+        # import pdb; pdb.set_trace()
         residuals = []
         for data in self.data_list:
             residuals.append((data.psi - self.mean_activation(data.X))[:,None])
@@ -211,9 +228,9 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         self.noise_model.resample(residuals)
 
         # Update the synapse model covariances
-        self.bias_model.setsigma(self.noise_model.sigma)
+        self.bias_model.setsigma(self.noise_model.sigma * np.eye(1))
         for syn in self.synapse_models:
-            syn.sigma = self.noise_model.sigma
+            syn.sigma = self.noise_model.sigma * np.eye(1)
 
     def resample_bias(self):
         """
@@ -267,10 +284,11 @@ class _SparseNeuronMixin(_NeuronBase):
 
     def __init__(self, n, population,
                  n_iters_per_resample=1,
+                 alpha_0=3.0, beta_0=0.5,
                  rho_s=None,
                  An=None):
 
-        super(_SparseNeuronMixin, self).__init__(n, population, n_iters_per_resample)
+        super(_SparseNeuronMixin, self).__init__(n, population, n_iters_per_resample, alpha_0=alpha_0, beta_0=beta_0)
 
         if rho_s is not None:
             self.rho_s = rho_s
@@ -318,6 +336,7 @@ class _SparseNeuronMixin(_NeuronBase):
         Jointly resample the spike and slab indicator variables and synapse models
         :return:
         """
+        # import pdb; pdb.set_trace()
         for n_pre in range(self.N):
             rho = self.rho_s[n_pre]
             synapse = self.synapse_models[n_pre]
@@ -328,7 +347,8 @@ class _SparseNeuronMixin(_NeuronBase):
                 residuals = []
                 for d in self.data_list:
                     Xs.append(d.X[n_pre])
-                    residual = (d.psi - (self.mean_activation(d.X) - synapse.predict(d.X[n_pre])))[:,None]
+                    activation_wo_syn = (self.mean_activation(d.X) - self.An[n_pre] * synapse.predict(d.X[n_pre]))
+                    residual = (d.psi - activation_wo_syn)[:,None]
                     residuals.append(residual)
 
                 Xs = np.vstack(Xs)
@@ -338,13 +358,15 @@ class _SparseNeuronMixin(_NeuronBase):
                 # Compute log Pr(A=0|...) and log Pr(A=1|...)
                 if rho > 0.:
                     lp_A = np.zeros(2)
-                    lp_A[0] = np.log(1.0-rho) + GaussianFixed(np.array([0]), self.noise_model.sigma)\
-                                                    .log_likelihood(residuals).sum()
-                    lp_A[1] = np.log(rho) + synapse.log_marginal_likelihood(X_and_residuals).sum()
 
-                    # if self.n == 1 and n_pre == 0 and lp_A[1] > lp_A[0]:
-                    #     import pdb; pdb.set_trace()
-                    #     print lp_A
+                    # Residuals are mean zero, variance sigma without a synapse
+                    mu_0 = np.array([0])
+                    Sigma_0 = self.noise_model.sigma*np.eye(1)
+                    lp_A[0] = np.log(1.0-rho) + GaussianFixed(mu_0, Sigma_0)\
+                                                    .log_likelihood(residuals).sum()
+
+                    # Integrate out the weights to get marginal probability of a synapse
+                    lp_A[1] = np.log(rho) + synapse.log_marginal_likelihood(X_and_residuals).sum()
 
                 else:
                     lp_A = np.log([1.,0.])
@@ -389,10 +411,12 @@ class _AugmentedDataMixin:
 
 class BernoulliNeuron(_NeuronBase, _AugmentedDataMixin):
 
-    def __init__(self, n, population, n_iters_per_resample=1, ):
+    def __init__(self, n, population, n_iters_per_resample=1,
+                 alpha_0=3.0, beta_0=0.5):
         super(BernoulliNeuron, self).\
             __init__(n, population,
-                     n_iters_per_resample=n_iters_per_resample)
+                     n_iters_per_resample=n_iters_per_resample,
+                     alpha_0=alpha_0, beta_0=beta_0)
 
     def add_data(self, data=[]):
         if isinstance(data, np.ndarray):
@@ -437,9 +461,11 @@ class BernoulliSparseNeuron(BernoulliNeuron, _SparseNeuronMixin, _AugmentedDataM
 
 class NegativeBinomialNeuron(_NeuronBase, _AugmentedDataMixin):
     def __init__(self, n, population, xi=10,
-                 n_iters_per_resample=1):
+                 n_iters_per_resample=1,
+                 alpha_0=3.0, beta_0=0.5):
         super(NegativeBinomialNeuron, self).\
-            __init__(n, population, n_iters_per_resample=n_iters_per_resample)
+            __init__(n, population, n_iters_per_resample=n_iters_per_resample,
+                     alpha_0=alpha_0, beta_0=beta_0)
 
         self.xi = xi
 

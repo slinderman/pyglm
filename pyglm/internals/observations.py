@@ -25,7 +25,7 @@ class _PolyaGammaAugmentedCountsBase(GibbsSampling):
         self.model = nbmodel
 
         # Initialize auxiliary variables
-        sigma = np.asscalar(self.model.sigma)
+        sigma = self.model.sigma
         self.psi = self.model.mean_activation(X) + \
                    np.sqrt(sigma) * np.random.randn(self.T)
         #
@@ -53,7 +53,6 @@ class AugmentedNegativeBinomialCounts(_PolyaGammaAugmentedCountsBase):
         xi = np.int32(self.model.xi)
         mu = self.model.mean_activation(self.X)
         sigma = self.model.sigma
-        sigma = np.asscalar(sigma)
 
         if do_resample_aux:
             # Resample the auxiliary variables, omega, in Python
@@ -118,7 +117,6 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
         if do_resample_psi:
             mu_prior = self.model.mean_activation(self.X)
             sigma_prior = self.model.sigma
-            sigma_prior = np.asscalar(sigma_prior)
 
             sig_post = 1.0 / (1.0/sigma_prior + self.omega)
             mu_post = sig_post * (self.counts-0.5 + mu_prior / sigma_prior)
@@ -128,7 +126,6 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
         elif do_resample_psi_from_prior:
             mu_prior = self.model.mean_activation(self.X)
             sigma_prior = self.model.sigma
-            sigma_prior = np.asscalar(sigma_prior)
             self.psi = mu_prior + np.sqrt(sigma_prior) * np.random.normal(size=(self.T,))
 
     def cond_omega(self):
@@ -147,7 +144,6 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
         # TODO: Finish this for unit testing
         mu_prior = self.model.mean_activation(self.X)
         sigma_prior = self.model.sigma
-        sigma_prior = np.asscalar(sigma_prior)
 
         sig_post = 1.0 / (1.0/sigma_prior + self.omega)
         mu_post = sig_post * (self.counts-0.5 + mu_prior / sigma_prior)
@@ -233,14 +229,12 @@ class _LinearNonlinearPoissonCountsBase(GibbsSampling):
     def log_posterior_psi(self, x):
         mu_prior = self.model.mean_activation(self.X)
         sigma_prior = self.model.sigma
-        sigma_prior = np.asscalar(sigma_prior)
 
         return -0.5/sigma_prior * (x-mu_prior)**2 + self.log_likelihood(x)
 
     def grad_log_posterior_psi(self, x):
         mu_prior = self.model.mean_activation(self.X)
         sigma_prior = self.model.sigma
-        sigma_prior = np.asscalar(sigma_prior)
 
         return -1.0/sigma_prior * (x-mu_prior) + self.grad_log_likelihood(x)
 

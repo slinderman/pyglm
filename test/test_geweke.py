@@ -2,7 +2,7 @@ from __future__ import division
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.stats import norm, probplot
+from scipy.stats import norm, probplot, invgamma
 
 from pyglm.populations import *
 from pyglm.deps.pybasicbayes.distributions import DiagonalGaussian, GaussianFixed
@@ -15,7 +15,8 @@ np.random.seed(seed)
 ################
 #  parameters  #
 ################
-def create_simple_population(mu_bias=-3.0, sigma_bias=0.5**2,
+def create_simple_population(alpha_0=10.0, beta_0=10.0,
+                             mu_bias=-3.0, sigma_bias=0.5**2,
                              mu_w=-0.5, sigma_w=0.5**2,
                              rho=0.5):
     N = 1
@@ -24,7 +25,8 @@ def create_simple_population(mu_bias=-3.0, sigma_bias=0.5**2,
 
     # Set the model parameters
     B = 1       # Number of basis functions
-    neuron_hypers = {}
+    neuron_hypers = {'alpha_0' : alpha_0,
+                     'beta_0' : beta_0}
 
     global_bias_hypers= {'mu' : mu_bias,
                          'sigmasq' : sigma_bias}
@@ -53,12 +55,48 @@ def create_simple_population(mu_bias=-3.0, sigma_bias=0.5**2,
             network_hypers=network_hypers,
             )
 
-    S, Xs = population.generate(size=T, keep=False)
-    Xs = [X[:T,:] for X in Xs]
-    data = np.hstack(Xs + [S])
-    population.add_data(data)
-
+    population.generate(size=T, keep=True)
     return population
+
+def test_bias_geweke(N_samples=100000, thin=1):
+    mu_bias = -3.0
+    sigma_bias = 0.5**2
+    population = create_simple_population(mu_bias=mu_bias, sigma_bias=sigma_bias)
+
+    bias_samples = []
+    for s in xrange(N_samples):
+        print "Iteration: ", s
+        for _ in xrange(thin):
+            population.resample_model(do_resample_bias=True,
+                                      do_resample_bias_prior=False,
+                                      do_resample_latent=False,
+                                      do_resample_network=False,
+                                      do_resample_sigma=False,
+                                      do_resample_synapses=False,
+                                      do_resample_psi=False,
+                                      do_resample_psi_from_prior=True,
+                                      do_resample_aux=False)
+
+        # Collect samples
+        bias_samples.append(population.biases.copy())
+
+    # Convert samples to arrays
+    bias_samples = np.array(bias_samples)
+
+    bias_mean = bias_samples.mean(0)
+    bias_std = bias_samples.std(0)
+    bias_dist = norm(mu_bias, np.sqrt(sigma_bias))
+    print "Mean bias: ", bias_mean, " +- ", bias_std
+    # Make Q-Q plots
+    fig = plt.figure()
+    bias_ax = fig.add_subplot(121)
+    probplot(bias_samples[:,0,0], dist=bias_dist, plot=bias_ax)
+
+    fig.add_subplot(122)
+    _, bins, _ = plt.hist(bias_samples[:,0,0], 20, normed=True, alpha=0.2)
+    bincenters = 0.5*(bins[1:]+bins[:-1])
+    plt.plot(bincenters, bias_dist.pdf(bincenters), 'r--', linewidth=1)
+    plt.show()
 
 def test_bias_geweke(N_samples=100000, thin=1):
     mu_bias = -3.0
@@ -147,6 +185,48 @@ def test_weights_geweke(N_samples=100000, thin=1):
     plt.plot(bincenters, w_dist.pdf(bincenters), 'r--', linewidth=1)
     plt.show()
 
+def test_sigma_geweke(N_samples=100000, thin=1):
+    alpha_0 = 3.0
+    beta_0 = 0.5
+    population = create_simple_population(alpha_0=alpha_0,
+                                          beta_0=beta_0)
+
+    sigma_samples = []
+    for s in xrange(N_samples):
+        print "Iteration: ", s
+        # Resampling is trickier because of the augmentation.
+        for _ in xrange(thin):
+            population.resample_model(do_resample_bias=False,
+                                      do_resample_bias_prior=False,
+                                      do_resample_latent=False,
+                                      do_resample_network=False,
+                                      do_resample_sigma=True,
+                                      do_resample_synapses=False,
+                                      do_resample_psi=False,
+                                      do_resample_psi_from_prior=True,
+                                      do_resample_aux=False)
+
+        # Collect samples
+        sigma_samples.append(population.sigmas.copy())
+
+    # Convert samples to arrays
+    sigma_samples = np.array(sigma_samples)
+    sigma_mean = sigma_samples.mean(0)
+    sigma_std = sigma_samples.std(0)
+    print "Mean sigma: \n", sigma_mean, " +- ", sigma_std
+
+    # Make Q-Q plots
+    fig = plt.figure()
+    # w_ax = fig.add_subplot(121)
+    sigma_dist = invgamma(a=alpha_0, scale=beta_0)
+    # probplot(w_samples[:,0,0,0], dist=w_dist, plot=w_ax)
+
+    fig.add_subplot(122)
+    _, bins, _ = plt.hist(sigma_samples[:,0], 50, normed=True, alpha=0.2)
+    bincenters = 0.5*(bins[1:]+bins[:-1])
+    plt.plot(bincenters, sigma_dist.pdf(bincenters), 'r--', linewidth=1)
+    plt.show()
+
 def test_polya_gamma_geweke(N_samples=10000, thin=1, T=1):
     """
     Test the PolyaGamma augmentation with geweke sampling
@@ -207,7 +287,8 @@ def test_polya_gamma_geweke(N_samples=10000, thin=1, T=1):
 
 
 # test_bias_geweke()
-test_weights_geweke(N_samples=10000)
+# test_weights_geweke(N_samples=10000)
+test_sigma_geweke(N_samples=100000)
 # test_polya_gamma_geweke()
 
 

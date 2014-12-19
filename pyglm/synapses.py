@@ -34,8 +34,6 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed):
             assert self.mu_w.ndim == 1
             self.resample() # initialize from prior
 
-        print self.w
-
     @property
     def weights_prior(self):
         return self.neuron_model.population.\
@@ -188,12 +186,15 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed):
                   - N/2*np.log(2*np.pi) \
                   - 0.5 * logdet_low_rank2(Ainv, X, self.Sigma_w, X.T, diag=True)
 
-            # # Compute the marginal distribution parameters
+            # Debug the marginal likelihood calculation
+            #
+            # Compute the marginal distribution parameters
             # mu_marg = X.dot(self.mu_w.T).reshape((N,))
             # # Covariances add
             # Sig_marg = np.asscalar(self.sigma) * np.eye(N) + X.dot(self.Sigma_w.dot(X.T))
             # # Compute the marginal log likelihood
-            # out = GaussianFixed(mu_marg, Sig_marg).log_likelihood(y)
+            # out2 = GaussianFixed(mu_marg, Sig_marg).log_likelihood(y)
+            # assert np.allclose(out, out2)
         else:
             raise Exception("Data must be list of numpy arrays or numpy array")
 

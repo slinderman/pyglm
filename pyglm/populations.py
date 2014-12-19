@@ -76,7 +76,7 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
 
     @property
     def sigmas(self):
-        return np.array([np.asscalar(neuron.sigma) for neuron in self.neuron_models])
+        return np.array([neuron.sigma for neuron in self.neuron_models])
 
     @sigmas.setter
     def sigmas(self,val):
