@@ -23,7 +23,7 @@ T = 10000
 N_samples = 10000
 
 # Basis parameters
-B = 2       # Number of basis functions
+B = 3       # Number of basis functions
 dt_max = 0.1
 
 #############################
@@ -47,32 +47,32 @@ global_bias_hypers = {
 
 network_hypers = {'rho' : 0.5,
                   'weight_prior_class' : DiagonalGaussian,
-                  # 'weight_prior_hypers' :
-                  #     {
-                  #         'mu_0' : 0.0 * np.ones((B,)),
-                  #         'nus_0' : 1.0/N**2,
-                  #         'alphas_0' : 10.0,
-                  #         'betas_0' : 10.0
-                  #     },
                   'weight_prior_hypers' :
                       {
-                          'mu' : 0.0 * np.ones((B,)),
-                          'sigmas' : 1.0/N**2 * np.ones(B)
+                          'mu_0' : 0.0 * np.ones((B,)),
+                          'nus_0' : 1.0/N**2,
+                          'alphas_0' : 10.0,
+                          'betas_0' : 20.0
                       },
+                  # 'weight_prior_hypers' :
+                  #     {
+                  #         'mu' : 0.0 * np.ones((B,)),
+                  #         'sigmas' : 1.0/N**2 * np.ones(B)
+                  #     },
                   'refractory_rho' : 0.9,
                   'refractory_prior_class' : DiagonalGaussian,
                   'refractory_prior_hypers' :
-                      {
-                          'mu' : -1.0 * np.ones((B,)),
-                          'sigmas' : 1.0/N**2 * np.ones(B)
-                      },
-
                       # {
-                      #     'mu_0' : -3.0 * np.ones((B,)),
-                      #     'nus_0' : 1.0/N,
-                      #     'alphas_0' : 10.,
-                      #     'betas_0' : 10.
+                      #     'mu' : -1.0 * np.ones((B,)),
+                      #     'sigmas' : 1.0/N**2 * np.ones(B)
                       # },
+
+                      {
+                          'mu_0' : -1.0 * np.ones((B,)),
+                          'nus_0' : 1.0/N,
+                          'alphas_0' : 10.,
+                          'betas_0' : 20.
+                      },
                  }
 if observation == 'negative_binomial':
     population = ErdosRenyiNegativeBinomialPopulation(
@@ -121,11 +121,6 @@ print "Spike counts: "
 print S.sum(0)
 print ""
 
-#
-# Debug
-#
-true_bias = population.biases.copy()
-# inf_population = population
 ##############
 # plotting  #
 #############
@@ -143,7 +138,6 @@ plt.pause(0.01)
 # Initialize the parameters with an empty network
 inf_population.add_data(S)
 inf_population.initialize_to_empty()
-
 
 ll_samples = []
 A_samples = []
@@ -167,13 +161,13 @@ for s in range(N_samples):
         inf_population.plot_mean_spike_counts(Xs, dt=dt, lns=inf_lns)
         plt.pause(0.001)
 
-    # DEBUG
-    # print inf_population.network.refractory_prior
-    # print inf_population.spike_train_models[0].model.regression_models[0].weights_prior
-
 A_mean = np.array(A_samples)[N_samples/2:].mean(0)
 print "True A: \n", population.A
 print "Mean A: \n", A_mean
+
+w_mean = np.array(w_samples)[N_samples/2:].mean(0)
+print "True w: \n", population.weights
+print "Mean w: \n", w_mean
 
 bias_mean = np.array(bias_samples)[N_samples/2:].mean(0)
 print "True bias: ", population.biases
@@ -182,7 +176,4 @@ print "Mean bias: ", bias_mean
 plt.figure()
 plt.plot(np.array(ll_samples))
 plt.show()
-
-# for itr in progprint_xrange(25,perline=5):
-#     model.resample_model()
 

@@ -304,6 +304,28 @@ This does not have a simple conjugate prior for~$\sigma_w$, but we can use an in
 \bibliographystyle{imsart-nameyear}
 {\small \bibliography{draft}}
 
+\appendix
+\section{Logistic Poisson model}
+Will the Poisson GLM with a logistic link function yield a similar inference algorithm? We have the following likelihood,
+\begin{align}
+\label{eq:poisson_lkhd}
+p(s_{n,t} \given \lambda_{n}^{\mathsf{max}}, x_{n,t}) &= \frac{1}{s_{n,t}!} \left(\lambda_{n}^{\mathsf{max}} \sigma(x_{n,t}) \right)^{s_{n,t}}  \exp\left\{-\lambda_{n}^{\mathsf{max}} \sigma(x_{n,t}) \right\}.
+\end{align}
+To use the Polya-gamma augmentation, we want this in the form of~$(e^x)^a / (1 + e^x)^b$. We can make an approximation to Equation~\ref{eq:poisson_lkhd} by using the identity,~${e^x = \lim_{m\to \infty} (1+x/m)^m}$ and substituting~$m=\lambda_n^{\mathsf{max}}$. This yields,
+\begin{align}
+p(s_{n,t} \given \lambda_{n}^{\mathsf{max}}, x_{n,t}) &\approx \frac{1}{s_{n,t}!} \left(\lambda_{n}^{\mathsf{max}} \sigma(x_{n,t}) \right)^{s_{n,t}}  \left(1-\frac{\lambda_{n}^{\mathsf{max}} \sigma(x_{n,t})}{\lambda_{n}^{\mathsf{max}}} \right)^{\lambda_{n}^{\mathsf{max}}}, \\
+&= \frac{1}{s_{n,t}!} \left(\lambda_{n}^{\mathsf{max}} \sigma(x_{n,t}) \right)^{s_{n,t}}  \left(1-\sigma(x_{n,t}) \right)^{\lambda_{n}^{\mathsf{max}}}, 
+\\
+&= \frac{1}{s_{n,t}!} \left(\lambda_{n}^{\mathsf{max}}\right)^{s_{n,t}} \left(\frac{e^{x_{n,t}}}{1+e^{x_{n,t}}} \right)^{s_{n,t}}  \left(\frac{1}{1+e^{x_{n,t}}} \right)^{\lambda_{n}^{\mathsf{max}}}, \\ 
+&= \frac{1}{s_{n,t}!} \left(\lambda_{n}^{\mathsf{max}}\right)^{s_{n,t}} \frac{\left(e^{x_{n,t}}\right)^{s_{n,t}}}{\left(1+e^{x_{n,t}} \right)^{s_{n,t} + \lambda_{n}^{\mathsf{max}}}}.
+\end{align}
+
+This is essentially reversing the standard derivation of the Poisson as a limiting case of the Binomial distribution for large number of trials (in this case, large~$\lambda_n^{\mathsf{max}}$).  \emph{We might be able to make this more precise by lower bounding the likelihood with this more manageable expression. Then we could rejection sample by drawing ~$u\sim\text{Unif}(0,e^x)$  and using the Polya-gamma trick when~$u\leq(1-x/m)^m$, and falling back to a slower form of sampling when~$(1-x/m)^m < u \leq e^x$.}
+
+Given~$s_{n,t}$ and~$\lambda_n^{\mathsf{max}}$, the likelihood of~$x_{n,t}$ has the necessary form for the Polya-gamma augmentation. Given~$s_{n,t}$ and~$x_{n,t}$, the likelihood of~$\lambda_n^{\mathsf{max}}$ is conjugate with a gamma prior.
+
+
+
 \end{document}
 
    

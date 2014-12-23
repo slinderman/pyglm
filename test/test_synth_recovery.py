@@ -3,8 +3,8 @@ from __future__ import division
 import numpy as np
 import matplotlib.pyplot as plt
 
-from pyglm.populations import *
-from pyglm.deps.pybasicbayes.distributions import DiagonalGaussian, GaussianFixed
+from pyglm.populations import ErdosRenyiBernoulliPopulation
+from pyglm.deps.pybasicbayes.distributions import DiagonalGaussian
 
 
 # seed = np.random.randint(2**16)
@@ -12,17 +12,13 @@ seed = 1234
 print "Setting random seed to ", seed
 np.random.seed(seed)
 
-################
-#  parameters  #
-################
-def create_simple_population(N=1,
+def create_simple_population(N=1, B=1,
                              mu_bias=-3.0, sigma_bias=0.5**2,
                              mu_w=0.0, sigma_w=1.0**2,
                              rho=0.25):
     dt = 0.001
 
     # Set the model parameters
-    B = 1       # Number of basis functions
     neuron_hypers = {'alpha_0' : 3.0, 'beta_0' : 0.1}
 
     global_bias_hypers= {'mu' : mu_bias,
@@ -54,7 +50,7 @@ def create_simple_population(N=1,
 
     return population
 
-def test_synth_recovery(N=2, T=10000, N_samples=1000):
+def test_synth_recovery(N=10, T=10000, N_samples=1000):
     # Create two populations
     true_population = create_simple_population(N=N)
     test_population = create_simple_population(N=N)
