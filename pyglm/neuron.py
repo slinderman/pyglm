@@ -167,6 +167,9 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
     def generate(self,keep=True,**kwargs):
         return self.rvs(), None
 
+
+class _GibbsNeuron(_NeuronBase):
+
     def resample(self,data=[]):
         for d in data:
             self.add_data(self._get_Xs(d), self._get_S(d)[:,self.n])
@@ -276,6 +279,21 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
                 X_and_residuals = np.hstack((Xs,residuals))
                 syn.resample(X_and_residuals)
 
+
+class _MeanFieldNeuron(_NeuronBase):
+
+    @property
+    def mf_rho(self):
+        return np.array([syn.mf_rho for syn in self.synapse_models])
+
+    @property
+    def mf_mu_w(self):
+        return np.array([syn.mf_mu_w for syn in self.synapse_models])
+
+    @property
+    def mf_Sigma_w(self):
+        return np.array([syn.mf_Sigma_w for syn in self.synapse_models])
+
     def meanfield_update_synapses(self):
         """
         Jointly resample the spike and slab indicator variables and synapse models
@@ -286,28 +304,29 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
 
             # Compute covariates and the predictions
             if len(self.data_list) > 0:
-                Xs = []
+                X_pres = []
                 residuals = []
                 for d in self.data_list:
-                    Xs.append(d.X[n_pre])
+                    X_pres.append(d.X[n_pre])
 
-                    # TODO: USE MF BIAS
-                    mu_other = self.bias
-                    for n_other,X,syn_other in zip(np.arange(self.N), Xs, self.synapse_models):
+                    # TODO: USE MF PSI and MF BIAS to compute residual
+                    mu_other = self.bias * np.ones_like(d.psi)
+                    for n_other,X,syn_other in zip(np.arange(self.N), d.X, self.synapse_models):
                         if n_other != n_pre:
                             mu_other += syn_other.mf_predict(X)
 
                     residual = (d.psi - mu_other)[:,None]
                     residuals.append(residual)
 
-                Xs = np.vstack(Xs)
+                X_pres = np.vstack(X_pres)
                 residuals = np.vstack(residuals)
+                X_and_residuals = np.hstack((X_pres,residuals))
 
-                X_and_residuals = np.hstack((Xs,residuals))
+                # Call the synapse's mean field update
                 syn.meanfieldupdate(X_and_residuals, None)
 
 
-class _SparseNeuronMixin(_NeuronBase):
+class _SpikeAndSlabNeuron(_NeuronBase):
     """
     Encapsulates the shared functionality of neurons with sparse connectivity
     to the rest of the population. The observation model (e.g. Bernoulli,
@@ -335,7 +354,7 @@ class _AugmentedDataMixin:
         # Return an augmented counts object
         return observation_class(Xs, counts, self)
 
-class BernoulliNeuron(_NeuronBase, _AugmentedDataMixin):
+class BernoulliNeuron(_GibbsNeuron, _MeanFieldNeuron, _AugmentedDataMixin):
 
     def __init__(self, n, population, n_iters_per_resample=1,
                  alpha_0=3.0, beta_0=0.5):
@@ -381,11 +400,11 @@ class BernoulliNeuron(_NeuronBase, _AugmentedDataMixin):
         return ll
 
 
-class BernoulliSparseNeuron(BernoulliNeuron, _SparseNeuronMixin, _AugmentedDataMixin):
+class BernoulliSpikeAndSlabNeuron(BernoulliNeuron, _SpikeAndSlabNeuron):
     pass
 
 
-class NegativeBinomialNeuron(_NeuronBase, _AugmentedDataMixin):
+class NegativeBinomialNeuron(_GibbsNeuron, _MeanFieldNeuron, _AugmentedDataMixin):
     def __init__(self, n, population, xi=10,
                  n_iters_per_resample=1,
                  alpha_0=3.0, beta_0=0.5):
@@ -435,5 +454,5 @@ class NegativeBinomialNeuron(_NeuronBase, _AugmentedDataMixin):
         return ll
 
 
-class NegativeBinomialSparseNeuron(NegativeBinomialNeuron, _SparseNeuronMixin, _AugmentedDataMixin):
+class NegativeBinomialSpikeAndSlabNeuron(NegativeBinomialNeuron, _SpikeAndSlabNeuron):
     pass

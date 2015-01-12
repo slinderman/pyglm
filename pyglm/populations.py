@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from pyglm.deps.pybasicbayes.abstractions import GibbsSampling, ModelGibbsSampling
 from pyglm.deps.pybasicbayes.distributions import ScalarGaussianNIX, Gaussian
 from pyglm.latent import LatentClass, _LatentVariableBase
-from pyglm.neuron import NegativeBinomialSparseNeuron, BernoulliSparseNeuron, BernoulliNeuron, NegativeBinomialNeuron
+from pyglm.neuron import NegativeBinomialSpikeAndSlabNeuron, BernoulliSpikeAndSlabNeuron, BernoulliNeuron, NegativeBinomialNeuron
 from pyglm.networks import ErdosRenyiNetwork, StochasticBlockNetwork, CompleteNetwork
 from pyglm.utils.basis import  CosineBasis
 
@@ -561,7 +561,7 @@ class ErdosRenyiNegativeBinomialPopulation(_PopulationOfNeuronsBase):
             __init__(N,
                      basis=basis,
                      B=B, dt_max=dt_max, dt=dt,
-                     neuron_class=NegativeBinomialSparseNeuron,
+                     neuron_class=NegativeBinomialSpikeAndSlabNeuron,
                      neuron_hypers=neuron_hypers,
                      network_class=ErdosRenyiNetwork,
                      network_hypers=network_hypers,
@@ -581,7 +581,7 @@ class ErdosRenyiBernoulliPopulation(_PopulationOfNeuronsBase):
             __init__(N,
                      basis=basis,
                      B=B, dt_max=dt_max, dt=dt,
-                     neuron_class=BernoulliSparseNeuron,
+                     neuron_class=BernoulliSpikeAndSlabNeuron,
                      neuron_hypers=neuron_hypers,
                      network_class=ErdosRenyiNetwork,
                      network_hypers=network_hypers,
@@ -675,7 +675,7 @@ class SBMNegativeBinomialPopulation(_SBMPopulationBase):
                      B=B, dt_max=dt_max, dt=dt,
                      latent_variable_class=LatentClass,
                      latent_variable_hypers=latent_variable_hypers,
-                     neuron_class=NegativeBinomialSparseNeuron,
+                     neuron_class=NegativeBinomialSpikeAndSlabNeuron,
                      neuron_hypers=neuron_hypers,
                      network_class=StochasticBlockNetwork,
                      network_hypers=network_hypers,
@@ -698,7 +698,7 @@ class SBMBernoulliPopulation(_SBMPopulationBase):
                      B=B, dt_max=dt_max, dt=dt,
                      latent_variable_class=LatentClass,
                      latent_variable_hypers=latent_variable_hypers,
-                     neuron_class=BernoulliSparseNeuron,
+                     neuron_class=BernoulliSpikeAndSlabNeuron,
                      neuron_hypers=neuron_hypers,
                      network_class=StochasticBlockNetwork,
                      network_hypers=network_hypers,

@@ -1,169 +1,77 @@
-from __future__ import division
-
+"""
+Unit tests for the synapse models
+"""
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.stats import norm, probplot, invgamma
 
-from pyglm.populations import ErdosRenyiNegativeBinomialPopulation, \
-                        ErdosRenyiBernoulliPopulation
+from pyglm.populations import *
 from pyglm.deps.pybasicbayes.distributions import DiagonalGaussian
-from pyglm.utils.basis import  Basis
 
 
 seed = np.random.randint(2**16)
-# seed = 1234
 print "Setting random seed to ", seed
 np.random.seed(seed)
 
-################
-#  parameters  #
-################
-N = 1
-dt = 0.001
-T = 10000
-N_samples = 1000
+def create_simple_population(N=1, dt=0.001, T=1000,
+                             alpha_0=10.0, beta_0=10.0,
+                             mu_bias=-3.0, sigma_bias=0.5**2,
+                             mu_w=-0.5, sigma_w=0.5**2,
+                             rho=0.5):
+    # Set the model parameters
+    B = 1       # Number of basis functions
+    neuron_hypers = {'alpha_0' : alpha_0,
+                     'beta_0' : beta_0}
 
-# Basis parameters
-B = 2       # Number of basis functions
-dt_max = 0.1      # Number of time bins over which the basis extends
-basis_parameters = {'type' : 'cosine',
-                    'n_eye' : 0,
-                    'n_bas' : B,
-                    'a' : 1.0/120,
-                    'b' : 0.5,
-                    'L' : 100,
-                    'orth' : False,
-                    'norm' : False
-                    }
-basis = Basis(B, dt, dt_max, basis_parameters)
+    global_bias_hypers= {'mu' : mu_bias,
+                         'sigmasq' : sigma_bias}
 
-#############################
-#  generate synthetic data  #
-#############################
-observation = 'bernoulli'
-spike_train_hypers = {}
+    network_hypers = {'rho' : rho,
+                      'weight_prior_class' : DiagonalGaussian,
+                      'weight_prior_hypers' :
+                          {
+                              'mu' : mu_w * np.ones((B,)),
+                              'sigmas' : sigma_w * np.ones(B)
+                          },
 
-# global_bias_class = GaussianFixed
-# global_bias_hypers= {'mu' : -3,
-#                      'sigma' : 0.001}
-global_bias_hypers = {
-                     'mu_0' : -3.0,
-                     'kappa_0' : 1.0,
-                     'sigmasq_0' : 1.0,
-                     'nu_0' : 1.0
-                    }
+                      'refractory_rho' : rho,
+                      'refractory_prior_class' : DiagonalGaussian,
+                      'refractory_prior_hypers' :
+                          {
+                              'mu' : mu_w * np.ones((B,)),
+                              'sigmas' : sigma_w * np.ones(B)
+                          },
+                     }
 
-network_hypers = {'rho' : 0.5,
-                  'weight_prior_class' : DiagonalGaussian,
-                  'weight_prior_hypers' :
-                      {
-                          'mu_0' : 0.0 * np.ones((basis.B,)),
-                          'nus_0' : 1.0/N**2,
-                          'alphas_0' : 10.0,
-                          'betas_0' : 10.0
-                      },
-                  'refractory_rho' : 0.5,
-                  'refractory_prior_class' : DiagonalGaussian,
-                  'refractory_prior_hypers' :
-                      {
-                          'mu_0' : -3.0 * np.ones((basis.B,)),
-                          'nus_0' : 1.0/N,
-                          'alphas_0' : 10.,
-                          'betas_0' : 10.
-                      },
-                 }
-population = ErdosRenyiBernoulliPopulation(
-        N, basis,
-        global_bias_hypers=global_bias_hypers,
-        neuron_hypers=spike_train_hypers,
-        network_hypers=network_hypers,
-        )
+    population = ErdosRenyiBernoulliPopulation(
+            N, B=B, dt=dt,
+            global_bias_hypers=global_bias_hypers,
+            neuron_hypers=neuron_hypers,
+            network_hypers=network_hypers,
+            )
 
-inf_population = ErdosRenyiBernoulliPopulation(
-        N, basis,
-        global_bias_hypers=global_bias_hypers,
-        neuron_hypers=spike_train_hypers,
-        network_hypers=network_hypers,
-        )
+    population.generate(size=T, keep=True)
+    return population
 
-S, Xs = population.generate(size=T)
-Xs = [X[:T,:] for X in Xs]
-data = np.hstack(Xs + [S])
+def test_meanfield_update_synapses():
+    """
+    Test the mean field updates for synapses
+    """
+    population = create_simple_population(N=2)
+    neuron = population.neuron_models[0]
+    synapse = neuron.synapse_models[0]
+    data = neuron.data_list[0]
 
-print "A: ",
-print population.A
-print ""
-print "W: ",
-print population.weights
-print ""
-print "biases: ",
-print population.biases
-print ""
+    print "A_true: ", neuron.An
+    print "W_true: ", neuron.weights
+    # print "mf_rho: ", neuron.mf_rho
 
-print "Spike counts: "
-print S.sum(0)
-print ""
-raw_input("Press any key to continue")
-#
-# Debug
-#
-true_bias = population.biases.copy()
-# inf_population = population
-##############
-# plotting  #
-#############
-t_lim = [0,1]
-axs, true_lns = population.plot_mean_spike_counts(Xs, dt=dt, S=S, color='k', t_lim=t_lim)
-_, inf_lns = inf_population.plot_mean_spike_counts(Xs, axs=axs, dt=dt, color='r', style='--')
-plt.ion()
-plt.show()
-plt.pause(0.01)
+    for itr in xrange(3):
+        neuron.meanfield_update_synapses()
 
+        print "mf_rho: ", neuron.mf_rho
+        print "mf_mu:  ", neuron.mf_mu_w
+        print "mf_sig: ", neuron.mf_Sigma_w
 
-#############
-#  sample!  #
-#############
-# Initialize the parameters with an empty network
-inf_population.add_data(data)
-inf_population.initialize_to_empty()
-
-
-ll_samples = []
-A_samples = []
-w_samples = []
-bias_samples = []
-
-for s in range(N_samples):
-    print "Iteration ", s
-    ll = inf_population.heldout_log_likelihood(data)
-    print "LL: ", ll
-    inf_population.resample_model()
-
-    # Plot this sample
-    inf_population.plot_mean_spike_counts(Xs, dt=dt, lns=inf_lns)
-
-    # Collect samples
-    ll_samples.append(ll)
-    A_samples.append(inf_population.A.copy())
-    bias_samples.append(inf_population.biases.copy())
-
-    plt.pause(0.01)
-
-    # DEBUG
-    # print inf_population.network.refractory_prior
-    # print inf_population.spike_train_models[0].model.regression_models[0].weights_prior
-
-A_mean = np.array(A_samples)[N_samples/2:].mean(0)
-print "True A: \n", population.A
-print "Mean A: \n", A_mean
-
-bias_mean = np.array(bias_samples)[N_samples/2:].mean(0)
-print "True bias: ", population.biases
-print "Mean bias: ", bias_mean
-
-plt.figure()
-plt.plot(np.array(ll_samples))
-plt.show()
-
-# for itr in progprint_xrange(25,perline=5):
-#     model.resample_model()
+test_meanfield_update_synapses()
 

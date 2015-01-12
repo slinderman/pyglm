@@ -11,6 +11,7 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
                  n_pre,
                  eta):
 
+        self.neuron_model = neuron_model
         self.n_pre = n_pre
         self.eta = eta
         self.A = 1
@@ -23,8 +24,6 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
         # Create cache for X \dot w
         # self.cache = SimpleCache()
         self.cache = None
-
-        self.neuron_model = neuron_model
 
         assert self.mu_w.ndim == 1
         self.resample() # initialize from prior
@@ -186,7 +185,7 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
         Sigma_w_inv = np.linalg.inv(self.Sigma_w)
         self.mf_Sigma_w = np.linalg.inv(xxT / mf_eta + Sigma_w_inv)
         self.mf_mu_w = ((yxT / mf_eta + self.mu_w.dot(Sigma_w_inv))
-                        .dot(self.mf_Sigma_w))\
+                        .dot(self.mf_Sigma_w)) \
                         .reshape((self.D_in,))
 
     def get_vlb(self):
