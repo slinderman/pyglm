@@ -141,7 +141,8 @@ def test_bias_geweke(N_samples=100000, thin=1):
 def test_weights_geweke(N_samples=100000, thin=1):
     mu_w = -3.0
     sigma_w = 0.5**2
-    population = create_simple_population(mu_w=mu_w, sigma_w=sigma_w)
+    rho = 0.5
+    population = create_simple_population(mu_w=mu_w, sigma_w=sigma_w, rho=rho)
 
     A_samples = []
     w_samples = []
@@ -207,7 +208,7 @@ def test_sigma_geweke(N_samples=100000, thin=1):
                                       do_resample_aux=False)
 
         # Collect samples
-        sigma_samples.append(population.sigmas.copy())
+        sigma_samples.append(population.etas.copy())
 
     # Convert samples to arrays
     sigma_samples = np.array(sigma_samples)
@@ -287,8 +288,8 @@ def test_polya_gamma_geweke(N_samples=10000, thin=1, T=1):
 
 
 # test_bias_geweke()
-# test_weights_geweke(N_samples=10000)
-test_sigma_geweke(N_samples=100000)
+test_weights_geweke(N_samples=10000)
+# test_sigma_geweke(N_samples=100000)
 # test_polya_gamma_geweke()
 
 

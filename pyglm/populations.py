@@ -75,13 +75,13 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
             neuron.bias = value[n]
 
     @property
-    def sigmas(self):
-        return np.array([neuron.sigma for neuron in self.neuron_models])
+    def etas(self):
+        return np.array([neuron.eta for neuron in self.neuron_models])
 
-    @sigmas.setter
-    def sigmas(self,val):
-        for neuron, sigma in zip(self.neuron_models,val):
-            neuron.sigma = sigma
+    @etas.setter
+    def etas(self,val):
+        for neuron, eta in zip(self.neuron_models,val):
+            neuron.eta = eta
 
     @property
     def A(self):
@@ -117,12 +117,12 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
 
     @property
     def parameters(self):
-        return (self.A, self.weights, self.biases, self.sigmas, self.bias_prior_prms) + \
+        return (self.A, self.weights, self.biases, self.etas, self.bias_prior_prms) + \
                 self.network.parameters # + self.latent.parameters
 
     @parameters.setter
     def parameters(self,val):
-        self.A, self.weights, self.biases, self.sigmas, self.bias_prior_prms = val[:5]
+        self.A, self.weights, self.biases, self.etas, self.bias_prior_prms = val[:5]
         self.network.parameters = val[5:]
 
     @property
@@ -615,7 +615,7 @@ class _SBMPopulationBase(_PopulationOfNeuronsBase):
                     ax = axs[k1*K+ k2]
                     # ax.cla()
                     w_mu = sbm.weights_priors[k1][k2].mu
-                    w_std = np.sqrt(np.diag(sbm.weights_priors[k1][k2].sigma))
+                    w_std = np.sqrt(np.diag(sbm.weights_priors[k1][k2].eta))
                     imp = self.basis.basis.dot(w_mu)
                     impp1 = self.basis.basis.dot(w_mu +  w_std)
                     impm1 = self.basis.basis.dot(w_mu - w_std)
@@ -633,7 +633,7 @@ class _SBMPopulationBase(_PopulationOfNeuronsBase):
                     ax = axs[k1*K+ k2]
                     # ax.cla()
                     w_mu = sbm.weights_priors[k1][k2].mu
-                    w_std = np.sqrt(np.diag(sbm.weights_priors[k1][k2].sigma))
+                    w_std = np.sqrt(np.diag(sbm.weights_priors[k1][k2].eta))
                     imp = self.basis.basis.dot(w_mu)
                     impp1 = self.basis.basis.dot(w_mu +  w_std)
                     impm1 = self.basis.basis.dot(w_mu)
@@ -647,7 +647,7 @@ class _SBMPopulationBase(_PopulationOfNeuronsBase):
                 for k2 in range(K):
                     l1,l2,l3 = lns[k1*K + k2]
                     w_mu = sbm.weights_priors[k1][k2].mu
-                    w_std = np.sqrt(np.diag(sbm.weights_priors[k1][k2].sigma))
+                    w_std = np.sqrt(np.diag(sbm.weights_priors[k1][k2].eta))
                     imp = self.basis.basis.dot(w_mu)
                     impp1 = self.basis.basis.dot(w_mu +  w_std)
                     impm1 = self.basis.basis.dot(w_mu - w_std)

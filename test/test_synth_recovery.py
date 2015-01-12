@@ -78,11 +78,11 @@ def test_synth_recovery(N=10, T=10000, N_samples=1000):
 
         # Collect samples
         bias_samples.append(test_population.biases.copy())
-        sigmas_samples.append(test_population.sigmas)
+        sigmas_samples.append(test_population.etas)
         A_samples.append(test_population.A.copy())
         w_samples.append(test_population.weights.copy())
 
-        print "Sigma: ", test_population.sigmas
+        print "Sigma: ", test_population.etas
 
     # Convert samples to arrays
     offset = N_samples // 2

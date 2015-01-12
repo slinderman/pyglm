@@ -6,7 +6,7 @@ from pyglm.deps.pybasicbayes.distributions import GaussianFixedCov, GaussianFixe
 from pyglm.deps.pybasicbayes.util.stats import sample_discrete_from_log
 from pyglm.internals.distributions import InverseGamma
 from pyglm.internals.observations import AugmentedNegativeBinomialCounts, AugmentedBernoulliCounts
-from pyglm.synapses import GaussianVectorSynapse
+from pyglm.synapses import GaussianVectorSynapse, SpikeAndSlabGaussianVectorSynapse
 
 
 class _NeuronBase(GibbsSampling, ModelGibbsSampling):
@@ -15,6 +15,8 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
     to the rest of the population. The observation model (e.g. Bernoulli,
     Poisson, Negative Binomial) need not be specified.
     """
+    _synapse_class = GaussianVectorSynapse
+
     def __init__(self, n, population,
                  n_iters_per_resample=1,
                  alpha_0=3.0, beta_0=0.5):
@@ -40,10 +42,10 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         self.synapse_models = []
         for n_pre in range(self.N):
             self.synapse_models.append(
-                GaussianVectorSynapse(self,
-                                      n_pre,
-                                      sigma=self.noise_model.sigma * np.eye(1),
-                                      ))
+                self._synapse_class(self,
+                                    n_pre,
+                                    eta=self.eta * np.eye(1),
+                                    ))
 
 
         # TODO: B and Ds are redundant. Switch to Ds since it is more flexible
@@ -52,16 +54,16 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         self.Ds = np.array([syn.D_in for syn in self.synapse_models])
 
     @property
-    def sigma(self):
+    def eta(self):
         return self.noise_model.sigma
 
-    @sigma.setter
-    def sigma(self, value):
+    @eta.setter
+    def eta(self, value):
         self.noise_model.sigma = value
 
         self.bias_model.setsigma(self.noise_model.sigma * np.eye(1))
         for syn in self.synapse_models:
-            syn.sigma = self.noise_model.sigma * np.eye(1)
+            syn.eta = self.noise_model.sigma * np.eye(1)
 
     @property
     def bias(self):
@@ -73,11 +75,12 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
 
     @property
     def An(self):
-        return np.ones(self.N)
+        return np.array([syn.A for syn in self.synapse_models])
 
     @An.setter
     def An(self, value):
-        pass
+        for A,syn in zip(value, self.synapse_models):
+            syn.A = A
 
     @property
     def weights(self):
@@ -90,11 +93,11 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
 
     @property
     def parameters(self):
-        return self.weights, self.sigma, self.bias
+        return self.An, self.weights, self.eta, self.bias
 
     @parameters.setter
     def parameters(self, value):
-        self.weights, self.sigma, self.bias = value
+        self.An, self.weights, self.eta, self.bias = value
 
     ## These must be implemented by base classes
     def mean(self, Xs):
@@ -230,7 +233,7 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         # Update the synapse model covariances
         self.bias_model.setsigma(self.noise_model.sigma * np.eye(1))
         for syn in self.synapse_models:
-            syn.sigma = self.noise_model.sigma * np.eye(1)
+            syn.eta = self.noise_model.sigma * np.eye(1)
 
     def resample_bias(self):
         """
@@ -281,114 +284,7 @@ class _SparseNeuronMixin(_NeuronBase):
     Poisson, Negative Binomial) need not be specified.
     """
 
-
-    def __init__(self, n, population,
-                 n_iters_per_resample=1,
-                 alpha_0=3.0, beta_0=0.5,
-                 rho_s=None,
-                 An=None):
-
-        super(_SparseNeuronMixin, self).__init__(n, population, n_iters_per_resample, alpha_0=alpha_0, beta_0=beta_0)
-
-        if rho_s is not None:
-            self.rho_s = rho_s
-        elif population is not None:
-            self.rho_s = self.population.network.rho[:,self.n]
-        else:
-            raise Exception("Rho must be specified or population must be given")
-
-        self._An = An
-
-        # For each parameter, make sure it is either specified or given a prior
-        if An is None:
-            self.An = np.ones(self.N)
-            self.resample_synapse_models()
-
-    @property
-    def An(self):
-        return self._An
-
-    @An.setter
-    def An(self, value):
-        self._An = value
-
-    @property
-    def parameters(self):
-        return self.An, self.weights, self.sigma, self.bias
-
-    @parameters.setter
-    def parameters(self, value):
-        self.An, self.weights, self.sigma, self.bias = value
-
-    def mean_activation(self, Xs):
-        T = Xs[0].shape[0]
-        mu = np.zeros((T,))
-        mu += self.bias
-        for X,A,syn in zip(Xs, self.An, self.synapse_models):
-            if A > 0:
-                mu += syn.predict(X)
-
-        return mu
-
-    ### Gibbs sampling
-    def resample_synapse_models(self):
-        """
-        Jointly resample the spike and slab indicator variables and synapse models
-        :return:
-        """
-        # import pdb; pdb.set_trace()
-        for n_pre in range(self.N):
-            rho = self.rho_s[n_pre]
-            synapse = self.synapse_models[n_pre]
-
-            # Compute residual
-            if len(self.data_list) > 0:
-                Xs = []
-                residuals = []
-                for d in self.data_list:
-                    Xs.append(d.X[n_pre])
-                    activation_wo_syn = (self.mean_activation(d.X) - self.An[n_pre] * synapse.predict(d.X[n_pre]))
-                    residual = (d.psi - activation_wo_syn)[:,None]
-                    residuals.append(residual)
-
-                Xs = np.vstack(Xs)
-                residuals = np.vstack(residuals)
-                X_and_residuals = np.hstack((Xs,residuals))
-
-                # Compute log Pr(A=0|...) and log Pr(A=1|...)
-                if rho > 0.:
-                    lp_A = np.zeros(2)
-
-                    # Residuals are mean zero, variance sigma without a synapse
-                    mu_0 = np.array([0])
-                    Sigma_0 = self.noise_model.sigma*np.eye(1)
-                    lp_A[0] = np.log(1.0-rho) + GaussianFixed(mu_0, Sigma_0)\
-                                                    .log_likelihood(residuals).sum()
-
-                    # Integrate out the weights to get marginal probability of a synapse
-                    lp_A[1] = np.log(rho) + synapse.log_marginal_likelihood(X_and_residuals).sum()
-
-                else:
-                    lp_A = np.log([1.,0.])
-
-            else:
-                # Compute log Pr(A=0|...) and log Pr(A=1|...)
-                lp_A = np.zeros(2)
-                lp_A[0] = np.log(1.0-rho)
-                lp_A[1] = np.log(rho)
-
-                X_and_residuals = []
-
-            if not np.any(np.isfinite(lp_A)):
-                import pdb; pdb.set_trace()
-
-            # Sample the spike variable
-            # self.As[m] = log_sum_exp_sample(lp_A)
-            self.An[n_pre] = sample_discrete_from_log(lp_A)
-
-            # Sample the slab variable
-            # if self.An[n_pre]:
-            synapse.resample(X_and_residuals)
+    _synapse_class = SpikeAndSlabGaussianVectorSynapse
 
 
 class _AugmentedDataMixin:

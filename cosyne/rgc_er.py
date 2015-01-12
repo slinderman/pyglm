@@ -153,7 +153,7 @@ for i in range(N_samples):
     A_smpls.append(population.A)
     W_smpls.append(population.weights)
     bias_smpls.append(population.biases)
-    sigma_smpls.append(population.sigmas)
+    sigma_smpls.append(population.etas)
 
     # Periodically save results
     if i % 10 == 0:

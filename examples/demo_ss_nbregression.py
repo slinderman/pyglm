@@ -112,7 +112,7 @@ def demo_ss_nbregression(T=1000, N=20, B=5, N_samples=100, do_plot=False, burnin
             A_samples.append(inf_model.As.copy())
             w_samples.append(inf_model.weights.copy())
             bias_samples.append(inf_model.bias.copy())
-            sigma_samples.append(inf_model.sigma.copy())
+            sigma_samples.append(inf_model.eta.copy())
             ll_samples.append(inf_model.log_likelihood(Xs,y))
 
 
@@ -133,7 +133,7 @@ def demo_ss_nbregression(T=1000, N=20, B=5, N_samples=100, do_plot=False, burnin
             A_samples.append(inf_model.As.copy())
             w_samples.append(inf_model.weights.copy())
             bias_samples.append(inf_model.bias.copy())
-            sigma_samples.append(inf_model.sigma.copy())
+            sigma_samples.append(inf_model.eta.copy())
             ll_samples.append(inf_model.log_likelihood(Xs,y))
 
         # END Profiling
@@ -168,7 +168,7 @@ def demo_ss_nbregression(T=1000, N=20, B=5, N_samples=100, do_plot=False, burnin
     print ""
 
     sigma_mean = np.array(sigma_samples)[offset:].mean(axis=0)
-    print "True sigma: ", true_model.sigma
+    print "True sigma: ", true_model.eta
     print "Inf sigma:  ", sigma_mean
     print ""
 

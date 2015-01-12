@@ -109,7 +109,7 @@ def unit_test_log_marginal_likelkhood():
     # Debug the marginal likelihood calculation
     mu_marg = X.dot(synapse.mu_w.T).reshape((T,))
     # Covariances add
-    Sig_marg = np.asscalar(synapse.sigma) * np.eye(T) + X.dot(synapse.Sigma_w.dot(X.T))
+    Sig_marg = np.asscalar(synapse.eta) * np.eye(T) + X.dot(synapse.Sigma_w.dot(X.T))
     # Compute the marginal log likelihood
     mll_true = GaussianFixed(mu_marg, Sig_marg).log_likelihood(y)
 
