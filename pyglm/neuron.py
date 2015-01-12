@@ -298,7 +298,19 @@ class _MeanFieldNeuron(_NeuronBase):
     def mf_Sigma_w(self):
         return np.array([syn.mf_Sigma_w for syn in self.synapse_models])
 
+    def mf_mean_activation(self, Xs):
+        T = Xs[0].shape[0]
+        mu = np.zeros((T,))
+        mu += self.mf_mu_bias
+        for X,syn in zip(Xs, self.synapse_models):
+            mu += syn.mf_predict(X)
+
+        return mu
+
     def meanfield_coordinate_descent_step(self):
+        for d in self.data_list:
+            d.meanfield_update_psi()
+
         self.meanfield_update_bias()
         self.meanfield_update_synapses()
 
@@ -317,13 +329,13 @@ class _MeanFieldNeuron(_NeuronBase):
                 for d in self.data_list:
                     X_pres.append(d.X[n_pre])
 
-                    # TODO: USE MF PSI and MF BIAS to compute residual
-                    mu_other = self.bias * np.ones_like(d.psi)
+                    mu_other = self.mf_mu_bias * np.ones_like(d.psi)
                     for n_other,X,syn_other in zip(np.arange(self.N), d.X, self.synapse_models):
                         if n_other != n_pre:
                             mu_other += syn_other.mf_predict(X)
 
-                    residual = (d.psi - mu_other)[:,None]
+                    # Use mean field activation to compute residuals
+                    residual = (d.mf_mu_psi - mu_other)[:,None]
                     residuals.append(residual)
 
                 X_pres = np.vstack(X_pres)
@@ -340,12 +352,12 @@ class _MeanFieldNeuron(_NeuronBase):
         if len(self.data_list) > 0:
             residuals = []
             for d in self.data_list:
-                # TODO: USE MF PSI to compute residual
                 mu = np.zeros_like(d.psi)
                 for X,syn in zip(d.X, self.synapse_models):
                     mu += syn.mf_predict(X)
 
-                residual = (d.psi - mu)[:,None]
+                # Use mean field activation to compute residuals
+                residual = (d.mf_mu_psi - mu)[:,None]
                 residuals.append(residual)
             residuals = np.vstack(residuals)
 
@@ -354,6 +366,9 @@ class _MeanFieldNeuron(_NeuronBase):
             self.mf_sigma_bias = 1.0/(T/self.eta + 1.0/self.bias_model.sigma_0)
             self.mf_mu_bias = self.mf_sigma_bias * (residuals.sum()/self.eta +
                                                     self.bias_model.mu_0/self.bias_model.sigma_0)
+
+            self.mf_sigma_bias = np.asscalar(self.mf_sigma_bias)
+            self.mf_mu_bias = np.asscalar(self.mf_mu_bias)
 
         else:
             self.mf_sigma_bias = self.bias_model.sigma_0

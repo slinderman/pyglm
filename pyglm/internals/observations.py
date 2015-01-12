@@ -3,7 +3,7 @@ from scipy.special import gammaln
 
 from hips.distributions.polya_gamma import polya_gamma
 
-from pyglm.deps.pybasicbayes.abstractions import GibbsSampling
+from pyglm.deps.pybasicbayes.abstractions import GibbsSampling, MeanField
 from pypolyagamma import pgdrawv, PyRNG
 
 from hips.inference.log_sum_exp import log_sum_exp_sample
@@ -35,6 +35,10 @@ class _PolyaGammaAugmentedCountsBase(GibbsSampling):
         self.omega = np.ones(self.T)
         rng = PyRNG()
         pgdrawv(np.ones(self.T, dtype=np.int32), self.psi, self.omega, rng)
+
+        # Initialize mean field activation
+        self.mf_mu_psi = np.copy(self.psi)
+        self.mf_sigma_psi = np.ones_like(self.mf_mu_psi)
 
     def log_likelihood(self, x):
         return 0
@@ -87,6 +91,24 @@ class AugmentedNegativeBinomialCounts(_PolyaGammaAugmentedCountsBase):
         lp = gammaln(ys+xi) - gammaln(ys+1) - ys + (ys-xi) / 2.0 * self.psi[None,:]
         self.counts = log_sum_exp_sample(lp, axis=0)
 
+    def meanfield_update_psi(self):
+        """
+        Update psi and omega. We never explicitly instantiate q(omega),
+        but we can compute expectations with respect to it using Monte Carlo.
+        """
+        # Update psi given q(omega). Use Monte Carlo to approximate the expectation of
+        # omega over 100 samples of psi
+        ccounts = (self.counts + self.xi)/2.0
+        psis = self.mf_mu_psi[:,None] + \
+                 np.sqrt(self.mf_sigma_psi)[:,None] * np.random.randn(self.T, 100)
+        E_omega = ccounts * np.tanh(psis/2.0).mean(axis=1)
+
+        # TODO: Use MF ETA
+        mf_eta = self.model.eta
+        self.mf_sigma_psi = 1.0/(E_omega + 1.0/mf_eta)
+        self.mf_mu_psi = self.mf_sigma_psi * (ccounts +
+                                              1.0/mf_eta * self.model.mf_mean_activation(self.X))
+
 
 # We can also do logistic regression as a special case!
 class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
@@ -122,32 +144,32 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
             mu_post = sig_post * (self.counts-0.5 + mu_prior / sigma_prior)
             self.psi = mu_post + np.sqrt(sig_post) * np.random.normal(size=(self.T,))
 
-        # For Geweke testing, just resample psi from the forward model
-        elif do_resample_psi_from_prior:
-            mu_prior = self.model.mean_activation(self.X)
-            sigma_prior = self.model.eta
-            self.psi = mu_prior + np.sqrt(sigma_prior) * np.random.normal(size=(self.T,))
+        # # For Geweke testing, just resample psi from the forward model
+        # elif do_resample_psi_from_prior:
+        #     mu_prior = self.model.mean_activation(self.X)
+        #     sigma_prior = self.model.eta
+        #     self.psi = mu_prior + np.sqrt(sigma_prior) * np.random.normal(size=(self.T,))
 
-    def cond_omega(self):
-        """
-        Compute the conditional distribution of omega given the counts and psi
-        :return:
-        """
-        # TODO: Finish this for unit testing
-        return PolyaGamma(np.ones(self.T, dtype=np.int32), self.psi)
+    # def cond_omega(self):
+    #     """
+    #     Compute the conditional distribution of omega given the counts and psi
+    #     :return:
+    #     """
+    #     # TODO: Finish this for unit testing
+    #     return PolyaGamma(np.ones(self.T, dtype=np.int32), self.psi)
 
-    def cond_psi(self):
-        """
-        Compute the conditional distribution of psi given the counts and omega
-        :return:
-        """
-        # TODO: Finish this for unit testing
-        mu_prior = self.model.mean_activation(self.X)
-        sigma_prior = self.model.eta
-
-        sig_post = 1.0 / (1.0/sigma_prior + self.omega)
-        mu_post = sig_post * (self.counts-0.5 + mu_prior / sigma_prior)
-        return DiagonalGaussian(mu_post, sig_post)
+    # def cond_psi(self):
+    #     """
+    #     Compute the conditional distribution of psi given the counts and omega
+    #     :return:
+    #     """
+    #     # TODO: Finish this for unit testing
+    #     mu_prior = self.model.mean_activation(self.X)
+    #     sigma_prior = self.model.eta
+    #
+    #     sig_post = 1.0 / (1.0/sigma_prior + self.omega)
+    #     mu_post = sig_post * (self.counts-0.5 + mu_prior / sigma_prior)
+    #     return DiagonalGaussian(mu_post, sig_post)
 
     def geweke_resample_counts(self):
         """
@@ -168,6 +190,25 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
     def rvs(self, size=[]):
         p = np.exp(self.psi) / (1.0 + np.exp(self.psi))
         return np.random.rand(*p.shape) < p
+
+    def meanfield_update_psi(self):
+        """
+        Update psi and omega. We never explicitly instantiate q(omega),
+        but we can compute expectations with respect to it using Monte Carlo.
+        """
+        # Update psi given q(omega). Use Monte Carlo to approximate the expectation of
+        # omega over 100 samples of psi
+        ccounts = self.counts - 0.5
+        psis = self.mf_mu_psi[:,None] + \
+                 np.sqrt(self.mf_sigma_psi)[:,None] * np.random.randn(self.T, 100)
+        E_omega = ccounts * np.tanh(psis/2.0).mean(axis=1)
+
+        # TODO: Use MF ETA
+        mf_eta = self.model.eta
+        self.mf_sigma_psi = 1.0/(E_omega + 1.0/mf_eta)
+        self.mf_mu_psi = self.mf_sigma_psi * (ccounts +
+                                              1.0/mf_eta * self.model.mf_mean_activation(self.X))
+
 
 # Finally, support the standard Poisson observations, but to be
 # consistent with the NB and Bernoulli models we add a bit of
