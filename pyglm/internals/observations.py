@@ -101,7 +101,7 @@ class AugmentedNegativeBinomialCounts(_PolyaGammaAugmentedCountsBase):
         ccounts = (self.counts + self.xi)/2.0
         psis = self.mf_mu_psi[:,None] + \
                  np.sqrt(self.mf_sigma_psi)[:,None] * np.random.randn(self.T, 100)
-        E_omega = ccounts * np.tanh(psis/2.0).mean(axis=1)
+        E_omega = ccounts * (np.tanh(psis/2.0) / (psis)).mean(axis=1)
 
         # TODO: Use MF ETA
         mf_eta = self.model.eta
@@ -201,13 +201,15 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
         ccounts = self.counts - 0.5
         psis = self.mf_mu_psi[:,None] + \
                  np.sqrt(self.mf_sigma_psi)[:,None] * np.random.randn(self.T, 100)
-        E_omega = ccounts * np.tanh(psis/2.0).mean(axis=1)
+        E_omega = 0.5 * (np.tanh(psis/2.0) / psis).mean(axis=1)
 
         # TODO: Use MF ETA
+        mf_mean_activation = self.model.mf_mean_activation(self.X)
+
         mf_eta = self.model.eta
         self.mf_sigma_psi = 1.0/(E_omega + 1.0/mf_eta)
         self.mf_mu_psi = self.mf_sigma_psi * (ccounts +
-                                              1.0/mf_eta * self.model.mf_mean_activation(self.X))
+                                              1.0/mf_eta * mf_mean_activation)
 
 
 # Finally, support the standard Poisson observations, but to be

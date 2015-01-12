@@ -14,7 +14,7 @@ print "Setting random seed to ", seed
 np.random.seed(seed)
 
 def create_simple_population(N=1, dt=0.001, T=1000,
-                             alpha_0=10.0, beta_0=10.0,
+                             alpha_0=100.0, beta_0=10.0,
                              mu_bias=-3.0, sigma_bias=0.5**2,
                              mu_w=-0.5, sigma_w=0.5**2,
                              rho=0.5):
@@ -62,6 +62,15 @@ def test_meanfield_update_synapses():
     synapse = neuron.synapse_models[0]
     data = neuron.data_list[0]
 
+    plt.ion()
+    plt.figure()
+    plt.plot(data.psi, '-b')
+    plt.plot(np.nonzero(data.counts)[0], data.counts[data.counts>0], 'ko')
+    mf_psi = plt.plot(data.mf_mu_psi, '-r')
+    plt.show()
+    raw_input("Press enter to continue...")
+
+
     print "A_true: ", neuron.An
     print "W_true: ", neuron.weights
     print "b_true: ", neuron.bias
@@ -77,7 +86,7 @@ def test_meanfield_update_synapses():
     print "--" * 20
 
 
-    for itr in xrange(3):
+    for itr in xrange(1000):
         neuron.meanfield_coordinate_descent_step()
 
         print "Iteration: ", itr
@@ -88,6 +97,9 @@ def test_meanfield_update_synapses():
         print "mf_sigma_b: ", neuron.mf_sigma_bias
 
         print "--" * 20
+
+        mf_psi[0].set_data(np.arange(data.T), data.mf_mu_psi)
+        plt.pause(0.001)
 
 test_meanfield_update_synapses()
 

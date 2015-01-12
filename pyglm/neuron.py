@@ -33,6 +33,9 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         #                                  nu_0=1,
         #                                  lmbda_0=1*np.eye(1))
         self.noise_model = InverseGamma(alpha_0=alpha_0, beta_0=beta_0)
+
+        # TODO: Remove this debugging value
+        self.noise_model.sigma = 1.0
         # self.noise_model  = GaussianFixed(mu=np.zeros(1,), sigma=0.1 * np.eye(1))
 
         self.bias_model = GaussianFixedCov(mu_0=np.reshape(self.population.bias_prior.mu, (1,)),
@@ -282,9 +285,14 @@ class _GibbsNeuron(_NeuronBase):
 
 class _MeanFieldNeuron(_NeuronBase):
 
-    # The GaussianFixedCov doesn't have a meanfield update yet so we'll implement it here
-    mf_mu_bias = 0
-    mf_sigma_bias = 1.0
+    def __init__(self, n, population,
+                 n_iters_per_resample=1,
+                 alpha_0=3.0, beta_0=0.5):
+        super(_MeanFieldNeuron, self).__init__(n, population, n_iters_per_resample, alpha_0, beta_0)
+
+        # The GaussianFixedCov doesn't have a meanfield update yet so we'll implement it here
+        self.mf_mu_bias = self.population.bias_prior.mu
+        self.mf_sigma_bias = self.population.bias_prior.sigmasq
 
     @property
     def mf_rho(self):
