@@ -282,6 +282,10 @@ class _GibbsNeuron(_NeuronBase):
 
 class _MeanFieldNeuron(_NeuronBase):
 
+    # The GaussianFixedCov doesn't have a meanfield update yet so we'll implement it here
+    mf_mu_bias = 0
+    mf_sigma_bias = 1.0
+
     @property
     def mf_rho(self):
         return np.array([syn.mf_rho for syn in self.synapse_models])
@@ -293,6 +297,10 @@ class _MeanFieldNeuron(_NeuronBase):
     @property
     def mf_Sigma_w(self):
         return np.array([syn.mf_Sigma_w for syn in self.synapse_models])
+
+    def meanfield_coordinate_descent_step(self):
+        self.meanfield_update_bias()
+        self.meanfield_update_synapses()
 
     def meanfield_update_synapses(self):
         """
@@ -324,6 +332,33 @@ class _MeanFieldNeuron(_NeuronBase):
 
                 # Call the synapse's mean field update
                 syn.meanfieldupdate(X_and_residuals, None)
+
+    def meanfield_update_bias(self):
+        """
+        Update the variational parameters for the bias
+        """
+        if len(self.data_list) > 0:
+            residuals = []
+            for d in self.data_list:
+                # TODO: USE MF PSI to compute residual
+                mu = np.zeros_like(d.psi)
+                for X,syn in zip(d.X, self.synapse_models):
+                    mu += syn.mf_predict(X)
+
+                residual = (d.psi - mu)[:,None]
+                residuals.append(residual)
+            residuals = np.vstack(residuals)
+
+            # TODO: USE MF ETA to compute residual
+            T = residuals.shape[0]
+            self.mf_sigma_bias = 1.0/(T/self.eta + 1.0/self.bias_model.sigma_0)
+            self.mf_mu_bias = self.mf_sigma_bias * (residuals.sum()/self.eta +
+                                                    self.bias_model.mu_0/self.bias_model.sigma_0)
+
+        else:
+            self.mf_sigma_bias = self.bias_model.sigma_0
+            self.mf_mu_bias = self.bias_model.mu_0
+
 
 
 class _SpikeAndSlabNeuron(_NeuronBase):

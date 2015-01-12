@@ -64,14 +64,30 @@ def test_meanfield_update_synapses():
 
     print "A_true: ", neuron.An
     print "W_true: ", neuron.weights
-    # print "mf_rho: ", neuron.mf_rho
+    print "b_true: ", neuron.bias
+
+    print "--" * 20
+
+    print "mf_rho: ", neuron.mf_rho
+    print "mf_mu:  ", neuron.mf_mu_w
+    print "mf_sig: ", neuron.mf_Sigma_w
+    print "mf_mu_b: ", neuron.mf_mu_bias
+    print "mf_sigma_b: ", neuron.mf_sigma_bias
+
+    print "--" * 20
+
 
     for itr in xrange(3):
-        neuron.meanfield_update_synapses()
+        neuron.meanfield_coordinate_descent_step()
 
+        print "Iteration: ", itr
         print "mf_rho: ", neuron.mf_rho
         print "mf_mu:  ", neuron.mf_mu_w
         print "mf_sig: ", neuron.mf_Sigma_w
+        print "mf_mu_b: ", neuron.mf_mu_bias
+        print "mf_sigma_b: ", neuron.mf_sigma_bias
+
+        print "--" * 20
 
 test_meanfield_update_synapses()
 
