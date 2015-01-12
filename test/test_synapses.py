@@ -53,38 +53,71 @@ def create_simple_population(N=1, dt=0.001, T=100,
     population.generate(size=T, keep=True)
     return population
 
-def test_cond_w():
+def unit_test_resample():
     """
-    TODO: Test the conditional distribution over weights of a neuron
-    :return:
+    Test the conditional distribution over weights of a neuron
     """
     population = create_simple_population()
     synapse = population.neuron_models[0].synapse_models[0]
 
     # Choose random covariates x,y
     T = 100
-    x = np.random.randn((T,synapse.D_in))
-    y = np.random.randn((T,1))
+    x = np.random.randn(T,synapse.D_in)
+    y = np.random.randn(T,1)
     xy = np.hstack((x,y))
 
     # Choose two random weights
-    w1 = np.random.randn((synapse.D_in, 1))
-    w2 = np.random.randn((synapse.D_in, 1))
+    w1 = np.random.randn(synapse.D_in, 1)
+    w2 = np.random.randn(synapse.D_in, 1)
 
     # Make sure the ratio of posterior distributions p(w1 | xy) / p(w2 | xy)
     # is equal to the ratio of joints p(w1, xy) / p(w2, xy)
     # These calculations execute different code paths and make sure
     # that we are computing sufficient statistics correctly
     synapse.set_weights(w1)
-    cond1 = synapse.cond_w(xy)
-    joint1 = synapse.log_likelihood(xy) + synapse.weight_prior.log_likelihood(w1)
+    cond1 = synapse.cond_w(xy).log_likelihood(w1)
+    joint1 = synapse.log_likelihood(xy) + synapse.weights_prior.log_likelihood(w1)
 
     synapse.set_weights(w2)
-    cond2 = synapse.cond_w(xy)
-    joint2 = synapse.log_likelihood(xy) + synapse.weight_prior.log_likelihood(w2)
+    cond2 = synapse.cond_w(xy).log_likelihood(w2)
+    joint2 = synapse.log_likelihood(xy) + synapse.weights_prior.log_likelihood(w2)
+
+    print "log cond ratio: ", cond1 - cond2
+    print "log joint ratio: ", joint1 - joint2
 
     assert np.allclose(cond1 - cond2,
                        joint1 - joint2), \
            "ERROR: Ratio of conditionals does not match ratio of joints!"
 
-test_cond_w()
+def unit_test_log_marginal_likelkhood():
+    """
+    Unit test the log marginal likelihood calculation
+    """
+    from pyglm.deps.pybasicbayes.distributions import GaussianFixed
+    population = create_simple_population()
+    synapse = population.neuron_models[0].synapse_models[0]
+
+    # Choose random covariates x,y
+    T = 100
+    D = synapse.D_in
+    X = np.random.randn(T,D)
+    y = np.random.randn(T,1)
+    data = np.hstack((X,y))
+
+    mll = synapse.log_marginal_likelihood(data)
+
+    # Debug the marginal likelihood calculation
+    mu_marg = X.dot(synapse.mu_w.T).reshape((T,))
+    # Covariances add
+    Sig_marg = np.asscalar(synapse.sigma) * np.eye(T) + X.dot(synapse.Sigma_w.dot(X.T))
+    # Compute the marginal log likelihood
+    mll_true = GaussianFixed(mu_marg, Sig_marg).log_likelihood(y)
+
+    print "MLL: ", mll
+    print "MLL true: ", mll_true
+
+    assert np.allclose(mll, mll_true), "ERROR: Marginal log likelihood calculations do not match!"
+
+unit_test_resample()
+unit_test_log_marginal_likelkhood()
+
