@@ -1,10 +1,11 @@
 import numpy as np
-from pyglm.deps.pybasicbayes.abstractions import Collapsed
+from pyglm.deps.pybasicbayes.abstractions import Collapsed, MeanField
 from pyglm.deps.pybasicbayes.distributions import GibbsSampling, GaussianFixed
 from pyglm.deps.pybasicbayes.util.stats import sample_discrete_from_log
 
+from pyglm.utils.utils import logistic, logit
 
-class GaussianVectorSynapse(GibbsSampling, Collapsed):
+class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
     def __init__(self,
                  neuron_model,
                  n_pre,
@@ -13,6 +14,11 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed):
         self.n_pre = n_pre
         self.eta = eta
         self.A = 1
+        self.w = self.mu_w
+
+        # Mean field parameters
+        self.mf_mu_w = np.copy(self.mu_w)
+        self.mf_Sigma_w = np.copy(self.Sigma_w)
 
         # Create cache for X \dot w
         # self.cache = SimpleCache()
@@ -158,6 +164,42 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed):
 
         return out
 
+    ### MeanField
+    def expected_log_likelihood(self, x):
+        pass
+
+    def meanfieldupdate(self, data, weights):
+        """
+        Perform coordinate ascent on the weights of the Gaussian synapse
+        """
+        # Extract the covariates and the residuals
+        # NOTE: data is assumed to contain the EXPECTED RESIDUAL under the
+        # remaining variational distributions
+
+        # TODO: Use get_weighted_statistics!
+        ss = self._get_statistics(data)
+        yxT = ss[1]
+        xxT = ss[2]
+
+        # TODO: Use the expected noise variance eta
+        mf_eta = self.neuron_model.eta
+        Sigma_w_inv = np.linalg.inv(self.Sigma_w)
+        self.mf_Sigma_w = np.linalg.inv(xxT / mf_eta + Sigma_w_inv)
+        self.mf_mu_w = ((yxT / mf_eta + self.mu_w.dot(Sigma_w_inv))
+                        .dot(self.mf_Sigma_w))\
+                        .reshape((self.D_in,))
+
+    def get_vlb(self):
+        raise NotImplementedError
+
+    @property
+    def mf_expected_w(self):
+        return self.mf_mu_w
+
+    def mf_predict(self, X):
+        w = self.mf_expected_w
+        return X.dot(w.T)
+
 class SpikeAndSlabGaussianVectorSynapse(GaussianVectorSynapse):
     """
     Combine the Gaussian vector of weights and the Bernoulli indicator variable
@@ -169,6 +211,10 @@ class SpikeAndSlabGaussianVectorSynapse(GaussianVectorSynapse):
                  eta):
         super(SpikeAndSlabGaussianVectorSynapse, self).\
             __init__(neuron_model, n_pre, eta)
+
+        # Initialize the mean field parameters
+        self.mf_rho = self.rho
+
         self.resample()
 
     @property
@@ -226,6 +272,26 @@ class SpikeAndSlabGaussianVectorSynapse(GaussianVectorSynapse):
             y += X.dot(w.T)
 
         return y
+
+    ### MeanField
+    @property
+    def mf_expected_w(self):
+        return self.mf_mu_w * self.mf_rho
+
+    def meanfieldupdate(self, data, weights):
+        # Update mean and variance of Gaussian weight vector
+        super(SpikeAndSlabGaussianVectorSynapse, self).meanfieldupdate(data, weights)
+
+        # Update the sparsity variational parameter
+        logdet_Sigma_w = np.linalg.slogdet(self.Sigma_w)[1]
+        logdet_mf_Sigma_w = np.linalg.slogdet(self.mf_Sigma_w)[1]
+        mf_logit_rho = logit(self.rho) \
+                       + 0.5 * (logdet_mf_Sigma_w - logdet_Sigma_w) \
+                       + 0.5 * self.mf_mu_w.dot(np.linalg.solve(self.mf_Sigma_w, self.mf_mu_w)) \
+                       - 0.5 * self.mu_w.dot(np.linalg.solve(self.Sigma_w, self.mu_w))
+
+        self.mf_rho = logistic(mf_logit_rho)
+
 
 # TODO: Implement weighted, normalized synapses
 

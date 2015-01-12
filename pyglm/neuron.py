@@ -276,6 +276,36 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
                 X_and_residuals = np.hstack((Xs,residuals))
                 syn.resample(X_and_residuals)
 
+    def meanfield_update_synapses(self):
+        """
+        Jointly resample the spike and slab indicator variables and synapse models
+        :return:
+        """
+        for n_pre in range(self.N):
+            syn = self.synapse_models[n_pre]
+
+            # Compute covariates and the predictions
+            if len(self.data_list) > 0:
+                Xs = []
+                residuals = []
+                for d in self.data_list:
+                    Xs.append(d.X[n_pre])
+
+                    # TODO: USE MF BIAS
+                    mu_other = self.bias
+                    for n_other,X,syn_other in zip(np.arange(self.N), Xs, self.synapse_models):
+                        if n_other != n_pre:
+                            mu_other += syn_other.mf_predict(X)
+
+                    residual = (d.psi - mu_other)[:,None]
+                    residuals.append(residual)
+
+                Xs = np.vstack(Xs)
+                residuals = np.vstack(residuals)
+
+                X_and_residuals = np.hstack((Xs,residuals))
+                syn.meanfieldupdate(X_and_residuals, None)
+
 
 class _SparseNeuronMixin(_NeuronBase):
     """
