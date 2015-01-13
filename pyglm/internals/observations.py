@@ -50,7 +50,8 @@ class AugmentedNegativeBinomialCounts(_PolyaGammaAugmentedCountsBase):
 
     def resample(self, data=None, stats=None,
                  do_resample_psi=True,
-                 do_resample_aux=True):
+                 do_resample_aux=True,
+                 do_resample_psi_from_prior=False):
         """
         Resample omega given xi and psi, then resample psi given omega, X, w, and sigma
         """
@@ -78,6 +79,12 @@ class AugmentedNegativeBinomialCounts(_PolyaGammaAugmentedCountsBase):
             sig_post = 1.0 / (1.0/sigma + self.omega)
             mu_post = sig_post * ((self.counts-xi)/2.0 + mu / sigma)
             self.psi = mu_post + np.sqrt(sig_post) * np.random.normal(size=(self.T,))
+
+        # For Geweke testing, just resample psi from the forward model
+        elif do_resample_psi_from_prior:
+            mu_prior = self.model.mean_activation(self.X)
+            sigma_prior = self.model.eta
+            self.psi = mu_prior + np.sqrt(sigma_prior) * np.random.normal(size=(self.T,))
 
     def geweke_resample_counts(self, trunc=100):
         """
@@ -144,11 +151,11 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
             mu_post = sig_post * (self.counts-0.5 + mu_prior / sigma_prior)
             self.psi = mu_post + np.sqrt(sig_post) * np.random.normal(size=(self.T,))
 
-        # # For Geweke testing, just resample psi from the forward model
-        # elif do_resample_psi_from_prior:
-        #     mu_prior = self.model.mean_activation(self.X)
-        #     sigma_prior = self.model.eta
-        #     self.psi = mu_prior + np.sqrt(sigma_prior) * np.random.normal(size=(self.T,))
+        # For Geweke testing, just resample psi from the forward model
+        elif do_resample_psi_from_prior:
+            mu_prior = self.model.mean_activation(self.X)
+            sigma_prior = self.model.eta
+            self.psi = mu_prior + np.sqrt(sigma_prior) * np.random.normal(size=(self.T,))
 
     # def cond_omega(self):
     #     """
@@ -201,11 +208,10 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
         ccounts = self.counts - 0.5
         psis = self.mf_mu_psi[:,None] + \
                  np.sqrt(self.mf_sigma_psi)[:,None] * np.random.randn(self.T, 100)
-        E_omega = 0.5 * (np.tanh(psis/2.0) / psis).mean(axis=1)
+        E_omega = (np.tanh(psis/2.0) / (2*psis)).mean(axis=1)
 
-        # TODO: Use MF ETA
         mf_mean_activation = self.model.mf_mean_activation(self.X)
-
+        # TODO: Use MF ETA
         mf_eta = self.model.eta
         self.mf_sigma_psi = 1.0/(E_omega + 1.0/mf_eta)
         self.mf_mu_psi = self.mf_sigma_psi * (ccounts +

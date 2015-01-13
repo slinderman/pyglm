@@ -139,7 +139,7 @@ def test_bias_geweke(N_samples=100000, thin=1):
     plt.show()
 
 def test_weights_geweke(N_samples=100000, thin=1):
-    mu_w = -3.0
+    mu_w = 0.0
     sigma_w = 0.5**2
     rho = 0.5
     population = create_simple_population(mu_w=mu_w, sigma_w=sigma_w, rho=rho)
@@ -150,7 +150,7 @@ def test_weights_geweke(N_samples=100000, thin=1):
         print "Iteration: ", s
         # Resampling is trickier because of the augmentation.
         for _ in xrange(thin):
-            population.resample_model(do_resample_bias=True,
+            population.resample_model(do_resample_bias=False,
                                       do_resample_bias_prior=False,
                                       do_resample_latent=False,
                                       do_resample_network=False,

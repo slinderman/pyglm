@@ -35,7 +35,7 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         self.noise_model = InverseGamma(alpha_0=alpha_0, beta_0=beta_0)
 
         # TODO: Remove this debugging value
-        self.noise_model.sigma = 1.0
+        self.noise_model.sigma = 0.1
         # self.noise_model  = GaussianFixed(mu=np.zeros(1,), sigma=0.1 * np.eye(1))
 
         self.bias_model = GaussianFixedCov(mu_0=np.reshape(self.population.bias_prior.mu, (1,)),
