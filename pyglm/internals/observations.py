@@ -6,6 +6,8 @@ from hips.distributions.polya_gamma import polya_gamma
 from pyglm.deps.pybasicbayes.abstractions import GibbsSampling, MeanField
 from pypolyagamma import pgdrawv, PyRNG
 
+from pyglm.utils.utils import logistic
+
 from hips.inference.log_sum_exp import log_sum_exp_sample
 
 class _PolyaGammaAugmentedCountsBase(GibbsSampling):
@@ -216,6 +218,32 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
         self.mf_sigma_psi = 1.0/(E_omega + 1.0/mf_eta)
         self.mf_mu_psi = self.mf_sigma_psi * (ccounts +
                                               1.0/mf_eta * mf_mean_activation)
+
+    def get_vlb(self):
+        """
+        Compute the variational lower bound for terms that depend on psi.
+        Ignore terms that depend on omega since they are not required for
+        the generative model or to compute p(S, psi, ...) or q(S, psi).
+        """
+
+        # 1. E[ \ln p(s | \psi) ]
+        # Compute this with Monte Carlo integration over \psi
+        psis = self.mf_mu_psi[:,None] + \
+                 np.sqrt(self.mf_sigma_psi)[:,None] * np.random.randn(self.T, 100)
+        ps = logistic(psis)
+        E_lnp = self.counts * np.log(ps) + (1-self.counts) * np.log(1.0-ps)
+
+        # 2. E[\ln p(psi) ]
+        # Compute the expected log prob of psi under the variational approximation for
+        # the mean activation
+        # TODO: This is going to be trickier. It requires estimates of second moments
+
+        # 3. - E[ \ln q(psi) ]
+        # This is the entropy of the Gaussian distribution over psi
+        q_entropy = 0.5 * np.log(2 * np.pi * np.exp(1) * self.mf_sigma_psi)
+
+        return E_lnp + q_entropy
+
 
 
 # Finally, support the standard Poisson observations, but to be
