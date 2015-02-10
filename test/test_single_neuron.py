@@ -81,24 +81,25 @@ def test_meanfield_update_synapses():
     print "mf_rho: ", neuron.mf_rho
     print "mf_mu:  ", neuron.mf_mu_w
     print "mf_sig: ", neuron.mf_Sigma_w
-    print "mf_mu_b: ", neuron.mf_mu_bias
-    print "mf_sigma_b: ", neuron.mf_sigma_bias
+    print "mf_mu_b: ", neuron.bias_model.mf_mu_bias
+    print "mf_sigma_b: ", neuron.bias_model.mf_sigma_bias
 
     print "--" * 20
 
 
-    raw_input("Press enter to continue...")
+    # raw_input("Press enter to continue...")
 
+    N_iter = 1000
+    vlbs   = np.zeros(N_iter)
+    for itr in xrange(N_iter):
+        vlbs[itr] = neuron.meanfield_coordinate_descent_step()
 
-    for itr in xrange(10000):
-        neuron.meanfield_coordinate_descent_step()
-
-        print "Iteration: ", itr
-        print "mf_rho: ", neuron.mf_rho
-        print "mf_mu:  ", neuron.mf_mu_w
-        print "mf_sig: ", neuron.mf_Sigma_w
-        print "mf_mu_b: ", neuron.mf_mu_bias
-        print "mf_sigma_b: ", neuron.mf_sigma_bias
+        print "Iteration: ", itr, "\tVLB: ", vlbs[itr]
+        # print "mf_rho: ", neuron.mf_rho
+        # print "mf_mu:  ", neuron.mf_mu_w
+        # print "mf_sig: ", neuron.mf_Sigma_w
+        # print "mf_mu_b: ", neuron.bias_model.mf_mu_bias
+        # print "mf_sigma_b: ", neuron.bias_model.mf_sigma_bias
 
         print "--" * 20
 

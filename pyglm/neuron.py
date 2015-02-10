@@ -6,6 +6,7 @@ from pyglm.deps.pybasicbayes.distributions import GaussianFixedCov, GaussianFixe
 from pyglm.deps.pybasicbayes.util.stats import sample_discrete_from_log
 from pyglm.internals.distributions import InverseGamma
 from pyglm.internals.observations import AugmentedNegativeBinomialCounts, AugmentedBernoulliCounts
+from pyglm.internals.bias import GaussianBias
 from pyglm.synapses import GaussianVectorSynapse, SpikeAndSlabGaussianVectorSynapse
 
 
@@ -38,9 +39,12 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         self.noise_model.sigma = 0.1
         # self.noise_model  = GaussianFixed(mu=np.zeros(1,), sigma=0.1 * np.eye(1))
 
-        self.bias_model = GaussianFixedCov(mu_0=np.reshape(self.population.bias_prior.mu, (1,)),
-                                      sigma_0=np.reshape(self.population.bias_prior.sigmasq, (1,1)),
-                                      sigma=self.noise_model.sigma * np.eye(1))
+        # self.bias_model = GaussianFixedCov(mu_0=np.reshape(self.population.bias_prior.mu, (1,)),
+        #                               sigma_0=np.reshape(self.population.bias_prior.sigmasq, (1,1)),
+        #                               sigma=self.noise_model.sigma * np.eye(1))
+        self.bias_model = GaussianBias(self,
+                                       mu=self.population.bias_prior.mu,
+                                       sigmasq=self.population.bias_prior.sigmasq)
 
         self.synapse_models = []
         for n_pre in range(self.N):
@@ -64,17 +68,17 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
     def eta(self, value):
         self.noise_model.sigma = value
 
-        self.bias_model.setsigma(self.noise_model.sigma * np.eye(1))
+        # self.bias_model.setsigma(self.noise_model.sigma * np.eye(1))
         for syn in self.synapse_models:
             syn.eta = self.noise_model.sigma * np.eye(1)
 
     @property
     def bias(self):
-        return self.bias_model.mu
+        return self.bias_model.bias
 
     @bias.setter
     def bias(self, value):
-        self.bias_model.mu = value
+        self.bias_model.bias = value
 
     @property
     def An(self):
@@ -246,18 +250,19 @@ class _GibbsNeuron(_NeuronBase):
         Resample the bias given the weights and psi
         :return:
         """
-        residuals = []
-        for data in self.data_list:
-            residuals.append(data.psi - (self.mean_activation(data.X) - self.bias_model.mu))
-
-        if len(residuals) > 0:
-            residuals = np.concatenate(residuals)
-
-            # Residuals must be a Nx1 vector
-            self.bias_model.resample(residuals[:,None])
-
-        else:
-            self.bias_model.resample([])
+        self.bias_model.resample()
+        # residuals = []
+        # for data in self.data_list:
+        #     residuals.append(data.psi - (self.mean_activation(data.X) - self.bias_model.mu))
+        #
+        # if len(residuals) > 0:
+        #     residuals = np.concatenate(residuals)
+        #
+        #     # Residuals must be a Nx1 vector
+        #     self.bias_model.resample(residuals[:,None])
+        #
+        # else:
+        #     self.bias_model.resample([])
 
     def resample_synapse_models(self):
         """
@@ -290,9 +295,9 @@ class _MeanFieldNeuron(_NeuronBase):
                  alpha_0=3.0, beta_0=0.5):
         super(_MeanFieldNeuron, self).__init__(n, population, n_iters_per_resample, alpha_0, beta_0)
 
-        # The GaussianFixedCov doesn't have a meanfield update yet so we'll implement it here
-        self.mf_mu_bias = self.population.bias_prior.mu
-        self.mf_sigma_bias = self.population.bias_prior.sigmasq
+        # # The GaussianFixedCov doesn't have a meanfield update yet so we'll implement it here
+        # self.mf_mu_bias = self.population.bias_prior.mu
+        # self.mf_sigma_bias = self.population.bias_prior.sigmasq
 
     @property
     def mf_rho(self):
@@ -309,11 +314,40 @@ class _MeanFieldNeuron(_NeuronBase):
     def mf_mean_activation(self, Xs):
         T = Xs[0].shape[0]
         mu = np.zeros((T,))
-        mu += self.mf_mu_bias
+        mu += self.bias_model.mf_mu_bias
         for X,syn in zip(Xs, self.synapse_models):
             mu += syn.mf_predict(X)
 
         return mu
+
+    def mf_expected_activation_sq(self, Xs):
+        T = Xs[0].shape[0]
+        musq  = np.zeros((T,))
+
+        # Add the quadratic terms
+        # E[b_n^2] * ones(T)
+        musq += self.bias_model.mf_expected_bias_sq()
+        #   E[(s_{n'}W_{n'n})^T(s_{n'}W_{n'n})]
+        # = E[Tr(W_{n'n}^T s_{n'}^T s_{n'} W_{n'n})]
+        # = E[Tr(s_{n'} W_{n'n} W_{n'n}^T s_{n'}^T)]
+        # = Tr(s_{n'} E[W_{n'n} W_{n'n}^T] s_{n'}^T)
+        for X,syn in zip(Xs, self.synapse_models):
+            E_wwT = syn.mf_expected_wwT
+            musq += (X.dot(E_wwT) * X).sum(axis=1)
+
+        # Linear cross terms
+        # 2 * E[b_n] * E[W_{n'n}] * s_{n'}
+        for X,syn in zip(Xs, self.synapse_models):
+            musq += 2 * self.bias_model.mf_expected_bias() * X.dot(syn.mf_expected_w)
+
+        # 2 * E[W_{n',n} * s_{n'}] * E[W_{n'',n}] * s_{n''}
+        for n1 in xrange(self.N):
+            Xn1, synn1 = Xs[n1], self.synapse_models[n1]
+            for n2 in xrange(n1+1, self.N):
+                Xn2, synn2 = Xs[n2], self.synapse_models[n2]
+                musq += 2 * Xn1.dot(synn1.mf_expected_w) * Xn2.dot(synn2.mf_expected_w)
+
+        return musq
 
     def meanfield_coordinate_descent_step(self):
         for d in self.data_list:
@@ -321,6 +355,8 @@ class _MeanFieldNeuron(_NeuronBase):
 
         self.meanfield_update_bias()
         self.meanfield_update_synapses()
+
+        return self.get_vlb()
 
     def meanfield_update_synapses(self):
         """
@@ -337,7 +373,7 @@ class _MeanFieldNeuron(_NeuronBase):
                 for d in self.data_list:
                     X_pres.append(d.X[n_pre])
 
-                    mu_other = self.mf_mu_bias * np.ones_like(d.psi)
+                    mu_other = self.bias_model.mf_mu_bias * np.ones_like(d.psi)
                     for n_other,X,syn_other in zip(np.arange(self.N), d.X, self.synapse_models):
                         if n_other != n_pre:
                             mu_other += syn_other.mf_predict(X)
@@ -357,31 +393,45 @@ class _MeanFieldNeuron(_NeuronBase):
         """
         Update the variational parameters for the bias
         """
-        if len(self.data_list) > 0:
-            residuals = []
-            for d in self.data_list:
-                mu = np.zeros_like(d.psi)
-                for X,syn in zip(d.X, self.synapse_models):
-                    mu += syn.mf_predict(X)
+        self.bias_model.meanfieldupdate()
+        # if len(self.data_list) > 0:
+        #     residuals = []
+        #     for d in self.data_list:
+        #         mu = np.zeros_like(d.psi)
+        #         for X,syn in zip(d.X, self.synapse_models):
+        #             mu += syn.mf_predict(X)
+        #
+        #         # Use mean field activation to compute residuals
+        #         residual = (d.mf_mu_psi - mu)[:,None]
+        #         residuals.append(residual)
+        #     residuals = np.vstack(residuals)
+        #
+        #     # TODO: USE MF ETA to compute residual
+        #     T = residuals.shape[0]
+        #     self.mf_sigma_bias = 1.0/(T/self.eta + 1.0/self.bias_model.sigma_0)
+        #     self.mf_mu_bias = self.mf_sigma_bias * (residuals.sum()/self.eta +
+        #                                             self.bias_model.mu_0/self.bias_model.sigma_0)
+        #
+        #     self.mf_sigma_bias = np.asscalar(self.mf_sigma_bias)
+        #     self.mf_mu_bias = np.asscalar(self.mf_mu_bias)
+        #
+        # else:
+        #     self.mf_sigma_bias = self.bias_model.sigma_0
+        #     self.mf_mu_bias = self.bias_model.mu_0
 
-                # Use mean field activation to compute residuals
-                residual = (d.mf_mu_psi - mu)[:,None]
-                residuals.append(residual)
-            residuals = np.vstack(residuals)
+    def get_vlb(self):
+        vlb = 0
+        for d in self.data_list:
+            vlb += d.get_vlb()
 
-            # TODO: USE MF ETA to compute residual
-            T = residuals.shape[0]
-            self.mf_sigma_bias = 1.0/(T/self.eta + 1.0/self.bias_model.sigma_0)
-            self.mf_mu_bias = self.mf_sigma_bias * (residuals.sum()/self.eta +
-                                                    self.bias_model.mu_0/self.bias_model.sigma_0)
+        vlb += self.noise_model.get_vlb()
 
-            self.mf_sigma_bias = np.asscalar(self.mf_sigma_bias)
-            self.mf_mu_bias = np.asscalar(self.mf_mu_bias)
+        vlb += self.bias_model.get_vlb()
 
-        else:
-            self.mf_sigma_bias = self.bias_model.sigma_0
-            self.mf_mu_bias = self.bias_model.mu_0
+        for syn in self.synapse_models:
+            vlb += syn.get_vlb()
 
+        return vlb
 
 
 class _SpikeAndSlabNeuron(_NeuronBase):

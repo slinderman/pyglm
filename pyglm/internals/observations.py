@@ -4,6 +4,7 @@ from scipy.special import gammaln
 from hips.distributions.polya_gamma import polya_gamma
 
 from pyglm.deps.pybasicbayes.abstractions import GibbsSampling, MeanField
+from pyglm.internals.distributions import ScalarGaussian
 from pypolyagamma import pgdrawv, PyRNG
 
 from pyglm.utils.utils import logistic
@@ -200,6 +201,12 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
         p = np.exp(self.psi) / (1.0 + np.exp(self.psi))
         return np.random.rand(*p.shape) < p
 
+    def mf_expected_psi(self):
+        return self.mf_mu_psi
+
+    def mf_expected_psisq(self):
+        return self.mf_sigma_psi + self.mf_mu_psi**2
+
     def meanfield_update_psi(self):
         """
         Update psi and omega. We never explicitly instantiate q(omega),
@@ -213,11 +220,11 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
         E_omega = (np.tanh(psis/2.0) / (2*psis)).mean(axis=1)
 
         mf_mean_activation = self.model.mf_mean_activation(self.X)
-        # TODO: Use MF ETA
-        mf_eta = self.model.eta
-        self.mf_sigma_psi = 1.0/(E_omega + 1.0/mf_eta)
+
+        E_eta_inv = self.model.noise_model.expected_eta_inv()
+        self.mf_sigma_psi = 1.0/(E_omega + E_eta_inv)
         self.mf_mu_psi = self.mf_sigma_psi * (ccounts +
-                                              1.0/mf_eta * mf_mean_activation)
+                                              E_eta_inv * mf_mean_activation)
 
     def get_vlb(self):
         """
@@ -225,25 +232,38 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
         Ignore terms that depend on omega since they are not required for
         the generative model or to compute p(S, psi, ...) or q(S, psi).
         """
-
+        vlb = 0
         # 1. E[ \ln p(s | \psi) ]
         # Compute this with Monte Carlo integration over \psi
+        N_mc = 100
         psis = self.mf_mu_psi[:,None] + \
-                 np.sqrt(self.mf_sigma_psi)[:,None] * np.random.randn(self.T, 100)
+                 np.sqrt(self.mf_sigma_psi)[:,None] * np.random.randn(self.T, N_mc)
         ps = logistic(psis)
-        E_lnp = self.counts * np.log(ps) + (1-self.counts) * np.log(1.0-ps)
+        E_lnp = np.log(ps).mean(axis=1)
+        E_ln_notp = np.log(1-ps).mean(axis=1)
 
-        # 2. E[\ln p(psi) ]
+        vlb += (self.counts * E_lnp + (1-self.counts) * E_ln_notp).sum()
+
+        # 2. E[\ln p(psi | mu, sigma) ]
         # Compute the expected log prob of psi under the variational approximation for
         # the mean activation
-        # TODO: This is going to be trickier. It requires estimates of second moments
+        # TODO: Compute expectations wrt variational distribution
+        E_psi         = self.mf_expected_psi()
+        E_psisq       = self.mf_expected_psisq()
+        E_mu          = self.model.mf_mean_activation(self.X)
+        E_musq        = self.model.mf_expected_activation_sq(self.X)
+        E_eta_inv     = self.model.noise_model.expected_eta_inv()
+        E_ln_eta      = self.model.noise_model.expected_log_eta()
+        vlb += ScalarGaussian().negentropy(E_x=E_psi, E_xsq=E_psisq,
+                                           E_mu=E_mu, E_musq=E_musq,
+                                           E_sigmasq_inv=E_eta_inv,
+                                           E_ln_sigmasq=E_ln_eta).sum()
 
         # 3. - E[ \ln q(psi) ]
         # This is the entropy of the Gaussian distribution over psi
-        q_entropy = 0.5 * np.log(2 * np.pi * np.exp(1) * self.mf_sigma_psi)
+        vlb -= ScalarGaussian(self.mf_mu_psi, self.mf_sigma_psi).negentropy().sum()
 
-        return E_lnp + q_entropy
-
+        return vlb
 
 
 # Finally, support the standard Poisson observations, but to be

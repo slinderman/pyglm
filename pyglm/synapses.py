@@ -3,6 +3,8 @@ from pyglm.deps.pybasicbayes.abstractions import Collapsed, MeanField
 from pyglm.deps.pybasicbayes.distributions import GibbsSampling, GaussianFixed
 from pyglm.deps.pybasicbayes.util.stats import sample_discrete_from_log
 
+from pyglm.internals.distributions import Gaussian, Bernoulli
+
 from pyglm.utils.utils import logistic, logit
 
 class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
@@ -181,19 +183,41 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
         xxT = ss[2]
 
         # TODO: Use the expected noise variance eta
-        mf_eta = self.neuron_model.eta
+        E_eta_inv = self.neuron_model.noise_model.expected_eta_inv()
         Sigma_w_inv = np.linalg.inv(self.Sigma_w)
-        self.mf_Sigma_w = np.linalg.inv(xxT / mf_eta + Sigma_w_inv)
-        self.mf_mu_w = ((yxT / mf_eta + self.mu_w.dot(Sigma_w_inv))
+        self.mf_Sigma_w = np.linalg.inv(xxT * E_eta_inv + Sigma_w_inv)
+        self.mf_mu_w = ((yxT * E_eta_inv + self.mu_w.dot(Sigma_w_inv))
                         .dot(self.mf_Sigma_w)) \
                         .reshape((self.D_in,))
 
     def get_vlb(self):
-        raise NotImplementedError
+        vlb = 0
+
+        E_W            = self.mf_expected_w
+        E_WWT          = self.mf_expected_wwT
+        E_mu           = self.mu_w
+        E_mumuT        = self.mu_w.dot(self.mu_w.T)
+        E_Sigma_inv    = np.linalg.inv(self.Sigma_w)
+        E_logdet_Sigma = np.linalg.slogdet(self.Sigma_w)[1]
+
+        # E[LN p(W | mu, Sigma)
+        vlb += Gaussian().negentropy(E_x=E_W, E_xxT=E_WWT,
+                                     E_mu=E_mu, E_mumuT=E_mumuT,
+                                     E_Sigma_inv=E_Sigma_inv, E_logdet_Sigma=E_logdet_Sigma)
+
+        # E[LN q(W | mu, Sigma)
+        vlb -= Gaussian(self.mf_mu_w, self.mf_Sigma_w).negentropy()
 
     @property
     def mf_expected_w(self):
         return self.mf_mu_w
+
+    @property
+    def mf_expected_wwT(self):
+        """
+        Compute expected w * w^T = Cov(W) + E[w]E[w^T]
+        """
+        return self.mf_Sigma_w + np.outer(self.mf_expected_w, self.mf_expected_w)
 
     def mf_predict(self, X):
         w = self.mf_expected_w
@@ -277,6 +301,16 @@ class SpikeAndSlabGaussianVectorSynapse(GaussianVectorSynapse):
     def mf_expected_w(self):
         return self.mf_mu_w * self.mf_rho
 
+    @property
+    def mf_expected_wwT(self):
+        """
+        E[ww^T] = E_{A}[ E_{W|A}[ww^T | A] ]
+                = rho * E[ww^T | A=1] + (1-rho) * 0
+        :return:
+        """
+        mumuT = np.outer(self.mf_mu_w, self.mf_mu_w)
+        return self.mf_rho * (self.mf_Sigma_w + mumuT)
+
     def meanfieldupdate(self, data, weights):
         # Update mean and variance of Gaussian weight vector
         super(SpikeAndSlabGaussianVectorSynapse, self).meanfieldupdate(data, weights)
@@ -291,6 +325,50 @@ class SpikeAndSlabGaussianVectorSynapse(GaussianVectorSynapse):
 
         self.mf_rho = logistic(mf_logit_rho)
 
+    def get_vlb(self):
+        """
+        VLB for A and W
+        :return:
+        """
+        vlb = 0
+
+        # Precompute expectations
+        # E_A            = self.network.mf_expected_p()
+        # E_notA         = 1.0 - E_A
+        # E_ln_rho       = self.network.mf_expected_log_p()
+        # E_ln_notrho    = self.network.mf_expected_log_notp()
+        E_A            = self.mf_rho
+        E_notA         = 1.0 - E_A
+        E_ln_rho       = np.log(self.rho)
+        E_ln_notrho    = np.log(1.0 - self.rho)
+
+
+        # E_mu           = self.network.expected_mu(self.n_pre, self.n_post)
+        # E_mumuT        = self.network.expected_mumuT(self.n_pre, self.n_post)
+        # E_Sigma_inv    = self.network.expected_Sigma_inv(self.n_pre, self.n_post)
+        # E_logdet_Sigma = self.network.expected_logdet_Sigma(self.n_pre, self.n_post)
+        E_W            = self.mf_expected_w
+        E_WWT          = self.mf_expected_wwT
+        E_mu           = self.mu_w
+        E_mumuT        = self.mu_w.dot(self.mu_w.T)
+        E_Sigma_inv    = np.linalg.inv(self.Sigma_w)
+        E_logdet_Sigma = np.linalg.slogdet(self.Sigma_w)[1]
+
+
+        # E[LN p(A | rho)]
+        vlb += Bernoulli().negentropy(E_x=E_A, E_notx=E_notA,
+                                      E_ln_p=E_ln_rho, E_ln_notp=E_ln_notrho).sum()
+
+        # E[LN p(W | A=1, mu, Sigma)
+        vlb += (E_A * Gaussian().negentropy(E_x=E_W, E_xxT=E_WWT,
+                                            E_mu=E_mu, E_mumuT=E_mumuT,
+                                            E_Sigma_inv=E_Sigma_inv, E_logdet_Sigma=E_logdet_Sigma))
+
+        # E[LN q(W | A=1, mu, Sigma)
+        vlb -= Bernoulli(self.mf_rho).negentropy()
+        vlb -= E_A * Gaussian(self.mf_mu_w, self.mf_Sigma_w).negentropy()
+
+        return vlb
 
 # TODO: Implement weighted, normalized synapses
 
