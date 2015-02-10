@@ -75,8 +75,20 @@ class InverseGamma(GibbsSampling, MeanField):
     def expected_log_eta(self):
         return np.log(self.mf_beta_0) - special.psi(self.mf_alpha_0)
 
-    def meanfieldupdate(self,data,weights):
-        raise NotImplementedError()
+    def meanfieldupdate(self, neuron):
+        # Get the expected sufficient statistics
+        # \hat{alpha} = \alpha + T
+        # import pdb; pdb.set_trace()
+        self.mf_alpha_0 = self.alpha_0
+        for d in neuron.data_list:
+            self.mf_alpha_0 += d.T / 2.0
+
+        self.mf_beta_0 = self.beta_0
+        for d in neuron.data_list:
+            self.mf_beta_0 += 0.5 * d.mf_expected_psisq().sum()
+            self.mf_beta_0 -= (d.mf_expected_psi() * neuron.mf_mean_activation(d.X)).sum()
+            self.mf_beta_0 += 0.5 * neuron.mf_expected_activation_sq(d.X).sum()
+
 
     def negentropy(self, E_ln_eta=None, E_eta_inv=None, alpha=None, E_beta=None, E_ln_beta=None):
         """

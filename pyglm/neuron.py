@@ -353,6 +353,7 @@ class _MeanFieldNeuron(_NeuronBase):
         for d in self.data_list:
             d.meanfield_update_psi()
 
+        self.noise_model.meanfieldupdate(self)
         self.meanfield_update_bias()
         self.meanfield_update_synapses()
 
