@@ -5,7 +5,7 @@ from pyglm.deps.pybasicbayes.abstractions import GibbsSampling, ModelGibbsSampli
 from pyglm.deps.pybasicbayes.distributions import GaussianFixedCov, GaussianFixed
 from pyglm.deps.pybasicbayes.util.stats import sample_discrete_from_log
 from pyglm.internals.distributions import InverseGamma
-from pyglm.internals.observations import AugmentedNegativeBinomialCounts, AugmentedBernoulliCounts
+from pyglm.internals.observations import NoisyAugmentedNegativeBinomialCounts, NoisyAugmentedBernoulliCounts
 from pyglm.internals.bias import GaussianBias
 from pyglm.synapses import GaussianVectorSynapse, SpikeAndSlabGaussianVectorSynapse
 
@@ -380,7 +380,7 @@ class _MeanFieldNeuron(_NeuronBase):
                             mu_other += syn_other.mf_predict(X)
 
                     # Use mean field activation to compute residuals
-                    residual = (d.mf_mu_psi - mu_other)[:,None]
+                    residual = (d.mf_expected_psi() - mu_other)[:,None]
                     residuals.append(residual)
 
                 X_pres = np.vstack(X_pres)
@@ -478,7 +478,7 @@ class BernoulliNeuron(_GibbsNeuron, _MeanFieldNeuron, _AugmentedDataMixin):
         for d in data:
             Xs = self._get_Xs(d)
             counts = self._get_S(d)[:,self.n]
-            self.data_list.append(self._augment_data(AugmentedBernoulliCounts, Xs, counts))
+            self.data_list.append(self._augment_data(NoisyAugmentedBernoulliCounts, Xs, counts))
 
     def sample_observations(self, psi):
         # Convert the psi's into the negative binomial rate parameter, p
@@ -530,7 +530,7 @@ class NegativeBinomialNeuron(_GibbsNeuron, _MeanFieldNeuron, _AugmentedDataMixin
         for d in data:
             Xs = self._get_Xs(d)
             counts = self._get_S(d)[:,self.n]
-            self.data_list.append(self._augment_data(AugmentedNegativeBinomialCounts, Xs, counts))
+            self.data_list.append(self._augment_data(NoisyAugmentedNegativeBinomialCounts, Xs, counts))
 
     def sample_observations(self, psi):
         # Convert the psi's into the negative binomial rate parameter, p

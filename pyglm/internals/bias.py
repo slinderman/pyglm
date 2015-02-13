@@ -104,7 +104,7 @@ class GaussianBias(GibbsSampling, MeanField):
                     mu += syn.mf_predict(X)
 
                 # Use mean field activation to compute residuals
-                residual = (d.mf_mu_psi - mu)[:,None]
+                residual = (d.mf_expected_psi() - mu)[:,None]
                 residuals.append(residual)
             residuals = np.vstack(residuals)
 

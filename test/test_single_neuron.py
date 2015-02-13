@@ -13,8 +13,8 @@ seed = np.random.randint(2**16)
 print "Setting random seed to ", seed
 np.random.seed(seed)
 
-def create_simple_population(N=1, dt=0.001, T=1000,
-                             alpha_0=100.0, beta_0=10.0,
+def create_simple_population(N=2, dt=0.001, T=1000,
+                             alpha_0=1.0, beta_0=1.0,
                              mu_bias=-3.0, sigma_bias=0.5**2,
                              mu_w=-0.5, sigma_w=0.5**2,
                              rho=0.5):
@@ -66,9 +66,9 @@ def test_meanfield_update_synapses():
     plt.figure()
     plt.plot(data.psi, '-b')
     plt.plot(np.nonzero(data.counts)[0], data.counts[data.counts>0], 'ko')
-    mf_psi = plt.plot(data.mf_mu_psi, '-r')
-    ln_sigma_psi1 = plt.plot(data.mf_mu_psi + 2*np.sqrt(data.mf_sigma_psi), ':r')
-    ln_sigma_psi2 = plt.plot(data.mf_mu_psi - 2*np.sqrt(data.mf_sigma_psi), ':r')
+    mf_psi = plt.plot(data.mf_expected_psi(), '-r')
+    ln_sigma_psi1 = plt.plot(data.mf_expected_psi() + 2*np.sqrt(data.mf_marginal_variance_psi()), ':r')
+    ln_sigma_psi2 = plt.plot(data.mf_expected_psi() - 2*np.sqrt(data.mf_marginal_variance_psi()), ':r')
     plt.show()
 
 
@@ -86,16 +86,15 @@ def test_meanfield_update_synapses():
 
     print "--" * 20
 
+    raw_input("Press enter to continue...")
 
-    # raw_input("Press enter to continue...")
-
-    N_iter = 1000
+    N_iter = 100
     vlbs   = np.zeros(N_iter)
     for itr in xrange(N_iter):
         vlbs[itr] = neuron.meanfield_coordinate_descent_step()
 
         print "Iteration: ", itr, "\tVLB: ", vlbs[itr]
-        # print "mf_rho: ", neuron.mf_rho
+        print "mf_rho: ", neuron.mf_rho
         # print "mf_mu:  ", neuron.mf_mu_w
         # print "mf_sig: ", neuron.mf_Sigma_w
         # print "mf_mu_b: ", neuron.bias_model.mf_mu_bias
@@ -103,11 +102,20 @@ def test_meanfield_update_synapses():
 
         print "--" * 20
 
-        mf_psi[0].set_data(np.arange(data.T), data.mf_mu_psi)
-        ln_sigma_psi1[0].set_data(np.arange(data.T), data.mf_mu_psi + 2 * np.sqrt(data.mf_sigma_psi))
-        ln_sigma_psi2[0].set_data(np.arange(data.T), data.mf_mu_psi - 2 * np.sqrt(data.mf_sigma_psi))
+        mu_psi = data.mf_expected_psi()
+        sig_psi = np.sqrt(data.mf_marginal_variance_psi())
+        mf_psi[0].set_data(np.arange(data.T), mu_psi)
+        ln_sigma_psi1[0].set_data(np.arange(data.T), mu_psi + 2*sig_psi)
+        ln_sigma_psi2[0].set_data(np.arange(data.T), mu_psi - 2*sig_psi)
 
         plt.pause(0.001)
+
+    plt.ioff()
+    plt.figure()
+    plt.plot(vlbs)
+    plt.xlabel("Iteration")
+    plt.ylabel("VLB")
+    plt.show()
 
 test_meanfield_update_synapses()
 

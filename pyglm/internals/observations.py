@@ -1,7 +1,9 @@
+import abc
+
 import numpy as np
 from scipy.special import gammaln
 
-from hips.distributions.polya_gamma import polya_gamma
+# from hips.distributions.polya_gamma import polya_gamma
 
 from pyglm.deps.pybasicbayes.abstractions import GibbsSampling, MeanField
 from pyglm.internals.distributions import ScalarGaussian
@@ -9,14 +11,15 @@ from pypolyagamma import pgdrawv, PyRNG
 
 from pyglm.utils.utils import logistic
 
-from hips.inference.log_sum_exp import log_sum_exp_sample
 
-class _PolyaGammaAugmentedCountsBase(GibbsSampling):
+class _PolyaGammaAugmentedCountsBase(GibbsSampling, MeanField):
     """
     Class to keep track of a set of counts and the corresponding Polya-gamma
     auxiliary variables associated with them.
     """
-    def __init__(self, X, counts, nbmodel):
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, X, counts, neuron):
         assert counts.ndim == 1
         self.counts = counts.astype(np.int32)
         self.T = counts.shape[0]
@@ -25,23 +28,15 @@ class _PolyaGammaAugmentedCountsBase(GibbsSampling):
         self.X = X
 
         # Keep this pointer to the model
-        self.model = nbmodel
+        self.neuron = neuron
 
         # Initialize auxiliary variables
-        sigma = self.model.eta
-        self.psi = self.model.mean_activation(X) + \
-                   np.sqrt(sigma) * np.random.randn(self.T)
-        #
         # self.omega = polya_gamma(np.ones(self.T),
         #                          self.psi.reshape(self.T),
         #                          200).reshape((self.T,))
         self.omega = np.ones(self.T)
         rng = PyRNG()
-        pgdrawv(np.ones(self.T, dtype=np.int32), self.psi, self.omega, rng)
-
-        # Initialize mean field activation
-        self.mf_mu_psi = np.copy(self.psi)
-        self.mf_sigma_psi = np.ones_like(self.mf_mu_psi)
+        pgdrawv(np.ones(self.T, dtype=np.int32), np.zeros(self.T), self.omega, rng)
 
     def log_likelihood(self, x):
         return 0
@@ -49,182 +44,239 @@ class _PolyaGammaAugmentedCountsBase(GibbsSampling):
     def rvs(self, size=[]):
         return None
 
-class AugmentedNegativeBinomialCounts(_PolyaGammaAugmentedCountsBase):
+    @abc.abstractproperty
+    def a(self):
+        """
+        The first parameter of the conditional Polya-gamma distribution
+        p(\omega | \psi, s) = PG(b, \psi)
+        """
+        raise NotImplementedError()
 
-    def resample(self, data=None, stats=None,
-                 do_resample_psi=True,
-                 do_resample_aux=True,
-                 do_resample_psi_from_prior=False):
+    @abc.abstractproperty
+    def b(self):
+        """
+        The exponent in the denominator of the logistic likelihood
+            exp(\psi)^a / (1+exp(\psi)^b
+        """
+        raise NotImplementedError()
+
+    @property
+    def kappa(self):
+        """
+        Compute kappa = b-a/2
+        :return:
+        """
+        return self.a - self.b/2.0
+
+    @property
+    def psi(self):
+        """
+        The second parameter of the conditional Polya-gamma distribution
+        p(\omega | \psi, s) = PG(b, \psi).
+        By default, this is the model's mean activation.
+        """
+        return self.neuron.mean_activation(self.X)
+
+    ### Gibbs Sampling
+    def resample(self, data=None, stats=None):
         """
         Resample omega given xi and psi, then resample psi given omega, X, w, and sigma
         """
-        xi = np.int32(self.model.xi)
-        mu = self.model.mean_activation(self.X)
-        sigma = self.model.eta
+        # Resample the auxiliary variables, omega, in Python
+        # self.omega = polya_gamma(self.conditional_b.reshape(self.T),
+        #                          self.psi.reshape(self.T),
+        #                          200).reshape((self.T,))
 
-        if do_resample_aux:
-            # Resample the auxiliary variables, omega, in Python
-            # self.omega = polya_gamma(self.counts.reshape(self.T)+xi,
-            #                          self.psi.reshape(self.T),
-            #                          200).reshape((self.T,))
+        # Create a PyPolyaGamma object and resample with the C code
+        # seed = np.random.randint(2**16)
+        # ppg = PyPolyaGamma(seed, self.model.trunc)
+        # ppg.draw_vec(self.conditional_b, self.psi, self.omega)
 
-            # Create a PyPolyaGamma object and resample with the C code
-            # seed = np.random.randint(2**16)
-            # ppg = PyPolyaGamma(seed, self.model.trunc)
-            # ppg.draw_vec(self.counts+xi, self.psi, self.omega)
+        # Resample with Jesse Windle's ported code
+        rng = PyRNG()
+        pgdrawv(self.b, self.psi, self.omega, rng)
 
-            # Resample with Jesse Windle's ported code
-            rng = PyRNG()
-            pgdrawv(self.counts+xi, self.psi, self.omega, rng)
-
-        # Resample the rates, psi given omega and the regression parameters
-        if do_resample_psi:
-            sig_post = 1.0 / (1.0/sigma + self.omega)
-            mu_post = sig_post * ((self.counts-xi)/2.0 + mu / sigma)
-            self.psi = mu_post + np.sqrt(sig_post) * np.random.normal(size=(self.T,))
-
-        # For Geweke testing, just resample psi from the forward model
-        elif do_resample_psi_from_prior:
-            mu_prior = self.model.mean_activation(self.X)
-            sigma_prior = self.model.eta
-            self.psi = mu_prior + np.sqrt(sigma_prior) * np.random.normal(size=(self.T,))
-
-    def geweke_resample_counts(self, trunc=100):
+    ### Mean Field
+    def meanfieldupdate(self,data,weights):
         """
-        Resample the counts given omega and psi.
-        Given omega, the distribution over y is no longer negative binomial.
-        Instead, it takes a pretty ugly form. We have,
-        log p(y | xi, psi, omega) = c + log Gamma(y+xi) - log y! - y + psi * (y-xi)/2
+        Nothing to do since we do not keep variational parameters for q(omega).
         """
-        xi = self.model.xi
-        ys = np.arange(trunc)[:,None]
-        lp = gammaln(ys+xi) - gammaln(ys+1) - ys + (ys-xi) / 2.0 * self.psi[None,:]
-        self.counts = log_sum_exp_sample(lp, axis=0)
-
-    def meanfield_update_psi(self):
-        """
-        Update psi and omega. We never explicitly instantiate q(omega),
-        but we can compute expectations with respect to it using Monte Carlo.
-        """
-        # Update psi given q(omega). Use Monte Carlo to approximate the expectation of
-        # omega over 100 samples of psi
-        ccounts = (self.counts + self.xi)/2.0
-        psis = self.mf_mu_psi[:,None] + \
-                 np.sqrt(self.mf_sigma_psi)[:,None] * np.random.randn(self.T, 100)
-        E_omega = ccounts * (np.tanh(psis/2.0) / (psis)).mean(axis=1)
-
-        # TODO: Use MF ETA
-        mf_eta = self.model.eta
-        self.mf_sigma_psi = 1.0/(E_omega + 1.0/mf_eta)
-        self.mf_mu_psi = self.mf_sigma_psi * (ccounts +
-                                              1.0/mf_eta * self.model.mf_mean_activation(self.X))
-
-
-# We can also do logistic regression as a special case!
-class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
-    def resample(self, data=None, stats=None,
-                 do_resample_psi=True,
-                 do_resample_psi_from_prior=False,
-                 do_resample_aux=True):
-        """
-        Resample omega given xi and psi, then resample psi given omega, X, w, and sigma
-        """
-        if do_resample_aux:
-            # Resample the auxiliary variables, omega, in Python
-            # self.omega = polya_gamma(np.ones(self.T),
-            #                          self.psi.reshape(self.T),
-            #                          200).reshape((self.T,))
-
-            # Resample with the C code
-            # Create a PyPolyaGamma object
-            # seed = np.random.randint(2**16)
-            # ppg = PyPolyaGamma(seed, self.model.trunc)
-            # ppg.draw_vec(np.ones(self.T, dtype=np.int32), self.psi, self.omega)
-
-            # Resample with Jesse Windle's code
-            rng = PyRNG()
-            pgdrawv(np.ones(self.T, dtype=np.int32), self.psi, self.omega, rng)
-
-        # Resample the rates, psi given omega and the regression parameters
-        if do_resample_psi:
-            mu_prior = self.model.mean_activation(self.X)
-            sigma_prior = self.model.eta
-
-            sig_post = 1.0 / (1.0/sigma_prior + self.omega)
-            mu_post = sig_post * (self.counts-0.5 + mu_prior / sigma_prior)
-            self.psi = mu_post + np.sqrt(sig_post) * np.random.normal(size=(self.T,))
-
-        # For Geweke testing, just resample psi from the forward model
-        elif do_resample_psi_from_prior:
-            mu_prior = self.model.mean_activation(self.X)
-            sigma_prior = self.model.eta
-            self.psi = mu_prior + np.sqrt(sigma_prior) * np.random.normal(size=(self.T,))
-
-    # def cond_omega(self):
-    #     """
-    #     Compute the conditional distribution of omega given the counts and psi
-    #     :return:
-    #     """
-    #     # TODO: Finish this for unit testing
-    #     return PolyaGamma(np.ones(self.T, dtype=np.int32), self.psi)
-
-    # def cond_psi(self):
-    #     """
-    #     Compute the conditional distribution of psi given the counts and omega
-    #     :return:
-    #     """
-    #     # TODO: Finish this for unit testing
-    #     mu_prior = self.model.mean_activation(self.X)
-    #     sigma_prior = self.model.eta
-    #
-    #     sig_post = 1.0 / (1.0/sigma_prior + self.omega)
-    #     mu_post = sig_post * (self.counts-0.5 + mu_prior / sigma_prior)
-    #     return DiagonalGaussian(mu_post, sig_post)
-
-    def geweke_resample_counts(self):
-        """
-        Resample the counts given omega and psi.
-        Given omega, the distribution over y is no longer negative binomial.
-        Instead, it takes a pretty ugly form. We have,
-        log p(y | xi, psi, omega) = c + log Gamma(y+xi) - log y! - y + psi * (y-xi)/2
-        """
-        ys = np.arange(2)[None,:]
-        psi = self.psi[:,None]
-        # omega = self.omega[:,None]
-        # lp = -np.log(2.0) + (ys-0.5) * psi - omega * psi**2 / 2.0
-        lp = (ys-0.5) * psi
-        for t in xrange(self.T):
-            self.counts[t] = log_sum_exp_sample(lp[t,:])
-
-
-    def rvs(self, size=[]):
-        p = np.exp(self.psi) / (1.0 + np.exp(self.psi))
-        return np.random.rand(*p.shape) < p
+        pass
 
     def mf_expected_psi(self):
-        return self.mf_mu_psi
+        """
+        The second parameter of the conditional Polya-gamma distribution
+        p(\omega | \psi, s) = PG(b, \psi).
+        By default, this is the model's mean activation under the mean field
+        approximation.
+        """
+        return self.neuron.mf_mean_activation(self.X)
+
+    def mf_covariance_psi(self):
+        """
+
+        """
+        return self.neuron.mf_covariance_activation(self.X)
+
+    def mf_sample_psis(self, N_psis=100):
+        """
+        Sample psis from variational distribution
+        """
+        # TODO "Have the neuron sample weights and compute psi"
+        psis = np.random.multivariate_normal(self.mf_expected_psi(),
+                                             self.mf_covariance_psi(),
+                                             size=N_psis)
+        return psis
+
+    def expected_omega(self):
+        """
+        Compute the expected value of omega given the expected value of psi
+        """
+        # We cannot assume E[\psi \psi^T] is diagonal!
+        psis = self.mf_sample_psis()
+        return self.b / 2.0 * (np.tanh(psis/2.0) / (psis)).mean(axis=1)
+
+    @abc.abstractmethod
+    def expected_log_likelihood(self,x):
+        """
+        Compute the expected log likelihood with expected parameters x
+        """
+        raise NotImplementedError()
+
+    def get_vlb(self):
+        # 1. E[ \ln p(s | \psi) ]
+        # Compute this with Monte Carlo integration over \psi
+        psis = self.mf_sample_psis()
+        ps = logistic(psis)
+        E_lnp = np.log(ps).mean(axis=1)
+        E_ln_notp = np.log(1-ps).mean(axis=1)
+
+        vlb = self.expected_log_likelihood((E_lnp, E_ln_notp)).sum()
+        return vlb
+
+
+class _NoisyPolyaGammaAugmentedCountsBase(_PolyaGammaAugmentedCountsBase):
+    """
+    We may want to allow for a noisy activation, psi. That is,
+        psi_{t,n} = Normal(\mu_{\psi_{t,n}, \eta^2).
+
+    To implement this, we just override psi here.
+    """
+    def __init__(self, X, counts, neuron):
+        # Call super class constructor
+        super(_NoisyPolyaGammaAugmentedCountsBase, self).__init__(X, counts, neuron)
+
+        # Initialize noisy activation
+        sigma = self.neuron.eta
+        self._psi = self.neuron.mean_activation(X) + \
+                    np.sqrt(sigma) * np.random.randn(self.T)
+
+        # Initialize mean field activation
+        self._mf_mu_psi = np.copy(self.psi)
+        self._mf_sigma_psi = np.ones_like(self._mf_mu_psi)
+
+    @property
+    def psi(self):
+        """
+        Override the base class since we keep our own psi
+        """
+        return self._psi
+
+    # @property
+    # def mean_psi(self):
+    #     return self.neuron.mean_activation(self.X)
+    #
+    # @property
+    # def eta(self):
+    #     return self.neuron.eta
+
+    @property
+    def mu_psi_prior(self):
+        return self.neuron.mean_activation(self.X)
+
+    @property
+    def sigmasq_psi_prior(self):
+        return self.neuron.eta
+
+    @property
+    def mu_psi_likelihood(self):
+        return self.kappa / self.omega
+
+    @property
+    def sigmasq_psi_likelihood(self):
+        return 1.0/self.omega
+
+    def log_likelihood(self, x):
+        return 0
+
+    def resample(self,data=[]):
+        super(_NoisyPolyaGammaAugmentedCountsBase, self).resample(data)
+
+        # also resample psi
+        self.resample_psi()
+
+    def resample_psi(self):
+
+        sigmasq_psi_post = 1.0 / (1.0/self.sigmasq_psi_prior + 1.0/self.sigmasq_psi_likelihood)
+        mu_psi_post      = sigmasq_psi_post * \
+                           (self.mu_psi_likelihood / self.sigmasq_psi_likelihood
+                            + self.mu_psi_prior / self.sigmasq_psi_prior)
+        self._psi = mu_psi_post + \
+                    np.sqrt(sigmasq_psi_post) * np.random.normal(size=(self.T,))
+
+    ### Mean Field
+    def mf_expected_psi(self):
+        """
+        The second parameter of the conditional Polya-gamma distribution
+        p(\omega | \psi, s) = PG(b, \psi).
+        By default, this is the model's mean activation under the mean field
+        approximation.
+        """
+        return self._mf_mu_psi
+
+    def mf_marginal_variance_psi(self):
+        return self._mf_sigma_psi
+
+    def mf_covariance_psi(self):
+        return np.diag(self._mf_sigma_psi)
 
     def mf_expected_psisq(self):
-        return self.mf_sigma_psi + self.mf_mu_psi**2
+        return self._mf_sigma_psi + self._mf_mu_psi**2
+
+    def mf_sample_psis(self, N_psis=100):
+        """
+        Sample psis from variational distribution
+        """
+        # We know the variational distributino over psi has diagonal covariance
+        psis = self._mf_mu_psi[:,None] \
+                + np.sqrt(self._mf_sigma_psi[:,None]) * np.random.randn(self.T, N_psis)
+
+        return psis
+
+    # def expected_omega(self):
+    #     """
+    #     Compute the expected value of omega given the expected value of psi
+    #     """
+    #     psis = self.mf_sample_psis()
+    #     return self.b / 2.0 * (np.tanh(psis/2.0) / (psis)).mean(axis=1)
+
+    def meanfieldupdate(self,data,weights):
+        super(_NoisyPolyaGammaAugmentedCountsBase, self).meanfieldupdate(data, weights)
+
+        self.meanfield_update_psi()
 
     def meanfield_update_psi(self):
         """
         Update psi and omega. We never explicitly instantiate q(omega),
         but we can compute expectations with respect to it using Monte Carlo.
         """
-        # Update psi given q(omega). Use Monte Carlo to approximate the expectation of
-        # omega over 100 samples of psi
-        ccounts = self.counts - 0.5
-        psis = self.mf_mu_psi[:,None] + \
-                 np.sqrt(self.mf_sigma_psi)[:,None] * np.random.randn(self.T, 100)
-        E_omega = (np.tanh(psis/2.0) / (2*psis)).mean(axis=1)
+        # Update psi given q(omega).
+        E_omega = self.expected_omega()
+        mf_mean_activation = self.neuron.mf_mean_activation(self.X)
+        E_eta_inv = self.neuron.noise_model.expected_eta_inv()
 
-        mf_mean_activation = self.model.mf_mean_activation(self.X)
-
-        E_eta_inv = self.model.noise_model.expected_eta_inv()
-        self.mf_sigma_psi = 1.0/(E_omega + E_eta_inv)
-        self.mf_mu_psi = self.mf_sigma_psi * (ccounts +
-                                              E_eta_inv * mf_mean_activation)
+        self._mf_sigma_psi = 1.0/(E_omega + E_eta_inv)
+        self._mf_mu_psi = self._mf_sigma_psi * (self.kappa + E_eta_inv * mf_mean_activation)
 
     def get_vlb(self):
         """
@@ -233,27 +285,18 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
         the generative model or to compute p(S, psi, ...) or q(S, psi).
         """
         vlb = 0
-        # 1. E[ \ln p(s | \psi) ]
-        # Compute this with Monte Carlo integration over \psi
-        N_mc = 100
-        psis = self.mf_mu_psi[:,None] + \
-                 np.sqrt(self.mf_sigma_psi)[:,None] * np.random.randn(self.T, N_mc)
-        ps = logistic(psis)
-        E_lnp = np.log(ps).mean(axis=1)
-        E_ln_notp = np.log(1-ps).mean(axis=1)
 
-        vlb += (self.counts * E_lnp + (1-self.counts) * E_ln_notp).sum()
+        vlb += super(_NoisyPolyaGammaAugmentedCountsBase, self).get_vlb()
 
-        # 2. E[\ln p(psi | mu, sigma) ]
         # Compute the expected log prob of psi under the variational approximation for
-        # the mean activation
-        # TODO: Compute expectations wrt variational distribution
+        # the mean activation:
+        # E[\ln p(psi | mu, sigma) ]
         E_psi         = self.mf_expected_psi()
         E_psisq       = self.mf_expected_psisq()
-        E_mu          = self.model.mf_mean_activation(self.X)
-        E_musq        = self.model.mf_expected_activation_sq(self.X)
-        E_eta_inv     = self.model.noise_model.expected_eta_inv()
-        E_ln_eta      = self.model.noise_model.expected_log_eta()
+        E_mu          = self.neuron.mf_mean_activation(self.X)
+        E_musq        = self.neuron.mf_expected_activation_sq(self.X)
+        E_eta_inv     = self.neuron.noise_model.expected_eta_inv()
+        E_ln_eta      = self.neuron.noise_model.expected_log_eta()
         vlb += ScalarGaussian().negentropy(E_x=E_psi, E_xsq=E_psisq,
                                            E_mu=E_mu, E_musq=E_musq,
                                            E_sigmasq_inv=E_eta_inv,
@@ -261,10 +304,99 @@ class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
 
         # 3. - E[ \ln q(psi) ]
         # This is the entropy of the Gaussian distribution over psi
-        vlb -= ScalarGaussian(self.mf_mu_psi, self.mf_sigma_psi).negentropy().sum()
+        vlb -= ScalarGaussian(self._mf_mu_psi, self._mf_sigma_psi).negentropy().sum()
 
         return vlb
 
+
+class AugmentedNegativeBinomialCounts(_PolyaGammaAugmentedCountsBase):
+    def __init__(self, X, counts, neuron, xi):
+        super(AugmentedNegativeBinomialCounts, self).__init__(X, counts, neuron)
+
+        assert xi > 0, "Xi must greater than 0 for negative binomial NB(xi, p)"
+        self.xi = xi
+
+    @property
+    def a(self):
+        return self.counts
+
+    @property
+    def b(self):
+        """
+        The first parameter of the conditional Polya-gamma distribution
+        p(\omega | \psi, s) = PG(b, \psi)
+        """
+        return self.counts + self.xi
+
+    def rvs(self, size=[]):
+        p = np.exp(self.psi) / (1.0 + np.exp(self.psi))
+        return np.random.rand(*p.shape) < p
+
+    def expected_log_likelihood(self,x):
+        """
+        Compute the expected log likelihood with expected parameters x
+        """
+        E_ln_p, E_ln_notp = x
+        return self.counts * E_ln_p + (1-self.counts) * E_ln_notp
+
+
+class NoisyAugmentedNegativeBinomialCounts(AugmentedNegativeBinomialCounts,
+                                           _NoisyPolyaGammaAugmentedCountsBase):
+    pass
+
+# We can also do logistic regression as a special case!
+class AugmentedBernoulliCounts(_PolyaGammaAugmentedCountsBase):
+    @property
+    def a(self):
+        return self.counts
+
+    @property
+    def b(self):
+        """
+        The first parameter of the conditional Polya-gamma distribution
+        p(\omega | \psi, s) = PG(b, \psi)
+        """
+        return np.ones_like(self.T)
+
+    def rvs(self, size=[]):
+        p = np.exp(self.psi) / (1.0 + np.exp(self.psi))
+        return np.random.rand(*p.shape) < p
+
+    def expected_log_likelihood(self,x):
+        """
+        Compute the expected log likelihood with expected parameters x
+        """
+        E_ln_p, E_ln_notp = x
+        return self.counts * E_ln_p + (1-self.counts) * E_ln_notp
+
+    # def mf_expected_psi(self):
+    #     return self.mf_mu_psi
+    #
+    # def mf_expected_psisq(self):
+    #     return self.mf_sigma_psi + self.mf_mu_psi**2
+    #
+    # def meanfield_update_psi(self):
+    #     """
+    #     Update psi and omega. We never explicitly instantiate q(omega),
+    #     but we can compute expectations with respect to it using Monte Carlo.
+    #     """
+    #     # Update psi given q(omega). Use Monte Carlo to approximate the expectation of
+    #     # omega over 100 samples of psi
+    #     ccounts = self.counts - 0.5
+    #     psis = self.mf_mu_psi[:,None] + \
+    #              np.sqrt(self.mf_sigma_psi)[:,None] * np.random.randn(self.T, 100)
+    #     E_omega = (np.tanh(psis/2.0) / (2*psis)).mean(axis=1)
+    #
+    #     mf_mean_activation = self.neuron.mf_mean_activation(self.X)
+    #
+    #     E_eta_inv = self.neuron.noise_model.expected_eta_inv()
+    #     self.mf_sigma_psi = 1.0/(E_omega + E_eta_inv)
+    #     self.mf_mu_psi = self.mf_sigma_psi * (ccounts +
+    #                                           E_eta_inv * mf_mean_activation)
+
+class NoisyAugmentedBernoulliCounts(AugmentedBernoulliCounts,
+                                    _NoisyPolyaGammaAugmentedCountsBase):
+    pass
 
 # Finally, support the standard Poisson observations, but to be
 # consistent with the NB and Bernoulli models we add a bit of
