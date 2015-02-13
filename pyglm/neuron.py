@@ -19,8 +19,7 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
     _synapse_class = GaussianVectorSynapse
 
     def __init__(self, n, population,
-                 n_iters_per_resample=1,
-                 alpha_0=3.0, beta_0=0.5):
+                 n_iters_per_resample=1):
         self.n = n
         self.population = population
         self.N = self.population.N
@@ -29,14 +28,14 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         # Keep a list of spike train data
         self.data_list = []
 
-        # Create the components of the neuron
-        # self.noise_model = GaussianFixedMean(mu=np.zeros(1,),
-        #                                  nu_0=1,
-        #                                  lmbda_0=1*np.eye(1))
-        self.noise_model = InverseGamma(alpha_0=alpha_0, beta_0=beta_0)
-
-        # TODO: Remove this debugging value
-        self.noise_model.sigma = 0.1
+        # # Create the components of the neuron
+        # # self.noise_model = GaussianFixedMean(mu=np.zeros(1,),
+        # #                                  nu_0=1,
+        # #                                  lmbda_0=1*np.eye(1))
+        # self.noise_model = InverseGamma(alpha_0=alpha_0, beta_0=beta_0)
+        #
+        # # TODO: Remove this debugging value
+        # self.noise_model.sigma = 0.1
         # self.noise_model  = GaussianFixed(mu=np.zeros(1,), sigma=0.1 * np.eye(1))
 
         # self.bias_model = GaussianFixedCov(mu_0=np.reshape(self.population.bias_prior.mu, (1,)),
@@ -51,7 +50,6 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
             self.synapse_models.append(
                 self._synapse_class(self,
                                     n_pre,
-                                    eta=self.eta * np.eye(1),
                                     ))
 
 
@@ -60,17 +58,17 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         self.B = self.population.B
         self.Ds = np.array([syn.D_in for syn in self.synapse_models])
 
-    @property
-    def eta(self):
-        return self.noise_model.sigma
-
-    @eta.setter
-    def eta(self, value):
-        self.noise_model.sigma = value
-
-        # self.bias_model.setsigma(self.noise_model.sigma * np.eye(1))
-        for syn in self.synapse_models:
-            syn.eta = self.noise_model.sigma * np.eye(1)
+    # @property
+    # def eta(self):
+    #     return self.noise_model.sigma
+    #
+    # @eta.setter
+    # def eta(self, value):
+    #     self.noise_model.sigma = value
+    #
+    #     # self.bias_model.setsigma(self.noise_model.sigma * np.eye(1))
+    #     for syn in self.synapse_models:
+    #         syn.eta = self.noise_model.sigma * np.eye(1)
 
     @property
     def bias(self):
@@ -100,11 +98,11 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
 
     @property
     def parameters(self):
-        return self.An, self.weights, self.eta, self.bias
+        return self.An, self.weights, self.bias
 
     @parameters.setter
     def parameters(self, value):
-        self.An, self.weights, self.eta, self.bias = value
+        self.An, self.weights, self.bias = value
 
     ## These must be implemented by base classes
     def mean(self, Xs):
@@ -128,6 +126,53 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
 
         return mu
 
+    def activation_lkhd_mean_dot_precision(self, ind):
+        """
+        Compute the mean of the residual likelihood times its precision
+
+        :param ind: If zero, calculate for bias
+                    If 1..N, calculate for synapse ind
+        :return:
+        """
+        mu_dot_prec = 0
+
+        if ind == 0:
+            for data in self.data_list:
+                other_activation = self.mean_activation(data.X) - self.bias
+                trm1 = data.kappa - other_activation * data.omega
+                mu_dot_prec += trm1.sum()
+        elif ind <= self.N:
+            syn = self.synapse_models[ind-1]
+            for data in self.data_list:
+                other_activation = self.mean_activation(data.X) - syn.predict(data.X[ind])
+                trm1 = data.kappa - other_activation * data.omega
+                Xn = self._get_Xs(data)[ind]
+                mu_dot_prec += trm1.dot(Xn)
+
+        return mu_dot_prec
+
+    def activation_lkhd_precision(self, ind):
+        """
+        Compute the covariance for the specified index
+
+        :param ind: If zero, calculate covariance for bias
+                    If 1..N, calculate covariance for synapse ind
+        :return:
+        """
+        cov = 0
+        if ind == 0:
+            # \Sigma_b = 1^T \Omega 1 = \sum_t \omega_t
+            for data in self.data_list:
+                cov += data.omega.sum()
+
+        elif ind <= self.N:
+            for data in self.data_list:
+                Xn = self._get_Xs(data)[ind]
+                # cov += Xn.T.dot(np.diag(data.omega)).dot(Xn)
+                cov += (Xn * data.omega[:,None]).T.dot(Xn)
+
+        return cov
+
     def _get_Xs(self,d):
         B, N = self.B, self.N
         return [d[:,idx:idx+B] for idx in range(0,N*B,B)]
@@ -149,7 +194,6 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
 
 
     def rvs(self, X=None, Xs=None, size=1, return_xy=False):
-        sigma = self.noise_model.sigma
         if X is None and Xs is None:
             T = size
             Xs = []
@@ -163,7 +207,9 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
             Ts = np.array([X.shape[0] for X in Xs])
             assert np.all(Ts == T)
 
-        psi = self.mean_activation(Xs) + np.sqrt(sigma) * np.random.normal(size=(T,))
+        # sigma = self.noise_model.sigma
+        # psi = self.mean_activation(Xs) + np.sqrt(sigma) * np.random.normal(size=(T,))
+        psi = self.mean_activation(Xs)
 
         # Sample the negative binomial. Note that the definition of p is
         # backward in the Numpy implementation
@@ -194,8 +240,7 @@ class _GibbsNeuron(_NeuronBase):
                        do_resample_psi_from_prior=False,
                        do_resample_aux=True,
                        do_resample_bias=True,
-                       do_resample_synapses=True,
-                       do_resample_sigma=True):
+                       do_resample_synapses=True):
 
         # import matplotlib.pyplot as plt
         for augmented_data in self.data_list:
@@ -203,11 +248,6 @@ class _GibbsNeuron(_NeuronBase):
             augmented_data.resample(do_resample_psi=do_resample_psi,
                                     do_resample_psi_from_prior=do_resample_psi_from_prior,
                                     do_resample_aux=do_resample_aux)
-
-
-        # d0 = self.data_list[0]
-        # plt.plot(d0.psi, label='psi')
-        # plt.plot(self.mean_activation(d0.X), label='act0')
 
         # Resample the bias model and the synapse models
         if do_resample_bias:
@@ -217,33 +257,6 @@ class _GibbsNeuron(_NeuronBase):
 
         if do_resample_synapses:
             self.resample_synapse_models()
-
-        # plt.plot(self.mean_activation(d0.X), '-m', label='act2')
-
-        # Resample the noise variance sigma
-        if do_resample_sigma:
-            self.resample_sigma()
-
-        # plt.legend()
-        # plt.show()
-
-    def resample_sigma(self):
-        """
-        Resample the noise variance phi.
-
-        :return:
-        """
-        # import pdb; pdb.set_trace()
-        residuals = []
-        for data in self.data_list:
-            residuals.append((data.psi - self.mean_activation(data.X))[:,None])
-
-        self.noise_model.resample(residuals)
-
-        # Update the synapse model covariances
-        self.bias_model.setsigma(self.noise_model.sigma * np.eye(1))
-        for syn in self.synapse_models:
-            syn.eta = self.noise_model.sigma * np.eye(1)
 
     def resample_bias(self):
         """
@@ -269,31 +282,33 @@ class _GibbsNeuron(_NeuronBase):
         Jointly resample the spike and slab indicator variables and synapse models
         :return:
         """
-        for n_pre in range(self.N):
-            syn = self.synapse_models[n_pre]
-
-            # Compute covariates and the predictions
-            if len(self.data_list) > 0:
-                Xs = []
-                residuals = []
-                for d in self.data_list:
-                    Xs.append(d.X[n_pre])
-                    residual = (d.psi - (self.mean_activation(d.X) - syn.predict(d.X[n_pre])))[:,None]
-                    residuals.append(residual)
-
-                Xs = np.vstack(Xs)
-                residuals = np.vstack(residuals)
-
-                X_and_residuals = np.hstack((Xs,residuals))
-                syn.resample(X_and_residuals)
+        # # TODO: Update to work with conditional mean, likelihood, and normalizer
+        # for n_pre in range(self.N):
+        #     syn = self.synapse_models[n_pre]
+        #
+        #     # Compute covariates and the predictions
+        #     if len(self.data_list) > 0:
+        #         Xs = []
+        #         residuals = []
+        #         for d in self.data_list:
+        #             Xs.append(d.X[n_pre])
+        #             residual = (d.psi - (self.mean_activation(d.X) - syn.predict(d.X[n_pre])))[:,None]
+        #             residuals.append(residual)
+        #
+        #         Xs = np.vstack(Xs)
+        #         residuals = np.vstack(residuals)
+        #
+        #         X_and_residuals = np.hstack((Xs,residuals))
+        #         syn.resample(X_and_residuals)
+        for n_pre in xrange(self.N):
+            self.synapse_models[n_pre].resample()
 
 
 class _MeanFieldNeuron(_NeuronBase):
 
     def __init__(self, n, population,
-                 n_iters_per_resample=1,
-                 alpha_0=3.0, beta_0=0.5):
-        super(_MeanFieldNeuron, self).__init__(n, population, n_iters_per_resample, alpha_0, beta_0)
+                 n_iters_per_resample=1):
+        super(_MeanFieldNeuron, self).__init__(n, population, n_iters_per_resample)
 
         # # The GaussianFixedCov doesn't have a meanfield update yet so we'll implement it here
         # self.mf_mu_bias = self.population.bias_prior.mu
@@ -353,7 +368,6 @@ class _MeanFieldNeuron(_NeuronBase):
         for d in self.data_list:
             d.meanfield_update_psi()
 
-        self.noise_model.meanfieldupdate(self)
         self.meanfield_update_bias()
         self.meanfield_update_synapses()
 
@@ -425,13 +439,125 @@ class _MeanFieldNeuron(_NeuronBase):
         for d in self.data_list:
             vlb += d.get_vlb()
 
-        vlb += self.noise_model.get_vlb()
-
         vlb += self.bias_model.get_vlb()
 
         for syn in self.synapse_models:
             vlb += syn.get_vlb()
 
+        return vlb
+
+
+class _NoisyActivationNeuron(_GibbsNeuron, _MeanFieldNeuron):
+    """
+    A neuron with a noisy activation, psi. We have,
+        \psi = b + \sum_n X W_n + N(0, \eta^2)
+    """
+    def __init__(self, n, population,
+                 n_iters_per_resample=1,
+                 alpha_0=3.0, beta_0=0.5):
+        super(_NoisyActivationNeuron, self).__init__(n, population, n_iters_per_resample)
+
+        self.noise_model = InverseGamma(alpha_0=alpha_0, beta_0=beta_0)
+
+        # TODO: Remove this debugging value
+        self.noise_model.sigma = 0.1
+
+    @property
+    def eta(self):
+        return self.noise_model.sigma
+
+    @eta.setter
+    def eta(self, value):
+        self.noise_model.sigma = value
+
+        # self.bias_model.setsigma(self.noise_model.sigma * np.eye(1))
+        for syn in self.synapse_models:
+            syn.eta = self.noise_model.sigma * np.eye(1)
+
+    ### Helper functions
+    def activation_lkhd_mean_dot_precision(self, ind):
+        """
+        Compute the dot product of the likelihood mean with the likelihood precision
+
+        :param ind: If zero, calculate for bias
+                    If 1..N, calculate for synapse ind
+        :return:
+        """
+        mu_dot_prec = 0
+
+        if ind == 0:
+            for data in self.data_list:
+                residual = data.psi - (self.mean_activation(data.X) - self.bias)
+                mu_dot_prec += residual.sum() / self.eta
+
+        elif ind <= self.N:
+            syn = self.synapse_models[ind-1]
+            for d in self.data_list:
+                residual = (d.psi - (self.mean_activation(d.X) - syn.predict(d.X[ind])))[:,None]
+                Xn = self._get_Xs(d)[ind]
+                mu_dot_prec += residual.dot(Xn) / self.eta
+
+        return mu_dot_prec
+
+    def activation_lkhd_precision(self, ind):
+        """
+        Compute the covariance for the specified index
+
+        :param ind: If zero, calculate covariance for bias
+                    If 1..N, calculate covariance for synapse ind
+        :return:
+        """
+        cov = 0
+        if ind == 0:
+            # \Sigma_b = 1^T \Omega 1 = \sum_t \omega_t
+            for data in self.data_list:
+                cov += data.T / self.eta
+
+        elif ind <= self.N:
+            for data in self.data_list:
+                Xn = self._get_Xs(data)[ind]
+                # cov += Xn.T.dot(np.diag(data.omega)).dot(Xn)
+                cov += Xn.T.dot(Xn) / self.eta
+
+        return cov
+
+    ### Gibbs Sampling
+    def resample(self,data=[]):
+        super(_NoisyActivationNeuron, self).resample(data)
+
+        # Also resample the noise
+        self.resample_sigma()
+
+    def resample_sigma(self):
+        """
+        Resample the noise variance phi.
+
+        :return:
+        """
+        # import pdb; pdb.set_trace()
+        residuals = []
+        for data in self.data_list:
+            residuals.append((data.psi - self.mean_activation(data.X))[:,None])
+
+        self.noise_model.resample(residuals)
+
+        # Update the synapse model covariances
+        # self.bias_model.setsigma(self.noise_model.sigma * np.eye(1))
+        for syn in self.synapse_models:
+            syn.eta = self.noise_model.sigma * np.eye(1)
+
+    ### Mean field
+    def meanfield_coordinate_descent_step(self):
+        super(_NoisyActivationNeuron, self).meanfield_coordinate_descent_step()
+
+        # Update the noise model
+        self.noise_model.meanfieldupdate(self)
+
+    def get_vlb(self):
+        vlb = super(_NoisyActivationNeuron, self).get_vlb()
+
+        # Get VLB from the noise model
+        vlb += self.noise_model.get_vlb()
         return vlb
 
 
@@ -441,7 +567,6 @@ class _SpikeAndSlabNeuron(_NeuronBase):
     to the rest of the population. The observation model (e.g. Bernoulli,
     Poisson, Negative Binomial) need not be specified.
     """
-
     _synapse_class = SpikeAndSlabGaussianVectorSynapse
 
 
@@ -463,10 +588,11 @@ class _AugmentedDataMixin:
         # Return an augmented counts object
         return observation_class(Xs, counts, self)
 
-class BernoulliNeuron(_GibbsNeuron, _MeanFieldNeuron, _AugmentedDataMixin):
+class BernoulliNeuron(_NoisyActivationNeuron, _AugmentedDataMixin):
 
     def __init__(self, n, population, n_iters_per_resample=1,
                  alpha_0=3.0, beta_0=0.5):
+        import pdb; pdb.set_trace()
         super(BernoulliNeuron, self).\
             __init__(n, population,
                      n_iters_per_resample=n_iters_per_resample,
@@ -513,7 +639,7 @@ class BernoulliSpikeAndSlabNeuron(BernoulliNeuron, _SpikeAndSlabNeuron):
     pass
 
 
-class NegativeBinomialNeuron(_GibbsNeuron, _MeanFieldNeuron, _AugmentedDataMixin):
+class NegativeBinomialNeuron(_NoisyActivationNeuron, _AugmentedDataMixin):
     def __init__(self, n, population, xi=10,
                  n_iters_per_resample=1,
                  alpha_0=3.0, beta_0=0.5):

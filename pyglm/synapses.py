@@ -10,12 +10,10 @@ from pyglm.utils.utils import logistic, logit
 class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
     def __init__(self,
                  neuron_model,
-                 n_pre,
-                 eta):
+                 n_pre):
 
         self.neuron_model = neuron_model
         self.n_pre = n_pre
-        self.eta = eta
         self.A = 1
         self.w = self.mu_w
 
@@ -60,28 +58,28 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
 
     ### getting statistics
 
-    def _get_statistics(self,data):
-        if isinstance(data,list):
-            return sum((self._get_statistics(d) for d in data),self._empty_statistics())
-        else:
-            data = data[~np.isnan(data).any(1)]
-            n, D = data.shape[0], self.D_out
-
-            statmat = data.T.dot(data)
-            xxT, yxT, yyT = statmat[:-D,:-D], statmat[-D:,:-D], statmat[-D:,-D:]
-
-            return np.array([yyT, yxT, xxT, n])
-
-    def _empty_statistics(self):
-        return np.array([np.zeros((self.D_out, self.D_out)),
-                         np.zeros((1,self.D_in)),
-                         np.zeros((self.D_in, self.D_in)),
-                         0])
+    # def _get_statistics(self,data):
+    #     if isinstance(data,list):
+    #         return sum((self._get_statistics(d) for d in data),self._empty_statistics())
+    #     else:
+    #         data = data[~np.isnan(data).any(1)]
+    #         n, D = data.shape[0], self.D_out
+    #
+    #         statmat = data.T.dot(data)
+    #         xxT, yxT, yyT = statmat[:-D,:-D], statmat[-D:,:-D], statmat[-D:,-D:]
+    #
+    #         return np.array([yyT, yxT, xxT, n])
+    #
+    # def _empty_statistics(self):
+    #     return np.array([np.zeros((self.D_out, self.D_out)),
+    #                      np.zeros((1,self.D_in)),
+    #                      np.zeros((self.D_in, self.D_in)),
+    #                      0])
 
     ### distribution
 
     def log_likelihood(self,xy):
-        w, eta, D = self.w, self.eta, self.D_out
+        w, eta, D = self.w, self.neuron_model.eta, self.D_out
         x, y = xy[:,:-D], xy[:,-D:]
         mu_y = x.dot(w.T)
 
@@ -91,30 +89,56 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
         return ll
 
     def rvs(self,x=None,size=1,return_xy=True):
-        w, eta = self.w, self.eta
+        w, eta = self.w, self.neuron_model.eta
         x = np.random.normal(size=(size,w.shape[1])) if x is None else x
         y = x.dot(w.T) + np.sqrt(eta) * np.random.normal(size=(x.shape[0],))
 
         return np.hstack((x,y[:,None])) if return_xy else y
 
     ### Gibbs sampling
-    def cond_w(self, data=[], stats=None):
-        ss = self._get_statistics(data) if stats is None else stats
-        yxT = ss[1]
-        xxT = ss[2]
+    # def cond_w(self, data=[], stats=None):
+    #     ss = self._get_statistics(data) if stats is None else stats
+    #     yxT = ss[1]
+    #     xxT = ss[2]
+    #
+    #     # Posterior mean of a Gaussian
+    #     Sigma_w_inv = np.linalg.inv(self.Sigma_w)
+    #     Sigma_w_post = np.linalg.inv(xxT / self.neuron_model.eta + Sigma_w_inv)
+    #     mu_w_post = ((yxT/self.neuron_model.eta + self.mu_w.dot(Sigma_w_inv)).dot(Sigma_w_post)).reshape((self.D_in,))
+    #     return GaussianFixed(mu_w_post, Sigma_w_post)
+    #
+    # def resample(self,data=[],stats=None):
+    #     self.A = 1
+    #     dist = self.cond_w(data=data, stats=stats)
+    #     w = dist.rvs()[0,:]
+    #     self.set_weights(w)
 
-        # Posterior mean of a Gaussian
-        Sigma_w_inv = np.linalg.inv(self.Sigma_w)
-        Sigma_w_post = np.linalg.inv(xxT / self.neuron_model.eta + Sigma_w_inv)
-        mu_w_post = ((yxT/self.neuron_model.eta + self.mu_w.dot(Sigma_w_inv)).dot(Sigma_w_post)).reshape((self.D_in,))
-        return GaussianFixed(mu_w_post, Sigma_w_post)
+    def _get_statistics(self):
+        # Compute the posterior parameters
+        lkhd_prec           = self.neuron_model.activation_lkhd_precision(self.n_pre + 1)
+        lkhd_mean_dot_prec  = self.neuron_model.activation_lkhd_mean_dot_precision(self.n_pre + 1)
 
-    def resample(self,data=[],stats=None):
-        self.A = 1
-        dist = self.cond_w(data=data, stats=stats)
-        w = dist.rvs()[0,:]
+        prior_prec          = np.linalg.inv(self.Sigma_w)
+        prior_mean_dot_prec = self.mu_w.dot(prior_prec)
+
+        post_prec           = prior_prec + lkhd_prec
+        post_cov            = np.linalg.inv(post_prec)
+        post_mu             = post_cov.dot(prior_mean_dot_prec + lkhd_mean_dot_prec)
+
+        return post_mu, post_cov, post_prec
+
+    def resample(self, stats=None):
+        """
+        Resample the bias given the weights and psi
+        :return:
+        """
+        if stats is None:
+            post_mu, post_cov, post_prec = self._get_statistics()
+        else:
+            post_mu, post_cov, post_prec = stats
+
+        w = np.random.multivariate_normal(post_mu, post_cov)
         self.set_weights(w)
-
 
     ### Prediction
     def predict(self, X):
@@ -148,7 +172,7 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
 
             from utils.utils import logdet_low_rank2, quad_form_diag_plus_lr2
             # Ainv = 1.0/np.asscalar(self.sigma) * np.eye(N)
-            d = np.asscalar(self.eta) * np.ones((N,))
+            d = np.asscalar(self.neuron_model.eta) * np.ones((N,))
             Ainv = 1.0/d
 
             # Sig_marg_inv = invert_low_rank(Ainv, X, self.Sigma_A, X.T, diag=True)
@@ -230,10 +254,9 @@ class SpikeAndSlabGaussianVectorSynapse(GaussianVectorSynapse):
     """
     def __init__(self,
                  neuron_model,
-                 n_pre,
-                 eta):
+                 n_pre):
         super(SpikeAndSlabGaussianVectorSynapse, self).\
-            __init__(neuron_model, n_pre, eta)
+            __init__(neuron_model, n_pre)
 
         # Initialize the mean field parameters
         self.mf_rho = self.rho
@@ -244,7 +267,40 @@ class SpikeAndSlabGaussianVectorSynapse(GaussianVectorSynapse):
     def rho(self):
         return self.neuron_model.population.network.rho[self.n_pre, self.neuron_model.n]
 
-    def resample(self, data=[]):
+    def resample(self, stats=None):
+        """
+        Resample the bias given the weights and psi
+        :return:
+        """
+        stats = self._get_statistics()
+        post_mu, post_cov, post_prec = stats
+        rho = self.rho
+
+        # Compute log Pr(A=0|...) and log Pr(A=1|...)
+        lp_A = np.zeros(2)
+        lp_A[0] = np.log(1.0-rho)
+        lp_A[1] = np.log(rho)
+
+        logdet_prior_cov = np.linalg.slogdet(self.Sigma_w)[1]
+        logdet_post_cov  = np.linalg.slogdet(post_cov)[1]
+        logit_rho_post   = logit(self.rho) \
+                           + self.D_in / 2.0 * (logdet_post_cov - logdet_prior_cov) \
+                           + 0.5 * post_mu.dot(post_prec).dot(post_mu) \
+                           - 0.5 * self.mu_w.dot(np.linalg.solve(self.Sigma_w, self.mu_w))
+
+        rho_post = logistic(logit_rho_post)
+
+        # Sample the spike variable
+        # self.As[m] = log_sum_exp_sample(lp_A)
+        self.A = np.random.rand() < rho_post
+
+        # Sample the slab variable
+        if self.A:
+            super(SpikeAndSlabGaussianVectorSynapse, self).resample(stats=stats)
+        else:
+            self.w = np.zeros(self.D_in)
+
+    def old_resample(self, data=[]):
         """
         Jointly resample the spike and slab indicator variables and synapse models
         :return:
@@ -259,7 +315,7 @@ class SpikeAndSlabGaussianVectorSynapse(GaussianVectorSynapse):
 
                 # Residuals are mean zero, variance sigma without a synapse
                 mu_0 = np.array([0])
-                Sigma_0 = self.eta*np.eye(1)
+                Sigma_0 = self.neuron_model.eta*np.eye(1)
                 lp_A[0] = np.log(1.0-rho) + GaussianFixed(mu_0, Sigma_0)\
                                                 .log_likelihood(y).sum()
 
@@ -319,7 +375,7 @@ class SpikeAndSlabGaussianVectorSynapse(GaussianVectorSynapse):
         logdet_Sigma_w = np.linalg.slogdet(self.Sigma_w)[1]
         logdet_mf_Sigma_w = np.linalg.slogdet(self.mf_Sigma_w)[1]
         mf_logit_rho = logit(self.rho) \
-                       + 0.5 * (logdet_mf_Sigma_w - logdet_Sigma_w) \
+                       + self.D_in / 2.0 * (logdet_mf_Sigma_w - logdet_Sigma_w) \
                        + 0.5 * self.mf_mu_w.dot(np.linalg.solve(self.mf_Sigma_w, self.mf_mu_w)) \
                        - 0.5 * self.mu_w.dot(np.linalg.solve(self.Sigma_w, self.mu_w))
 

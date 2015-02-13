@@ -61,25 +61,17 @@ class GaussianBias(GibbsSampling, MeanField):
         Resample the bias given the weights and psi
         :return:
         """
-        residuals = []
-        for data in self.neuron_model.data_list:
-            residuals.append(data.psi - (self.neuron_model.mean_activation(data.X) - self.bias))
+        # Compute the posterior parameters
+        lkhd_prec           = self.neuron_model.activation_lkhd_precision(0)
+        lkhd_mean_dot_prec  = self.neuron_model.activation_lkhd_mean_dot_precision(0)
 
-        if len(residuals) > 0:
-            residuals = np.concatenate(residuals)
+        prior_prec          = self.lambda_0
+        prior_mean_dot_prec = self.lambda_0 * self.mu_0
 
-            # Compute the parameters of the posterior distribution
-            mu_n, lambda_n = self._posterior_hypparams(*self._get_statistics(residuals[:,None]))
+        post_prec           = prior_prec + lkhd_prec
+        post_mu             = 1.0 / post_prec * (prior_mean_dot_prec + lkhd_mean_dot_prec)
 
-            # TODO: Special case this since we know D=1
-            # D = len(mu_n)
-            # L = np.linalg.cholesky(lambda_n)
-            # self.bias = scipy.linalg.solve_triangular(L,np.random.normal(size=D),lower=True) \
-            #             + mu_n
-            self.bias = np.random.normal(mu_n, 1.0/lambda_n)
-
-        else:
-            self.bias = np.random.normal(self.mu_0, self.sigmasq)
+        self.bias = post_mu + np.sqrt(1.0/post_prec) * np.random.randn()
 
     def expected_log_likelihood(self,x):
         # TODO

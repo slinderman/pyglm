@@ -13,7 +13,7 @@ seed = np.random.randint(2**16)
 print "Setting random seed to ", seed
 np.random.seed(seed)
 
-def create_simple_population(N=2, dt=0.001, T=1000,
+def create_simple_population(N=10, dt=0.001, T=1000,
                              alpha_0=1.0, beta_0=1.0,
                              mu_bias=-3.0, sigma_bias=0.5**2,
                              mu_w=-0.5, sigma_w=0.5**2,
@@ -57,7 +57,7 @@ def test_meanfield_update_synapses():
     """
     Test the mean field updates for synapses
     """
-    population = create_simple_population(N=2, T=10000)
+    population = create_simple_population(N=10, T=10000)
     neuron = population.neuron_models[0]
     synapse = neuron.synapse_models[0]
     data = neuron.data_list[0]
