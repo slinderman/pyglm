@@ -135,7 +135,6 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
                     If 1..N, calculate for synapse ind
         :return:
         """
-        # import pdb; pdb.set_trace()
         mu_dot_prec = 0
 
         if ind == 0:

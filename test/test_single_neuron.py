@@ -57,7 +57,7 @@ def test_meanfield_update_synapses():
     """
     Test the mean field updates for synapses
     """
-    population = create_simple_population(N=3, T=10000, rho=0.5)
+    population = create_simple_population(N=5, T=10000, rho=0.5)
     neuron = population.neuron_models[0]
     synapse = neuron.synapse_models[0]
     data = neuron.data_list[0]
