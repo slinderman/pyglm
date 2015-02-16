@@ -144,9 +144,9 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
         elif ind <= self.N:
             syn = self.synapse_models[ind-1]
             for data in self.data_list:
-                other_activation = self.mean_activation(data.X) - syn.predict(data.X[ind])
+                other_activation = self.mean_activation(data.X) - syn.predict(data.X[ind-1])
                 trm1 = data.kappa - other_activation * data.omega
-                Xn = self._get_Xs(data)[ind]
+                Xn = data.X[ind-1]
                 mu_dot_prec += trm1.dot(Xn)
 
         return mu_dot_prec
@@ -238,7 +238,6 @@ class _GibbsNeuron(_NeuronBase):
     def resample_model(self,
                        do_resample_psi=True,
                        do_resample_psi_from_prior=False,
-                       do_resample_aux=True,
                        do_resample_bias=True,
                        do_resample_synapses=True):
 
@@ -246,8 +245,7 @@ class _GibbsNeuron(_NeuronBase):
         for augmented_data in self.data_list:
             # Sample omega given the data and the psi's derived from A, sigma, and X
             augmented_data.resample(do_resample_psi=do_resample_psi,
-                                    do_resample_psi_from_prior=do_resample_psi_from_prior,
-                                    do_resample_aux=do_resample_aux)
+                                    do_resample_psi_from_prior=do_resample_psi_from_prior)
 
         # Resample the bias model and the synapse models
         if do_resample_bias:
@@ -460,7 +458,7 @@ class _NoisyActivationNeuron(_GibbsNeuron, _MeanFieldNeuron):
         self.noise_model = InverseGamma(alpha_0=alpha_0, beta_0=beta_0)
 
         # TODO: Remove this debugging value
-        self.noise_model.sigma = 0.1
+        self.noise_model.sigma = 1.0
 
     @property
     def eta(self):
@@ -493,9 +491,11 @@ class _NoisyActivationNeuron(_GibbsNeuron, _MeanFieldNeuron):
         elif ind <= self.N:
             syn = self.synapse_models[ind-1]
             for d in self.data_list:
-                residual = (d.psi - (self.mean_activation(d.X) - syn.predict(d.X[ind])))[:,None]
-                Xn = self._get_Xs(d)[ind]
-                mu_dot_prec += residual.dot(Xn) / self.eta
+                residual = (d.psi - (self.mean_activation(d.X) - syn.predict(d.X[ind-1])))[:,None]
+                Xn = d.X[ind-1]
+                mu_dot_prec += residual.T.dot(Xn) / self.eta
+
+                assert mu_dot_prec.shape[0] == 1
 
         return mu_dot_prec
 
@@ -515,7 +515,7 @@ class _NoisyActivationNeuron(_GibbsNeuron, _MeanFieldNeuron):
 
         elif ind <= self.N:
             for data in self.data_list:
-                Xn = self._get_Xs(data)[ind]
+                Xn = data.X[ind-1]
                 # cov += Xn.T.dot(np.diag(data.omega)).dot(Xn)
                 cov += Xn.T.dot(Xn) / self.eta
 
@@ -592,7 +592,6 @@ class BernoulliNeuron(_NoisyActivationNeuron, _AugmentedDataMixin):
 
     def __init__(self, n, population, n_iters_per_resample=1,
                  alpha_0=3.0, beta_0=0.5):
-        import pdb; pdb.set_trace()
         super(BernoulliNeuron, self).\
             __init__(n, population,
                      n_iters_per_resample=n_iters_per_resample,

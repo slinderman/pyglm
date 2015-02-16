@@ -26,7 +26,7 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
         self.cache = None
 
         assert self.mu_w.ndim == 1
-        self.resample() # initialize from prior
+        self.resample(prior=True) # initialize from prior
 
     @property
     def weights_prior(self):
@@ -113,27 +113,34 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
     #     w = dist.rvs()[0,:]
     #     self.set_weights(w)
 
-    def _get_statistics(self):
-        # Compute the posterior parameters
-        lkhd_prec           = self.neuron_model.activation_lkhd_precision(self.n_pre + 1)
-        lkhd_mean_dot_prec  = self.neuron_model.activation_lkhd_mean_dot_precision(self.n_pre + 1)
+    def _get_statistics(self, prior=False):
 
         prior_prec          = np.linalg.inv(self.Sigma_w)
         prior_mean_dot_prec = self.mu_w.dot(prior_prec)
 
-        post_prec           = prior_prec + lkhd_prec
-        post_cov            = np.linalg.inv(post_prec)
-        post_mu             = post_cov.dot(prior_mean_dot_prec + lkhd_mean_dot_prec)
+        if prior:
+            post_prec = prior_prec
+            post_cov  = np.linalg.inv(post_prec)
+            post_mu   = post_cov.dot(prior_mean_dot_prec)
+        else:
+            # Compute the posterior parameters
+            lkhd_prec           = self.neuron_model.activation_lkhd_precision(self.n_pre + 1)
+            lkhd_mean_dot_prec  = self.neuron_model.activation_lkhd_mean_dot_precision(self.n_pre + 1)
+
+            post_prec           = prior_prec + lkhd_prec
+            post_cov            = np.linalg.inv(post_prec)
+            post_mu             = (prior_mean_dot_prec + lkhd_mean_dot_prec).dot(post_cov)
+            post_mu             = post_mu.ravel()
 
         return post_mu, post_cov, post_prec
 
-    def resample(self, stats=None):
+    def resample(self, prior=False, stats=None):
         """
         Resample the bias given the weights and psi
         :return:
         """
         if stats is None:
-            post_mu, post_cov, post_prec = self._get_statistics()
+            post_mu, post_cov, post_prec = self._get_statistics(prior)
         else:
             post_mu, post_cov, post_prec = stats
 
@@ -261,18 +268,18 @@ class SpikeAndSlabGaussianVectorSynapse(GaussianVectorSynapse):
         # Initialize the mean field parameters
         self.mf_rho = self.rho
 
-        self.resample()
+        self.resample(prior=True)
 
     @property
     def rho(self):
         return self.neuron_model.population.network.rho[self.n_pre, self.neuron_model.n]
 
-    def resample(self, stats=None):
+    def resample(self, prior=False, stats=None):
         """
         Resample the bias given the weights and psi
         :return:
         """
-        stats = self._get_statistics()
+        stats = self._get_statistics(prior=prior)
         post_mu, post_cov, post_prec = stats
         rho = self.rho
 

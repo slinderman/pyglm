@@ -94,7 +94,7 @@ class _PolyaGammaAugmentedCountsBase(GibbsSampling, MeanField):
 
         # Resample with Jesse Windle's ported code
         rng = PyRNG()
-        pgdrawv(self.b, self.psi, self.omega, rng)
+        pgdrawv(self.b *np.ones(self.T, dtype=np.int32), self.psi, self.omega, rng)
 
     ### Mean Field
     def meanfieldupdate(self,data,weights):
@@ -209,11 +209,16 @@ class _NoisyPolyaGammaAugmentedCountsBase(_PolyaGammaAugmentedCountsBase):
     def log_likelihood(self, x):
         return 0
 
-    def resample(self,data=[]):
+    def resample(self,data=[], do_resample_psi=True,
+                 do_resample_psi_from_prior=False):
         super(_NoisyPolyaGammaAugmentedCountsBase, self).resample(data)
 
         # also resample psi
-        self.resample_psi()
+        if do_resample_psi:
+            self.resample_psi()
+
+        if do_resample_psi_from_prior:
+            self.resample_psi_from_prior()
 
     def resample_psi(self):
 
@@ -221,6 +226,13 @@ class _NoisyPolyaGammaAugmentedCountsBase(_PolyaGammaAugmentedCountsBase):
         mu_psi_post      = sigmasq_psi_post * \
                            (self.mu_psi_likelihood / self.sigmasq_psi_likelihood
                             + self.mu_psi_prior / self.sigmasq_psi_prior)
+        self._psi = mu_psi_post + \
+                    np.sqrt(sigmasq_psi_post) * np.random.normal(size=(self.T,))
+
+    def resample_psi_from_prior(self):
+
+        sigmasq_psi_post = self.sigmasq_psi_prior
+        mu_psi_post      = self.mu_psi_prior
         self._psi = mu_psi_post + \
                     np.sqrt(sigmasq_psi_post) * np.random.normal(size=(self.T,))
 

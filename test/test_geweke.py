@@ -138,7 +138,7 @@ def test_bias_geweke(N_samples=100000, thin=1):
     plt.plot(bincenters, bias_dist.pdf(bincenters), 'r--', linewidth=1)
     plt.show()
 
-def test_weights_geweke(N_samples=100000, thin=1):
+def test_weights_geweke(N_samples=200000, thin=1):
     mu_w = 0.0
     sigma_w = 0.5**2
     rho = 0.5
@@ -157,22 +157,24 @@ def test_weights_geweke(N_samples=100000, thin=1):
                                       do_resample_sigma=False,
                                       do_resample_synapses=True,
                                       do_resample_psi=False,
-                                      do_resample_psi_from_prior=True,
-                                      do_resample_aux=False)
+                                      do_resample_psi_from_prior=True)
 
         # Collect samples
         A_samples.append(population.A.copy())
         w_samples.append(population.weights.copy())
 
     # Convert samples to arrays
-    w_samples = np.array(w_samples)
+    assert population.N == 1
+    A_samples = np.array(A_samples).ravel()
+    A_mean = A_samples.mean(0)
+    print "Mean A: \n", A_mean
+
+    # Get the samples where A is nonzero
+    w_samples = np.array(w_samples)[A_samples > 0, ...]
     w_mean = w_samples.mean(0)
     w_std = w_samples.std(0)
     print "Mean w: \n", w_mean, " +- ", w_std
 
-    A_samples = np.array(A_samples)
-    A_mean = A_samples.mean(0)
-    print "Mean A: \n", A_mean
 
     # Make Q-Q plots
     fig = plt.figure()
@@ -288,7 +290,7 @@ def test_polya_gamma_geweke(N_samples=10000, thin=1, T=1):
 
 
 # test_bias_geweke()
-test_weights_geweke(N_samples=10000)
+test_weights_geweke(N_samples=100000)
 # test_sigma_geweke(N_samples=100000)
 # test_polya_gamma_geweke()
 

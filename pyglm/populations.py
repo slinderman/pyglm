@@ -244,8 +244,7 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
                        do_resample_sigma=True,
                        do_resample_synapses=True,
                        do_resample_psi=True,
-                       do_resample_psi_from_prior=False,
-                       do_resample_aux=True):
+                       do_resample_psi_from_prior=False):
         """
         Resample the parameter of the model.
 
@@ -258,11 +257,9 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
         # Resample the spike train models
         for n,neuron in enumerate(self.neuron_models):
             neuron.resample_model(do_resample_bias=do_resample_bias,
-                                  do_resample_sigma=do_resample_sigma,
                                   do_resample_synapses=do_resample_synapses,
                                   do_resample_psi=do_resample_psi,
-                                  do_resample_psi_from_prior=do_resample_psi_from_prior,
-                                  do_resample_aux=do_resample_aux)
+                                  do_resample_psi_from_prior=do_resample_psi_from_prior)
 
         # Resample the network parameters with the given weights
         if do_resample_network:

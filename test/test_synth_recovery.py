@@ -50,7 +50,7 @@ def create_simple_population(N=1, B=1,
 
     return population
 
-def test_synth_recovery(N=10, T=10000, N_samples=1000):
+def test_synth_recovery(N=2, T=10000, N_samples=1000):
     # Create two populations
     true_population = create_simple_population(N=N)
     test_population = create_simple_population(N=N)

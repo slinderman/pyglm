@@ -117,5 +117,61 @@ def test_meanfield_update_synapses():
     plt.ylabel("VLB")
     plt.show()
 
-test_meanfield_update_synapses()
+
+def test_gibbs_update_synapses():
+    """
+    Test the mean field updates for synapses
+    """
+    population = create_simple_population(N=5, T=10000)
+    neuron = population.neuron_models[0]
+    synapse = neuron.synapse_models[0]
+    data = neuron.data_list[0]
+
+    plt.ion()
+    plt.figure()
+    plt.plot(data.psi, '-b')
+    plt.plot(np.nonzero(data.counts)[0], data.counts[data.counts>0], 'ko')
+    psi = plt.plot(data.psi, '-r')
+    plt.show()
+
+
+    A_true = neuron.An.copy()
+    print "A_true: ", neuron.An
+    print "W_true: ", neuron.weights
+    print "b_true: ", neuron.bias
+
+    # Initialize to a random connections
+    neuron.An = np.random.rand(5) < 0.5
+
+    print "--" * 20
+
+    raw_input("Press enter to continue...")
+
+    N_iter = 100
+    lls    = []
+    Ans    = []
+    for itr in xrange(N_iter):
+        neuron.resample_model()
+        print "Iteration: ", itr
+        print "A: ", neuron.An
+
+        Ans.append(neuron.An.copy())
+        # print "mf_mu:  ", neuron.mf_mu_w
+        # print "mf_sig: ", neuron.mf_Sigma_w
+        # print "mf_mu_b: ", neuron.bias_model.mf_mu_bias
+        # print "mf_sigma_b: ", neuron.bias_model.mf_sigma_bias
+
+        print "--" * 20
+
+        psi[0].set_data(np.arange(data.T), data.psi)
+        plt.pause(0.001)
+
+    plt.ioff()
+
+    Ans = np.array(Ans)
+    print "A_true:\t ", A_true
+    print "A_mean:\t ", Ans.mean(0)
+
+# test_meanfield_update_synapses()
+test_gibbs_update_synapses()
 
