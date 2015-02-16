@@ -366,9 +366,78 @@ class _MeanFieldNeuron(_NeuronBase):
 
         return musq
 
+    def mf_sample_activation(self, Xs, N_samples=1):
+        """
+        Sample an activation
+        :param Xs:
+        :return:
+        """
+        psis = np.zeros((Xs[0].shape[0], N_samples))
+        for smpl in xrange(N_samples):
+            # Resample from the mean field distribution
+            self.bias_model.resample_from_mf()
+            for syn in self.synapse_models:
+                syn.resample_from_mf()
+
+            # Compute psi under this sample
+            psis[:,smpl] = self.mean_activation(Xs)
+        return psis
+
+    def mf_activation_lkhd_mean_dot_precision(self, ind):
+        """
+        Compute the mean of the residual likelihood times its precision
+
+        :param ind: If zero, calculate for bias
+                    If 1..N, calculate for synapse ind
+        :return:
+        """
+        # import pdb; pdb.set_trace()
+        mu_dot_prec = 0
+
+        if ind == 0:
+            for data in self.data_list:
+                other_activation = self.mf_mean_activation(data.X) - self.bias_model.mf_mu_bias
+                trm1 = data.kappa - other_activation * data.expected_omega()
+                mu_dot_prec += trm1.sum()
+        elif ind <= self.N:
+            syn = self.synapse_models[ind-1]
+            for data in self.data_list:
+                other_activation = self.mf_mean_activation(data.X) - syn.mf_predict(data.X[ind-1])
+                trm1 = data.kappa - other_activation * data.expected_omega()
+                Xn = data.X[ind-1]
+                mu_dot_prec += trm1.dot(Xn)
+
+        return mu_dot_prec
+
+    def mf_activation_lkhd_precision(self, ind):
+        """
+        Compute the covariance for the specified index
+
+        :param ind: If zero, calculate covariance for bias
+                    If 1..N, calculate covariance for synapse ind
+        :return:
+        """
+        # import pdb; pdb.set_trace()
+
+        cov = 0
+        if ind == 0:
+            # \Sigma_b = 1^T \Omega 1 = \sum_t \omega_t
+            for data in self.data_list:
+                cov += data.expected_omega().sum()
+
+        elif ind <= self.N:
+            for data in self.data_list:
+                Xn = data.X[ind-1]
+                # cov += Xn.T.dot(np.diag(data.omega)).dot(Xn)
+                cov += (Xn * data.expected_omega()[:,None]).T.dot(Xn)
+
+        return cov
+
+
     def meanfield_coordinate_descent_step(self):
+        # import pdb; pdb.set_trace()
         for d in self.data_list:
-            d.meanfield_update_psi()
+            d.meanfieldupdate()
 
         self.meanfield_update_bias()
         self.meanfield_update_synapses()
@@ -382,29 +451,30 @@ class _MeanFieldNeuron(_NeuronBase):
         """
         for n_pre in range(self.N):
             syn = self.synapse_models[n_pre]
+            syn.meanfieldupdate()
 
-            # Compute covariates and the predictions
-            if len(self.data_list) > 0:
-                X_pres = []
-                residuals = []
-                for d in self.data_list:
-                    X_pres.append(d.X[n_pre])
-
-                    mu_other = self.bias_model.mf_mu_bias * np.ones_like(d.psi)
-                    for n_other,X,syn_other in zip(np.arange(self.N), d.X, self.synapse_models):
-                        if n_other != n_pre:
-                            mu_other += syn_other.mf_predict(X)
-
-                    # Use mean field activation to compute residuals
-                    residual = (d.mf_expected_psi() - mu_other)[:,None]
-                    residuals.append(residual)
-
-                X_pres = np.vstack(X_pres)
-                residuals = np.vstack(residuals)
-                X_and_residuals = np.hstack((X_pres,residuals))
-
-                # Call the synapse's mean field update
-                syn.meanfieldupdate(X_and_residuals, None)
+            # # Compute covariates and the predictions
+            # if len(self.data_list) > 0:
+            #     X_pres = []
+            #     residuals = []
+            #     for d in self.data_list:
+            #         X_pres.append(d.X[n_pre])
+            #
+            #         mu_other = self.bias_model.mf_mu_bias * np.ones_like(d.psi)
+            #         for n_other,X,syn_other in zip(np.arange(self.N), d.X, self.synapse_models):
+            #             if n_other != n_pre:
+            #                 mu_other += syn_other.mf_predict(X)
+            #
+            #         # Use mean field activation to compute residuals
+            #         residual = (d.mf_expected_psi() - mu_other)[:,None]
+            #         residuals.append(residual)
+            #
+            #     X_pres = np.vstack(X_pres)
+            #     residuals = np.vstack(residuals)
+            #     X_and_residuals = np.hstack((X_pres,residuals))
+            #
+            #     # Call the synapse's mean field update
+            #     syn.meanfieldupdate(X_and_residuals, None)
 
     def meanfield_update_bias(self):
         """
@@ -522,6 +592,54 @@ class _NoisyActivationNeuron(_GibbsNeuron, _MeanFieldNeuron):
                 Xn = data.X[ind-1]
                 # cov += Xn.T.dot(np.diag(data.omega)).dot(Xn)
                 cov += Xn.T.dot(Xn) / self.eta
+
+        return cov
+
+    def mf_activation_lkhd_mean_dot_precision(self, ind):
+        """
+        Compute the dot product of the likelihood mean with the likelihood precision
+
+        :param ind: If zero, calculate for bias
+                    If 1..N, calculate for synapse ind
+        :return:
+        """
+        mu_dot_prec = 0
+
+        if ind == 0:
+            for data in self.data_list:
+                residual = data.mf_expected_psi() - (self.mf_mean_activation(data.X) - self.bias_model.mf_mu_bias)
+                mu_dot_prec += residual.sum() * self.noise_model.expected_eta_inv()
+
+        elif ind <= self.N:
+            syn = self.synapse_models[ind-1]
+            for d in self.data_list:
+                residual = (d.mf_expected_psi() - (self.mf_mean_activation(d.X) - syn.mf_predict(d.X[ind-1])))[:,None]
+                Xn = d.X[ind-1]
+                mu_dot_prec += residual.T.dot(Xn) * self.noise_model.expected_eta_inv()
+
+                assert mu_dot_prec.shape[0] == 1
+
+        return mu_dot_prec
+
+    def mf_activation_lkhd_precision(self, ind):
+        """
+        Compute the covariance for the specified index
+
+        :param ind: If zero, calculate covariance for bias
+                    If 1..N, calculate covariance for synapse ind
+        :return:
+        """
+        cov = 0
+        if ind == 0:
+            # \Sigma_b = 1^T \Omega 1 = \sum_t \omega_t
+            for data in self.data_list:
+                cov += data.T * self.noise_model.expected_eta_inv()
+
+        elif ind <= self.N:
+            for data in self.data_list:
+                Xn = data.X[ind-1]
+                # cov += Xn.T.dot(np.diag(data.omega)).dot(Xn)
+                cov += Xn.T.dot(Xn) * self.noise_model.expected_eta_inv()
 
         return cov
 

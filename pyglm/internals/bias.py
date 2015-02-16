@@ -89,26 +89,39 @@ class GaussianBias(GibbsSampling, MeanField):
         Update the variational parameters for the bias
         """
         if len(self.neuron_model.data_list) > 0:
-            residuals = []
-            for d in self.neuron_model.data_list:
-                mu = np.zeros_like(d.psi)
-                for X,syn in zip(d.X, self.neuron_model.synapse_models):
-                    mu += syn.mf_predict(X)
+            # residuals = []
+            # for d in self.neuron_model.data_list:
+            #     mu = np.zeros_like(d.psi)
+            #     for X,syn in zip(d.X, self.neuron_model.synapse_models):
+            #         mu += syn.mf_predict(X)
+            #
+            #     # Use mean field activation to compute residuals
+            #     residual = (d.mf_expected_psi() - mu)[:,None]
+            #     residuals.append(residual)
+            # residuals = np.vstack(residuals)
+            #
+            # # TODO: USE MF ETA to compute residual
+            # T = residuals.shape[0]
+            # E_eta_inv = self.neuron_model.noise_model.expected_eta_inv()
+            # self.mf_sigma_bias = 1.0/(T * E_eta_inv + 1.0/self.sigmasq)
+            # self.mf_mu_bias = self.mf_sigma_bias * (residuals.sum() * E_eta_inv +
+            #                                         self.mu_0/self.sigmasq)
+            #
+            # self.mf_sigma_bias = self.mf_sigma_bias
+            # self.mf_mu_bias = self.mf_mu_bias
 
-                # Use mean field activation to compute residuals
-                residual = (d.mf_expected_psi() - mu)[:,None]
-                residuals.append(residual)
-            residuals = np.vstack(residuals)
+            # Compute the expected  posterior parameters
+            mf_lkhd_prec           = self.neuron_model.mf_activation_lkhd_precision(0)
+            mf_lkhd_mean_dot_prec  = self.neuron_model.mf_activation_lkhd_mean_dot_precision(0)
 
-            # TODO: USE MF ETA to compute residual
-            T = residuals.shape[0]
-            E_eta_inv = self.neuron_model.noise_model.expected_eta_inv()
-            self.mf_sigma_bias = 1.0/(T * E_eta_inv + 1.0/self.sigmasq)
-            self.mf_mu_bias = self.mf_sigma_bias * (residuals.sum() * E_eta_inv +
-                                                    self.mu_0/self.sigmasq)
+            mf_prior_prec          = self.lambda_0
+            mf_prior_mean_dot_prec = self.lambda_0 * self.mu_0
 
-            self.mf_sigma_bias = self.mf_sigma_bias
-            self.mf_mu_bias = self.mf_mu_bias
+            mf_post_prec           = mf_prior_prec + mf_lkhd_prec
+            mf_post_mu             = 1.0 / mf_post_prec * (mf_prior_mean_dot_prec + mf_lkhd_mean_dot_prec)
+
+            self.mf_sigma_bias     = 1.0 / mf_post_prec
+            self.mf_mu_bias        = mf_post_mu
 
         else:
             self.mf_sigma_bias = self.sigmasq
@@ -136,3 +149,6 @@ class GaussianBias(GibbsSampling, MeanField):
         vlb -= ScalarGaussian(self.mf_mu_bias, self.mf_sigma_bias).negentropy().sum()
 
         return vlb
+
+    def resample_from_mf(self):
+        self.bias = self.mf_mu_bias + np.sqrt(self.mf_sigma_bias) * np.random.randn()

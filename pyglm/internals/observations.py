@@ -97,11 +97,12 @@ class _PolyaGammaAugmentedCountsBase(GibbsSampling, MeanField):
         pgdrawv(self.b *np.ones(self.T, dtype=np.int32), self.psi, self.omega, rng)
 
     ### Mean Field
-    def meanfieldupdate(self,data,weights):
+    def meanfieldupdate(self):
         """
         Nothing to do since we do not keep variational parameters for q(omega).
         """
-        pass
+        psis = self.mf_sample_psis()
+        self._expected_omega = self.b / 2.0 * (np.tanh(psis/2.0) / (psis)).mean(axis=1)
 
     def mf_expected_psi(self):
         """
@@ -123,9 +124,10 @@ class _PolyaGammaAugmentedCountsBase(GibbsSampling, MeanField):
         Sample psis from variational distribution
         """
         # TODO "Have the neuron sample weights and compute psi"
-        psis = np.random.multivariate_normal(self.mf_expected_psi(),
-                                             self.mf_covariance_psi(),
-                                             size=N_psis)
+        # psis = np.random.multivariate_normal(self.mf_expected_psi(),
+        #                                      self.mf_covariance_psi(),
+        #                                      size=N_psis)
+        psis = self.neuron.mf_sample_activation(self.X, N_samples=N_psis)
         return psis
 
     def expected_omega(self):
@@ -133,8 +135,9 @@ class _PolyaGammaAugmentedCountsBase(GibbsSampling, MeanField):
         Compute the expected value of omega given the expected value of psi
         """
         # We cannot assume E[\psi \psi^T] is diagonal!
-        psis = self.mf_sample_psis()
-        return self.b / 2.0 * (np.tanh(psis/2.0) / (psis)).mean(axis=1)
+        # psis = self.mf_sample_psis()
+        # return self.b / 2.0 * (np.tanh(psis/2.0) / (psis)).mean(axis=1)
+        return self._expected_omega
 
     @abc.abstractmethod
     def expected_log_likelihood(self,x):
@@ -152,6 +155,7 @@ class _PolyaGammaAugmentedCountsBase(GibbsSampling, MeanField):
         E_ln_notp = np.log(1-ps).mean(axis=1)
 
         vlb = self.expected_log_likelihood((E_lnp, E_ln_notp)).sum()
+        print "Obs VLB: ", vlb
         return vlb
 
 
@@ -272,8 +276,8 @@ class _NoisyPolyaGammaAugmentedCountsBase(_PolyaGammaAugmentedCountsBase):
     #     psis = self.mf_sample_psis()
     #     return self.b / 2.0 * (np.tanh(psis/2.0) / (psis)).mean(axis=1)
 
-    def meanfieldupdate(self,data,weights):
-        super(_NoisyPolyaGammaAugmentedCountsBase, self).meanfieldupdate(data, weights)
+    def meanfieldupdate(self):
+        super(_NoisyPolyaGammaAugmentedCountsBase, self).meanfieldupdate()
 
         self.meanfield_update_psi()
 

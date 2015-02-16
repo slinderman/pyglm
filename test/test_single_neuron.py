@@ -57,7 +57,7 @@ def test_meanfield_update_synapses():
     """
     Test the mean field updates for synapses
     """
-    population = create_simple_population(N=10, T=10000)
+    population = create_simple_population(N=3, T=10000, rho=0.5)
     neuron = population.neuron_models[0]
     synapse = neuron.synapse_models[0]
     data = neuron.data_list[0]
@@ -66,15 +66,23 @@ def test_meanfield_update_synapses():
     plt.figure()
     plt.plot(data.psi, '-b')
     plt.plot(np.nonzero(data.counts)[0], data.counts[data.counts>0], 'ko')
-    mf_psi = plt.plot(data.mf_expected_psi(), '-r')
-    ln_sigma_psi1 = plt.plot(data.mf_expected_psi() + 2*np.sqrt(data.mf_marginal_variance_psi()), ':r')
-    ln_sigma_psi2 = plt.plot(data.mf_expected_psi() - 2*np.sqrt(data.mf_marginal_variance_psi()), ':r')
+    # mf_psi = plt.plot(data.mf_expected_psi(), '-r')
+    # ln_sigma_psi1 = plt.plot(data.mf_expected_psi() + 2*np.sqrt(data.mf_marginal_variance_psi()), ':r')
+    # ln_sigma_psi2 = plt.plot(data.mf_expected_psi() - 2*np.sqrt(data.mf_marginal_variance_psi()), ':r')
+    mu_psi = neuron.mf_mean_activation(data.X)
+    # sigma_psi = neuron.mf_expected_activation_sq(data.X)
+    mf_psi = plt.plot(mu_psi, '-r')
+    # ln_sigma_psi1 = plt.plot(mu_psi + 2*np.sqrt(sigma_psi), ':r')
+    # ln_sigma_psi2 = plt.plot(mu_psi - 2*np.sqrt(sigma_psi), ':r')
     plt.show()
 
 
-    print "A_true: ", neuron.An
-    print "W_true: ", neuron.weights
-    print "b_true: ", neuron.bias
+    A_true = neuron.An.copy()
+    W_true = neuron.weights.copy()
+    b_true = neuron.bias.copy()
+    print "A_true: ", A_true
+    print "W_true: ", W_true
+    print "b_true: ", b_true
 
     print "--" * 20
 
@@ -88,7 +96,7 @@ def test_meanfield_update_synapses():
 
     raw_input("Press enter to continue...")
 
-    N_iter = 100
+    N_iter = 1000
     vlbs   = np.zeros(N_iter)
     for itr in xrange(N_iter):
         vlbs[itr] = neuron.meanfield_coordinate_descent_step()
@@ -102,13 +110,27 @@ def test_meanfield_update_synapses():
 
         print "--" * 20
 
-        mu_psi = data.mf_expected_psi()
-        sig_psi = np.sqrt(data.mf_marginal_variance_psi())
+        # mu_psi = data.mf_expected_psi()
+        # sig_psi = np.sqrt(data.mf_marginal_variance_psi())
+        mu_psi = neuron.mf_mean_activation(data.X)
+        # sig_psi = neuron.mf_expected_activation_sq(data.X)
         mf_psi[0].set_data(np.arange(data.T), mu_psi)
-        ln_sigma_psi1[0].set_data(np.arange(data.T), mu_psi + 2*sig_psi)
-        ln_sigma_psi2[0].set_data(np.arange(data.T), mu_psi - 2*sig_psi)
+        # ln_sigma_psi1[0].set_data(np.arange(data.T), mu_psi + 2*sig_psi)
+        # ln_sigma_psi2[0].set_data(np.arange(data.T), mu_psi - 2*sig_psi)
 
         plt.pause(0.001)
+
+    print "-" * 40
+    print "A_true: ", A_true
+    print "W_true: ", W_true
+    print "b_true: ", b_true
+
+    print "-" * 40
+    print "mf_rho: ", neuron.mf_rho
+    print "mf_mu:  ", neuron.mf_mu_w
+    print "mf_sig: ", neuron.mf_Sigma_w
+    print "mf_mu_b: ", neuron.bias_model.mf_mu_bias
+    print "mf_sigma_b: ", neuron.bias_model.mf_sigma_bias
 
     plt.ioff()
     plt.figure()
@@ -172,6 +194,6 @@ def test_gibbs_update_synapses():
     print "A_true:\t ", A_true
     print "A_mean:\t ", Ans.mean(0)
 
-# test_meanfield_update_synapses()
-test_gibbs_update_synapses()
+test_meanfield_update_synapses()
+# test_gibbs_update_synapses()
 

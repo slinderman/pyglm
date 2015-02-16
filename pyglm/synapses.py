@@ -200,7 +200,7 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
     def expected_log_likelihood(self, x):
         pass
 
-    def meanfieldupdate(self, data, weights):
+    def meanfieldupdate(self):
         """
         Perform coordinate ascent on the weights of the Gaussian synapse
         """
@@ -208,18 +208,33 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
         # NOTE: data is assumed to contain the EXPECTED RESIDUAL under the
         # remaining variational distributions
 
-        # TODO: Use get_weighted_statistics!
-        ss = self._get_statistics(data)
-        yxT = ss[1]
-        xxT = ss[2]
+        # # TODO: Use get_weighted_statistics!
+        # ss = self._get_statistics(data)
+        # yxT = ss[1]
+        # xxT = ss[2]
+        #
+        # # TODO: Use the expected noise variance eta
+        # E_eta_inv = self.neuron_model.noise_model.expected_eta_inv()
+        # Sigma_w_inv = np.linalg.inv(self.Sigma_w)
+        # self.mf_Sigma_w = np.linalg.inv(xxT * E_eta_inv + Sigma_w_inv)
+        # self.mf_mu_w = ((yxT * E_eta_inv + self.mu_w.dot(Sigma_w_inv))
+        #                 .dot(self.mf_Sigma_w)) \
+        #                 .reshape((self.D_in,))
 
-        # TODO: Use the expected noise variance eta
-        E_eta_inv = self.neuron_model.noise_model.expected_eta_inv()
-        Sigma_w_inv = np.linalg.inv(self.Sigma_w)
-        self.mf_Sigma_w = np.linalg.inv(xxT * E_eta_inv + Sigma_w_inv)
-        self.mf_mu_w = ((yxT * E_eta_inv + self.mu_w.dot(Sigma_w_inv))
-                        .dot(self.mf_Sigma_w)) \
-                        .reshape((self.D_in,))
+        prior_prec             = np.linalg.inv(self.Sigma_w)
+        prior_mean_dot_prec    = self.mu_w.dot(prior_prec)
+
+        # Compute the posterior parameters
+        mf_lkhd_prec           = self.neuron_model.mf_activation_lkhd_precision(self.n_pre + 1)
+        mf_lkhd_mean_dot_prec  = self.neuron_model.mf_activation_lkhd_mean_dot_precision(self.n_pre + 1)
+
+        mf_post_prec           = prior_prec + mf_lkhd_prec
+        mf_post_cov            = np.linalg.inv(mf_post_prec)
+        mf_post_mu             = (prior_mean_dot_prec + mf_lkhd_mean_dot_prec).dot(mf_post_cov)
+        mf_post_mu             = mf_post_mu.ravel()
+
+        self.mf_mu_w           = mf_post_mu
+        self.mf_Sigma_w        = mf_post_cov
 
     def get_vlb(self):
         vlb = 0
@@ -253,6 +268,10 @@ class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
     def mf_predict(self, X):
         w = self.mf_expected_w
         return X.dot(w.T)
+
+    def resample_from_mf(self):
+        w = np.random.multivariate_normal(self.mf_mu_w, self.mf_Sigma_w)
+        self.set_weights(w)
 
 class SpikeAndSlabGaussianVectorSynapse(GaussianVectorSynapse):
     """
@@ -374,9 +393,9 @@ class SpikeAndSlabGaussianVectorSynapse(GaussianVectorSynapse):
         mumuT = np.outer(self.mf_mu_w, self.mf_mu_w)
         return self.mf_rho * (self.mf_Sigma_w + mumuT)
 
-    def meanfieldupdate(self, data, weights):
+    def meanfieldupdate(self):
         # Update mean and variance of Gaussian weight vector
-        super(SpikeAndSlabGaussianVectorSynapse, self).meanfieldupdate(data, weights)
+        super(SpikeAndSlabGaussianVectorSynapse, self).meanfieldupdate()
 
         # Update the sparsity variational parameter
         logdet_Sigma_w = np.linalg.slogdet(self.Sigma_w)[1]
@@ -432,6 +451,10 @@ class SpikeAndSlabGaussianVectorSynapse(GaussianVectorSynapse):
         vlb -= E_A * Gaussian(self.mf_mu_w, self.mf_Sigma_w).negentropy()
 
         return vlb
+
+    def resample_from_mf(self):
+        super(SpikeAndSlabGaussianVectorSynapse, self).resample_from_mf()
+        self.A = np.random.rand() < self.mf_rho
 
 # TODO: Implement weighted, normalized synapses
 
