@@ -147,7 +147,7 @@ def test_gibbs_update_synapses():
 
     raw_input("Press enter to continue...")
 
-    N_iter = 100
+    N_iter = 1000
     lls    = []
     Ans    = []
     for itr in xrange(N_iter):

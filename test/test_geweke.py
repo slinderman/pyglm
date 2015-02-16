@@ -74,8 +74,7 @@ def test_bias_geweke(N_samples=100000, thin=1):
                                       do_resample_sigma=False,
                                       do_resample_synapses=False,
                                       do_resample_psi=False,
-                                      do_resample_psi_from_prior=True,
-                                      do_resample_aux=False)
+                                      do_resample_psi_from_prior=True)
 
         # Collect samples
         bias_samples.append(population.biases.copy())
@@ -114,8 +113,7 @@ def test_bias_geweke(N_samples=100000, thin=1):
                                       do_resample_sigma=False,
                                       do_resample_synapses=False,
                                       do_resample_psi=False,
-                                      do_resample_psi_from_prior=True,
-                                      do_resample_aux=False)
+                                      do_resample_psi_from_prior=True)
 
         # Collect samples
         bias_samples.append(population.biases.copy())
@@ -206,8 +204,7 @@ def test_sigma_geweke(N_samples=100000, thin=1):
                                       do_resample_sigma=True,
                                       do_resample_synapses=False,
                                       do_resample_psi=False,
-                                      do_resample_psi_from_prior=True,
-                                      do_resample_aux=False)
+                                      do_resample_psi_from_prior=True)
 
         # Collect samples
         sigma_samples.append(population.etas.copy())

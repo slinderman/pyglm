@@ -15,7 +15,7 @@ np.random.seed(seed)
 def create_simple_population(N=1, B=1,
                              mu_bias=-3.0, sigma_bias=0.5**2,
                              mu_w=0.0, sigma_w=1.0**2,
-                             rho=0.25):
+                             rho=0.5):
     dt = 0.001
 
     # Set the model parameters
@@ -82,7 +82,6 @@ def test_synth_recovery(N=2, T=10000, N_samples=1000):
         A_samples.append(test_population.A.copy())
         w_samples.append(test_population.weights.copy())
 
-        print "Sigma: ", test_population.etas
 
     # Convert samples to arrays
     offset = N_samples // 2
@@ -106,7 +105,7 @@ def test_synth_recovery(N=2, T=10000, N_samples=1000):
     print "True A: \n", true_population.A
     print "Mean A: \n", A_mean
 
-    plt.plot(sigmas_samples[:,0,0])
+    # plt.plot(sigmas_samples[:,0,0])
 
 test_synth_recovery()
 

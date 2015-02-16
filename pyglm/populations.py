@@ -290,8 +290,8 @@ class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
         """
         self.bias_prior.resample(data=self.biases)
         for neuron in self.neuron_models:
-            neuron.bias_model.mu_0=np.reshape(self.bias_prior.mu, (1,))
-            neuron.bias_model.lmbda_0=np.reshape(self.bias_prior.sigmasq, (1,1)),
+            neuron.bias_model.mu_0    = self.bias_prior.mu
+            neuron.bias_model.lmbda_0 = self.bias_prior.sigmasq
 
     def generate(self, keep=True, size=100, X_bkgd=None, verbose=False):
         """

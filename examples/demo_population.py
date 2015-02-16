@@ -10,7 +10,7 @@ from pyglm.utils.basis import  Basis
 
 
 seed = np.random.randint(2**16)
-# seed = 1234
+seed = 62645
 print "Setting random seed to ", seed
 np.random.seed(seed)
 
@@ -19,11 +19,11 @@ np.random.seed(seed)
 ################
 N = 2
 dt = 0.001
-T = 10000
+T = 60000
 N_samples = 10000
 
 # Basis parameters
-B = 3       # Number of basis functions
+B = 1       # Number of basis functions
 dt_max = 0.1
 
 #############################
@@ -154,6 +154,7 @@ for s in range(N_samples):
     # Collect samples
     ll_samples.append(ll)
     A_samples.append(inf_population.A.copy())
+    w_samples.append(inf_population.weights.copy())
     bias_samples.append(inf_population.biases.copy())
 
     if s % 5 == 0:
@@ -161,15 +162,15 @@ for s in range(N_samples):
         inf_population.plot_mean_spike_counts(Xs, dt=dt, lns=inf_lns)
         plt.pause(0.001)
 
-A_mean = np.array(A_samples)[N_samples/2:].mean(0)
+A_mean = np.array(A_samples)[N_samples/2:,...].mean(0)
 print "True A: \n", population.A
 print "Mean A: \n", A_mean
 
-w_mean = np.array(w_samples)[N_samples/2:].mean(0)
+w_mean = np.array(w_samples)[N_samples/2:,...].mean(0)
 print "True w: \n", population.weights
 print "Mean w: \n", w_mean
 
-bias_mean = np.array(bias_samples)[N_samples/2:].mean(0)
+bias_mean = np.array(bias_samples)[N_samples/2:,...].mean(0)
 print "True bias: ", population.biases
 print "Mean bias: ", bias_mean
 

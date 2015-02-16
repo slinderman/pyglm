@@ -5,7 +5,8 @@ from pyglm.deps.pybasicbayes.abstractions import GibbsSampling, ModelGibbsSampli
 from pyglm.deps.pybasicbayes.distributions import GaussianFixedCov, GaussianFixed
 from pyglm.deps.pybasicbayes.util.stats import sample_discrete_from_log
 from pyglm.internals.distributions import InverseGamma
-from pyglm.internals.observations import NoisyAugmentedNegativeBinomialCounts, NoisyAugmentedBernoulliCounts
+from pyglm.internals.observations import NoisyAugmentedNegativeBinomialCounts, \
+    NoisyAugmentedBernoulliCounts, AugmentedBernoulliCounts
 from pyglm.internals.bias import GaussianBias
 from pyglm.synapses import GaussianVectorSynapse, SpikeAndSlabGaussianVectorSynapse
 
@@ -134,6 +135,7 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
                     If 1..N, calculate for synapse ind
         :return:
         """
+        # import pdb; pdb.set_trace()
         mu_dot_prec = 0
 
         if ind == 0:
@@ -159,6 +161,8 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
                     If 1..N, calculate covariance for synapse ind
         :return:
         """
+        # import pdb; pdb.set_trace()
+
         cov = 0
         if ind == 0:
             # \Sigma_b = 1^T \Omega 1 = \sum_t \omega_t
@@ -167,7 +171,7 @@ class _NeuronBase(GibbsSampling, ModelGibbsSampling):
 
         elif ind <= self.N:
             for data in self.data_list:
-                Xn = self._get_Xs(data)[ind]
+                Xn = data.X[ind-1]
                 # cov += Xn.T.dot(np.diag(data.omega)).dot(Xn)
                 cov += (Xn * data.omega[:,None]).T.dot(Xn)
 
@@ -588,14 +592,17 @@ class _AugmentedDataMixin:
         # Return an augmented counts object
         return observation_class(Xs, counts, self)
 
-class BernoulliNeuron(_NoisyActivationNeuron, _AugmentedDataMixin):
+class BernoulliNeuron(_GibbsNeuron, _MeanFieldNeuron, _AugmentedDataMixin):
 
     def __init__(self, n, population, n_iters_per_resample=1,
                  alpha_0=3.0, beta_0=0.5):
+        # super(BernoulliNeuron, self).\
+        #     __init__(n, population,
+        #              n_iters_per_resample=n_iters_per_resample,
+        #              alpha_0=alpha_0, beta_0=beta_0)
         super(BernoulliNeuron, self).\
             __init__(n, population,
-                     n_iters_per_resample=n_iters_per_resample,
-                     alpha_0=alpha_0, beta_0=beta_0)
+                     n_iters_per_resample=n_iters_per_resample)
 
     def add_data(self, data=[]):
         if isinstance(data, np.ndarray):
@@ -603,7 +610,8 @@ class BernoulliNeuron(_NoisyActivationNeuron, _AugmentedDataMixin):
         for d in data:
             Xs = self._get_Xs(d)
             counts = self._get_S(d)[:,self.n]
-            self.data_list.append(self._augment_data(NoisyAugmentedBernoulliCounts, Xs, counts))
+            # self.data_list.append(self._augment_data(NoisyAugmentedBernoulliCounts, Xs, counts))
+            self.data_list.append(self._augment_data(AugmentedBernoulliCounts, Xs, counts))
 
     def sample_observations(self, psi):
         # Convert the psi's into the negative binomial rate parameter, p

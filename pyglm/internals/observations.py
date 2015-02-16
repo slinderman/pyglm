@@ -78,7 +78,7 @@ class _PolyaGammaAugmentedCountsBase(GibbsSampling, MeanField):
         return self.neuron.mean_activation(self.X)
 
     ### Gibbs Sampling
-    def resample(self, data=None, stats=None):
+    def resample(self, data=None, stats=None, do_resample_psi=False, do_resample_psi_from_prior=False):
         """
         Resample omega given xi and psi, then resample psi given omega, X, w, and sigma
         """
