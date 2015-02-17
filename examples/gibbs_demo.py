@@ -107,6 +107,7 @@ def initialize_plots(true_model, test_model, S):
     #
     plt.figure(4)
     im_net = plt.imshow(test_model.weight_model.W_effective.sum(2), vmax=1.0, vmin=-1.0, interpolation="none", cmap="RdGy")
+    plt.colorbar()
     plt.pause(0.001)
 
     plt.show()
@@ -134,7 +135,7 @@ def update_plots(itr, test_model, S, ln, im_net):
 
     plt.figure(4)
     plt.title("W: Iteration %d" % itr)
-    im_net.set_data(test_model.weight_model.W_effective)
+    im_net.set_data(test_model.weight_model.W_effective.sum(2))
     plt.pause(0.001)
 
 def analyze_samples(true_model, init_model, samples, lps):

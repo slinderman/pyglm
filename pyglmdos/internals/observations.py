@@ -33,7 +33,7 @@ class _PolyaGammaAugmentedObservationsBase(Component):
         self.N = S.shape[1]
 
         # Initialize auxiliary variables
-        augmented_data["omega"] = np.ones_like(S)
+        augmented_data["omega"] = np.empty((self.T, self.N))
         for n in xrange(self.N):
             tmp = np.empty(self.T)
             pgdrawv(np.ones(self.T, dtype=np.int32),

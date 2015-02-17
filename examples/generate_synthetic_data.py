@@ -18,29 +18,38 @@ def generate_synthetic_data(seed=None):
     print "Setting seed to ", seed
     np.random.seed(seed)
 
-    # Create a true model
-    T_test=1000
+    # Create a population model
+    N = 2                                                   # Number of neurons
+    C = 1                                                   # Number of clusters
+    T = 10000                                               # Number of time bins
+    dt = 1.0                                                # Time bin width
+    dt_max = 1000.0                                          # Max time of synaptic influence
+    B = 3                                                   # Number of basis functions for the weights
 
-    # Small network:
-    # Seed: 1957629166
-    C = 1
-    K = 2
-    T = 10000
-    dt = 1.0
-    B = 3
-    c = np.arange(C).repeat((K // C))
-    p = 0.9 * np.eye(C) + 0.05 * (1-np.eye(C))
-    mu = np.zeros((C,C,B))
-    Sigma = np.tile(np.eye(B)[None,None,:,:], (C,C,1,1))
+    ##
+    #   Bias hyperparameters
+    ##
+    bias_hypers = {"mu_0": -3.0, "sigma_0": 0.25}
+
+    ##
+    #   Network hyperparameters
+    ##
+    c = np.arange(C).repeat((N // C))                       # Neuron to cluster assignments
+    p = np.ones((C,C))                                      # Probability of connection for each pair of clusters
+    # p = 0.9 * np.eye(C) + 0.05 * (1-np.eye(C))              # Probability of connection for each pair of clusters
+    mu = np.zeros((C,C,B))                                  # Mean weight for each pair of clusters
+    Sigma = np.tile(np.eye(B)[None,None,:,:], (C,C,1,1))    # Covariance of weight for each pair of clusters
+    T_test = 1000                                           # Number of time bins for test data set
 
     # Create the model with these parameters
     network_hypers = {'C': C, 'c': c, 'p': p, 'mu': mu, 'Sigma': Sigma}
-    true_model = _GibbsPopulation(N=K, dt=dt, B=B,
+    true_model = _GibbsPopulation(N=N, dt=dt, B=B,
+                                  bias_hypers=bias_hypers,
                                   network_hypers=network_hypers)
 
     # Plot the true network
     plt.ion()
-    plt.imshow(true_model.weight_model.W_effective, vmin=-1.0, vmax=1.0, interpolation="none", cmap="RdGy")
+    plt.imshow(true_model.weight_model.W_effective.sum(2), vmin=-1.0, vmax=1.0, interpolation="none", cmap="RdGy")
     plt.pause(0.001)
 
     # Sample from the true model
@@ -49,7 +58,7 @@ def generate_synthetic_data(seed=None):
 
     # Pickle and save the data
     out_dir  = os.path.join('data', "synthetic")
-    out_name = 'synthetic_K%d_C%d_T%d.pkl' % (K,C,T)
+    out_name = 'synthetic_K%d_C%d_T%d.pkl' % (N,C,T)
     out_path = os.path.join(out_dir, out_name)
     with open(out_path, 'w') as f:
         print "Saving output to ", out_path
@@ -63,7 +72,7 @@ def generate_synthetic_data(seed=None):
 
     # Pickle and save the data
     out_dir  = os.path.join('data', "synthetic")
-    out_name = 'synthetic_test_K%d_C%d_T%d.pkl' % (K,C,T_test)
+    out_name = 'synthetic_test_K%d_C%d_T%d.pkl' % (N,C,T_test)
     out_path = os.path.join(out_dir, out_name)
     with open(out_path, 'w') as f:
         print "Saving output to ", out_path
