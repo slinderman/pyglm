@@ -8,9 +8,7 @@ from pyglmdos.models import _GibbsPopulation
 
 def generate_synthetic_data(seed=None):
     """
-    Create a discrete time Hawkes model and generate from it.
-
-    :return:
+    Create a population model and generate a spike train from it.
     """
     if seed is None:
         seed = np.random.randint(2**32)
@@ -41,7 +39,9 @@ def generate_synthetic_data(seed=None):
     Sigma = np.tile(np.eye(B)[None,None,:,:], (C,C,1,1))    # Covariance of weight for each pair of clusters
     T_test = 1000                                           # Number of time bins for test data set
 
+    ##
     # Create the model with these parameters
+    ##
     network_hypers = {'C': C, 'c': c, 'p': p, 'mu': mu, 'Sigma': Sigma}
     true_model = _GibbsPopulation(N=N, dt=dt, B=B,
                                   bias_hypers=bias_hypers,
@@ -52,11 +52,15 @@ def generate_synthetic_data(seed=None):
     plt.imshow(true_model.weight_model.W_effective.sum(2), vmin=-1.0, vmax=1.0, interpolation="none", cmap="RdGy")
     plt.pause(0.001)
 
+    ##
     # Sample from the true model
+    ##
     S = true_model.generate(T=T, keep=False)
     print "Number of generated spikes:\t", S.sum(0)
 
+    ##
     # Pickle and save the data
+    ##
     out_dir  = os.path.join('data', "synthetic")
     out_name = 'synthetic_K%d_C%d_T%d.pkl' % (N,C,T)
     out_path = os.path.join(out_dir, out_name)
