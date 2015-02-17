@@ -374,3 +374,10 @@ class _SVIPopulation(_MeanFieldPopulation):
     """
     def svi_step(self):
         raise NotImplementedError()
+
+
+class Population(_GibbsPopulation):
+    """
+    The default population has a Bernoulli observation model and an Erdos-Renyi network.
+    """
+    pass

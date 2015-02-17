@@ -6,7 +6,7 @@ import gzip
 
 import matplotlib.pyplot as plt
 
-from pyglmdos.models import _GibbsPopulation
+from pyglmdos.models import Population
 
 def demo(seed=None):
     """
@@ -38,12 +38,12 @@ def demo(seed=None):
     ###########################################################
 
     # Copy the network hypers.
-    test_model = _GibbsPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
-                                  basis_hypers=true_model.basis_hypers,
-                                  observation_hypers=true_model.observation_hypers,
-                                  activation_hypers=true_model.activation_hypers,
-                                  weight_hypers=true_model.weight_hypers,
-                                  network_hypers=true_model.network_hypers)
+    test_model = Population(N=N, dt=dt, dt_max=dt_max, B=B,
+                            basis_hypers=true_model.basis_hypers,
+                            observation_hypers=true_model.observation_hypers,
+                            activation_hypers=true_model.activation_hypers,
+                            weight_hypers=true_model.weight_hypers,
+                            network_hypers=true_model.network_hypers)
     test_model.add_data(S)
     # F_test = test_model.basis.convolve_with_basis(S_test)
 

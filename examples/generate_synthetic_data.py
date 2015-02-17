@@ -4,7 +4,7 @@ import gzip
 import numpy as np
 import matplotlib.pyplot as plt
 
-from pyglmdos.models import _GibbsPopulation
+from pyglmdos.models import Population
 
 def generate_synthetic_data(seed=None):
     """
@@ -43,9 +43,9 @@ def generate_synthetic_data(seed=None):
     # Create the model with these parameters
     ##
     network_hypers = {'C': C, 'c': c, 'p': p, 'mu': mu, 'Sigma': Sigma}
-    true_model = _GibbsPopulation(N=N, dt=dt, B=B,
-                                  bias_hypers=bias_hypers,
-                                  network_hypers=network_hypers)
+    true_model = Population(N=N, dt=dt, B=B,
+                            bias_hypers=bias_hypers,
+                            network_hypers=network_hypers)
 
     # Plot the true network
     plt.ion()
