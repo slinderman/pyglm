@@ -92,8 +92,8 @@ class _SVIComponent(_ComponentBase):
         pass
 
 
-class Component(_GibbsComponent):
+class Component(_GibbsComponent, _MeanFieldComponent):
     """
-    Combine all the
+    Combine all the required inference algorithms
     """
     pass
