@@ -140,7 +140,7 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         # Initialize the mean field variational parameters
         self.mf_p     = np.zeros((self.N, self.N))
         self.mf_mu    = np.zeros((self.N, self.N, self.B))
-        self.mf_Sigma = np.zeros((self.N, self.N, self.B, self.B))
+        self.mf_Sigma = np.tile(np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
 
     def meanfieldupdate(self, augmented_data):
         for n_pre in xrange(self.N):
@@ -148,11 +148,12 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
             for n_post in xrange(self.N):
                 stats = self._get_expected_sufficient_statistics(augmented_data, n_pre, n_post)
 
+                # Mean field update the slab variable
+                self._meanfieldupdate_W(n_pre, n_post, stats)
+
                 # Mean field update the spike variable
                 self._meanfieldupdate_A(n_pre, n_post, stats)
 
-                # Mean field update the slab variable
-                self._meanfieldupdate_W(n_pre, n_post, stats)
 
     def _get_expected_sufficient_statistics(self, augmented_data, n_pre, n_post):
         """
@@ -218,8 +219,27 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         self.mf_mu[n_pre, n_post, :]       = mf_post_mu
         self.mf_Sigma[n_pre, n_post, :, :] = mf_post_cov
 
-    def mf_expected_w(self, n_pre, n_post):
-        return self.mf_mu[n_pre, n_post, :] * self.mf_p[n_pre, n_post]
+    def mf_expected_w_given_A(self, A):
+        return A * self.mf_mu
+
+    def mf_expected_wwT_given_A(self, A):
+        if A == 1:
+            mumuT = np.zeros((self.N, self.N, self.B, self.B))
+            for n_pre in xrange(self.N):
+                for n_post in xrange(self.N):
+                    mumuT[n_pre, n_post, :, :] = np.outer(self.mf_mu[n_pre, n_post, :],
+                                                          self.mf_mu[n_pre, n_post, :])
+
+            # TODO: Compute with einsum instead
+            mumuT_einsum = np.einsum("ijk,ijl->ijkl", self.mf_mu, self.mf_mu)
+            assert np.allclose(mumuT, mumuT_einsum)
+
+            return self.mf_Sigma + mumuT
+        else:
+            return np.zeros((self.N, self.N, self.B, self.B))
+
+    def mf_expected_W(self):
+        return self.mf_p[:,:,None] * self.mf_mu
 
     def mf_expected_wwT(self, n_pre, n_post):
         """
@@ -238,42 +258,51 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         vlb = 0
 
         # Precompute expectations
+        E_A            = self.mf_p
+        E_notA         = 1.0 - E_A
+        E_ln_rho       = self.network.mf_expected_log_p()
+        E_ln_notrho    = self.network.mf_expected_log_notp()
+
+        E_W            = self.mf_expected_w_given_A(A=1)
+        E_WWT          = self.mf_expected_wwT_given_A(A=1)
+        E_mu           = self.network.mf_expected_mu()
+        E_mumuT        = self.network.mf_expected_mumuT()
+        E_Sigma_inv    = self.network.mf_expected_Sigma_inv()
+        E_logdet_Sigma = self.network.mf_expected_logdet_Sigma()
+
+        # E[LN p(A | p)]
+        vlb += Bernoulli().negentropy(E_x=E_A, E_notx=E_notA,
+                                      E_ln_p=E_ln_rho, E_ln_notp=E_ln_notrho).sum()
+
+        # E[LN q(A | \tilde{p})
+        vlb -= Bernoulli(self.mf_p).negentropy().sum()
+
         for n_pre in xrange(self.N):
             for n_post in xrange(self.N):
-                E_A            = self.mf_p[n_pre, n_post]
-                E_notA         = 1.0 - E_A
-                # E_ln_rho       = self.network.mf_expected_log_p()
-                # E_ln_notrho    = self.network.mf_expected_log_notp()
-                E_ln_rho       = np.log(self.rho)
-                E_ln_notrho    = np.log(1.0 - self.rho)
-
-
-                # E_mu           = self.network.expected_mu(self.n_pre, self.n_post)
-                # E_mumuT        = self.network.expected_mumuT(self.n_pre, self.n_post)
-                # E_Sigma_inv    = self.network.expected_Sigma_inv(self.n_pre, self.n_post)
-                # E_logdet_Sigma = self.network.expected_logdet_Sigma(self.n_pre, self.n_post)
-                E_W            = self.mf_expected_w
-                E_WWT          = self.mf_expected_wwT
-                E_mu           = self.mu_w
-                E_mumuT        = self.mu_w.dot(self.mu_w.T)
-                E_Sigma_inv    = np.linalg.inv(self.Sigma_w)
-                E_logdet_Sigma = np.linalg.slogdet(self.Sigma_w)[1]
-
-
-                # E[LN p(A | rho)]
-                vlb += Bernoulli().negentropy(E_x=E_A, E_notx=E_notA,
-                                              E_ln_p=E_ln_rho, E_ln_notp=E_ln_notrho).sum()
 
                 # E[LN p(W | A=1, mu, Sigma)
-                vlb += (E_A * Gaussian().negentropy(E_x=E_W, E_xxT=E_WWT,
-                                                    E_mu=E_mu, E_mumuT=E_mumuT,
-                                                    E_Sigma_inv=E_Sigma_inv, E_logdet_Sigma=E_logdet_Sigma))
+                vlb += (E_A[n_pre, n_post] * Gaussian().negentropy(E_x=E_W[n_pre, n_post, :],
+                                                    E_xxT=E_WWT[n_pre, n_post, :, :],
+                                                    E_mu=E_mu[n_pre, n_post, :],
+                                                    E_mumuT=E_mumuT[n_pre, n_post, :, :],
+                                                    E_Sigma_inv=E_Sigma_inv[n_pre, n_post, :, :],
+                                                    E_logdet_Sigma=E_logdet_Sigma[n_pre, n_post])).sum()
 
-                # E[LN q(W | A=1, mu, Sigma)
-                vlb -= Bernoulli(self.mf_rho).negentropy()
-                vlb -= E_A * Gaussian(self.mf_mu_w, self.mf_Sigma_w).negentropy()
+                vlb -= (E_A[n_pre, n_post] * Gaussian(self.mf_mu[n_pre, n_post, :],
+                                      self.mf_Sigma[n_pre, n_post, :, :]).negentropy()).sum()
 
         return vlb
+
+    def resample_from_mf(self, augmented_data):
+        """
+        Resample from the variational distribution
+        """
+        for n_pre in np.arange(self.N):
+            for n_post in np.arange(self.N):
+                self.W[n_pre, n_post, :] = \
+                    np.random.multivariate_normal(self.mf_mu[n_pre, n_post, :],
+                                                  self.mf_Sigma[n_pre, n_post, :, :])
+
 
 class SpikeAndSlabGaussianWeights(_GibbsSpikeAndSlabGaussianWeights,
                                   _MeanFieldSpikeAndSlabGaussianWeights):

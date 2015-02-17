@@ -68,6 +68,13 @@ class _MeanFieldComponent(_ComponentBase):
         """
         pass
 
+    @abc.abstractmethod
+    def resample_from_mf(self, augmented_data):
+        """
+        Resample the component parameters from the variational distribution
+        """
+        pass
+
 
 class _SVIComponent(_ComponentBase):
     """
@@ -76,18 +83,9 @@ class _SVIComponent(_ComponentBase):
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
-    def meanfieldupdate(self, augmented_data):
+    def svi_step(self, augmented_data, minibatchfrac, stepsize):
         """
-        Update the mean field variational parameters given the augmented data.
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_vlb(self, augmented_data):
-        """
-        Get the variational lower bound local to this component.
-        :param augmented_data:
-        :return:
+        Take a step of the SVI algorithm
         """
         pass
 

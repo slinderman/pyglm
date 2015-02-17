@@ -41,6 +41,9 @@ class _PolyaGammaAugmentedObservationsBase(Component):
                     tmp, self.rng)
             augmented_data["omega"][:,n] = tmp
 
+        # Initialize the mean field local variational parameters
+        augmented_data["omega"] = np.empty((self.T, self.N))
+
     @abc.abstractmethod
     def a(self, augmented_data):
         """
@@ -103,6 +106,43 @@ class _PolyaGammaAugmentedObservationsBase(Component):
                     self.rng)
             augmented_data["omega"][:,n] = tmpn
 
+    ### Mean field
+    def meanfieldupdate(self, augmented_data):
+        """
+        Compute the expectation of omega under the variational posterior.
+        This requires us to sample activations and perform a Monte Carlo
+        integration.
+        """
+        Psis = self.activation.mf_sample_activation(augmented_data, N_samples=100)
+        augmented_data["E_omega"] = self.b(augmented_data) / 2.0 \
+                                    * (np.tanh(Psis/2.0) / (Psis)).mean(axis=-1)
+
+    def mf_expected_omega(self, augmented_data):
+        return augmented_data["E_omega"]
+
+    @abc.abstractmethod
+    def expected_log_likelihood(self, augmented_data, expected_suff_stats):
+        """
+        Compute the expected log likelihood with expected parameters x
+        """
+        raise NotImplementedError()
+
+    def get_vlb(self, augmented_data):
+        # 1. E[ \ln p(s | \psi) ]
+        # Compute this with Monte Carlo integration over \psi
+        Psis = self.activation.mf_sample_activation(augmented_data, N_samples=100)
+        ps = logistic(Psis)
+        E_lnp = np.log(ps).mean(axis=-1)
+        E_ln_notp = np.log(1-ps).mean(axis=-1)
+
+        vlb = self.expected_log_likelihood(augmented_data,
+                                           (E_lnp, E_ln_notp)).sum()
+        return vlb
+
+    def resample_from_mf(self, augmented_data):
+        # This is a no-op for the observation model
+        pass
+
 
 class BernoulliObservations(_PolyaGammaAugmentedObservationsBase):
     def log_likelihood(self, augmented_data):
@@ -131,6 +171,14 @@ class BernoulliObservations(_PolyaGammaAugmentedObservationsBase):
     def expected_S(self, Psi):
         p = logistic(Psi)
         return p
+
+    def expected_log_likelihood(self, augmented_data, expected_suff_stats):
+        """
+        Compute the expected log likelihood with expected parameters x
+        """
+        S = augmented_data["S"]
+        E_ln_p, E_ln_notp = expected_suff_stats
+        return S * E_ln_p + (1-S) * E_ln_notp
 
 
 class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):

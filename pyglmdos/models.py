@@ -14,7 +14,7 @@ from pyglmdos.internals.activation import DeterministicActivation
 from pyglmdos.internals.bias import GaussianBias
 from pyglmdos.internals.background import NoBackground
 from pyglmdos.internals.weights import SpikeAndSlabGaussianWeights
-from pyglmdos.internals.networks import GibbsSBM
+from pyglmdos.internals.networks import StochasticBlockModel
 
 from pyglmdos.utils.basis import CosineBasis
 
@@ -44,7 +44,7 @@ class _BayesianPopulationBase(Model):
     _weight_class               = SpikeAndSlabGaussianWeights
     _default_weight_hypers      = {}
 
-    _network_class              = GibbsSBM
+    _network_class              = StochasticBlockModel
     _default_network_hypers     = {"C": 1}
 
 
@@ -203,7 +203,7 @@ class _BayesianPopulationBase(Model):
             # Add to the data list
             self.data_list.append(augmented_data)
 
-    def generate(self, keep=True, T=100, X_bkgd=None, verbose=True):
+    def generate(self, keep=True, T=100, X_bkgd=None, return_Psi=False, verbose=True):
         """
         Generate data from the model.
 
@@ -231,7 +231,10 @@ class _BayesianPopulationBase(Model):
         # Transpose H so that it is faster for tensor mult
         H = np.transpose(H, axes=[0,2,1])
 
-        # If we have some features to start with, add them now
+        # Add the bias
+        X += self.bias_model.b[None,:]
+
+        # If we have some background features to start with, add them now
         if X_bkgd is not None:
             T_bkgd = min(T+L, X_bkgd.shape[0])
             for n in range(N):
@@ -259,7 +262,7 @@ class _BayesianPopulationBase(Model):
 
             # Compute change in activation via tensor product
             dX = np.tensordot( H, S[t,:], axes=([2, 0]))
-            X[t+1:t+L+1,:] += dX
+            X[t:t+L,:] += dX
 
             # Check Spike limit
             if np.any(S[t,:] >= max_spks_per_bin):
@@ -278,7 +281,10 @@ class _BayesianPopulationBase(Model):
             # data = np.hstack(Xs + [S])
             self.add_data(S)
 
-        return S
+        if return_Psi:
+            return S, Psi
+        else:
+            return S
 
     def copy_sample(self):
         """
@@ -340,12 +346,23 @@ class _BayesianPopulationBase(Model):
         # Normalize by the bin size
         return ES / self.dt
 
+    def mf_expected_rate(self, augmented_data):
+        # Compute the activation
+        Psi = self.activation_model.mf_expected_activation(augmented_data)
+
+        # Compute the expected spike count
+        ES = self.observation_model.expected_S(Psi)
+
+        # Normalize by the bin size
+        return ES / self.dt
+
 
 class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
     """
     Implement Gibbs sampling for the population model
     """
     def resample_model(self):
+        # TODO: Support multile datasets
         assert len(self.data_list) == 1, "Can only do Gibbs sampling with one dataset"
         data = self.data_list[0]
 
@@ -362,10 +379,30 @@ class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
     Implement mean field variational inference for the population model
     """
     def meanfield_coordinate_descent_step(self):
-        raise NotImplementedError()
+        # TODO: Support multile datasets
+        assert len(self.data_list) == 1, "Can only do mean field variational inference with one dataset"
+        data = self.data_list[0]
+
+        # update model components one at a time
+        self.observation_model.meanfieldupdate(data)
+        self.activation_model.meanfieldupdate(data)
+        self.weight_model.meanfieldupdate(data)
+        self.bias_model.meanfieldupdate(data)
+        # self.network.meanfieldupdate(data)
 
     def get_vlb(self):
-        raise NotImplementedError()
+        # TODO: Support multile datasets
+        assert len(self.data_list) == 1, "Can only compute VLBs with one dataset"
+        data = self.data_list[0]
+
+        vlb = 0
+        vlb += self.observation_model.get_vlb(data)
+        vlb += self.activation_model.get_vlb(data)
+        vlb += self.weight_model.get_vlb(data)
+        vlb += self.bias_model.get_vlb(data)
+        # vlb += self.network.get_vlb(data)
+
+        return vlb
 
 
 class _SVIPopulation(_MeanFieldPopulation):
@@ -376,7 +413,7 @@ class _SVIPopulation(_MeanFieldPopulation):
         raise NotImplementedError()
 
 
-class Population(_GibbsPopulation):
+class Population(_GibbsPopulation, _MeanFieldPopulation):
     """
     The default population has a Bernoulli observation model and an Erdos-Renyi network.
     """

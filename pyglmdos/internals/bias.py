@@ -35,7 +35,7 @@ class _GibbsGaussianBias(_GaussianBiasBase):
         super(_GibbsGaussianBias, self).__init__(population, mu_0=mu_0, sigma_0=sigma_0)
 
         # Initialize with a draw from the prior
-        self.resample()
+        self.resample(None)
 
     def resample(self, augmented_data):
         """
@@ -48,8 +48,12 @@ class _GibbsGaussianBias(_GaussianBiasBase):
         # TODO: Parallelize this
         for n in xrange(self.N):
             # Compute the posterior parameters
-            lkhd_prec           = self.activation.precision(augmented_data, bias=n)
-            lkhd_mean_dot_prec  = self.activation.mean_dot_precision(augmented_data, bias=n)
+            if augmented_data is not None:
+                lkhd_prec           = self.activation.precision(augmented_data, bias=n)
+                lkhd_mean_dot_prec  = self.activation.mean_dot_precision(augmented_data, bias=n)
+            else:
+                lkhd_prec           = 0
+                lkhd_mean_dot_prec  = 0
 
             prior_prec          = self.lambda_0
             prior_mean_dot_prec = self.lambda_0 * self.mu_0
@@ -120,6 +124,12 @@ class _MeanFieldGaussianBias(_GaussianBiasBase):
         vlb -= ScalarGaussian(self.mf_mu_b, self.mf_sigma_b).negentropy().sum()
 
         return vlb
+
+    def resample_from_mf(self, augmented_data):
+        """
+        Resample from the variational distribution
+        """
+        self.b = self.mf_mu_b + np.sqrt(self.mf_sigma_b) * np.random.randn(self.N)
 
 class GaussianBias(_GibbsGaussianBias, _MeanFieldGaussianBias):
     pass

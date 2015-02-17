@@ -4,14 +4,14 @@ Network models expose a probability of connection and a scale of the weights
 import abc
 
 import numpy as np
+from scipy.special import gammaln, psi
 
 from pyglmdos.abstractions import Component
 
 from pyglm.deps.pybasicbayes.util.stats import sample_discrete_from_log
 from pyglm.deps.pybasicbayes.util.stats import sample_niw
 
-# from pyhawkes.internals.distributions import Discrete, Bernoulli, \
-#                                              Gamma, Dirichlet, Beta
+from pyglmdos.internals.distributions import Bernoulli
 
 # TODO: Make a base class for networks
 
@@ -166,7 +166,7 @@ class _StochasticBlockModelBase(Component):
     # def log_probability(self):
     #     return self.log_likelihood((self.m, self._p, self.v, self.c))
 
-class GibbsSBM(_StochasticBlockModelBase):
+class _GibbsSBM(_StochasticBlockModelBase):
     """
     Implement Gibbs sampling for SBM
     """
@@ -177,12 +177,12 @@ class GibbsSBM(_StochasticBlockModelBase):
                  mu=None, Sigma=None, mu0=0.0, kappa0=1.0, nu0=1.0, Sigma0=1.0,
                  allow_self_connections=True):
 
-        super(GibbsSBM, self).__init__(population,
-                                       C=C,
-                                       c=c, pi=pi, m=m,
-                                       p=p, tau0=tau0, tau1=tau1,
-                                       mu=mu, Sigma=Sigma, mu0=mu0, kappa0=kappa0, Sigma0=Sigma0, nu0=nu0,
-                                       allow_self_connections=allow_self_connections)
+        super(_GibbsSBM, self).__init__(population,
+                                        C=C,
+                                        c=c, pi=pi, m=m,
+                                        p=p, tau0=tau0, tau1=tau1,
+                                        mu=mu, Sigma=Sigma, mu0=mu0, kappa0=kappa0, Sigma0=Sigma0, nu0=nu0,
+                                        allow_self_connections=allow_self_connections)
 
         # Initialize parameter estimates
         # print "Uncomment GibbsSBM init"
@@ -219,9 +219,9 @@ class GibbsSBM(_StochasticBlockModelBase):
             for c2 in xrange(self.C):
                 Ac1c2 = A[np.ix_(self.c==c1, self.c==c2)]
                 Wc1c2 = W[np.ix_(self.c==c1, self.c==c2)]
-                alpha = self.mu0 + Ac1c2.sum() * self.kappa
-                beta  = self.Sigma0 + Wc1c2[Ac1c2 > 0].sum()
-                self.v[c1,c2] = np.random.gamma(alpha, 1.0/beta)
+                # alpha = self.mu0 + Ac1c2.sum() * self.kappa
+                # beta  = self.Sigma0 + Wc1c2[Ac1c2 > 0].sum()
+                # self.v[c1,c2] = np.random.gamma(alpha, 1.0/beta)
 
     def resample_c(self, A, W):
         """
@@ -253,12 +253,12 @@ class GibbsSBM(_StochasticBlockModelBase):
                                 .log_probability(A[:,k]).sum()
 
                 # p(W[k,k'] | c)
-                lp[ck] += (A[k,:] * Gamma(self.kappa, self.v[ck, c_temp])\
-                                .log_probability(W[k,:])).sum()
-
-                # p(W[k,k'] | c)
-                lp[ck] += (A[:,k] * Gamma(self.kappa, self.v[c_temp, ck])\
-                                .log_probability(W[:,k])).sum()
+                # lp[ck] += (A[k,:] * Gamma(self.kappa, self.v[ck, c_temp])\
+                #                 .log_probability(W[k,:])).sum()
+                #
+                # # p(W[k,k'] | c)
+                # lp[ck] += (A[:,k] * Gamma(self.kappa, self.v[c_temp, ck])\
+                #                 .log_probability(W[:,k])).sum()
 
                 # TODO: Subtract of self connection since we double counted
 
@@ -287,3 +287,152 @@ class GibbsSBM(_StochasticBlockModelBase):
         # self.resample_mu_Sigma(A, W)
         # self.resample_c(A, W)
         # self.resample_m()
+
+
+class _MeanFieldSBM(_StochasticBlockModelBase):
+    """
+    Add mean field updates
+    """
+    def __init__(self, population,
+                 C=1,
+                 c=None, pi=1.0, m=None,
+                 p=None, tau0=0.1, tau1=0.1,
+                 mu=None, Sigma=None, mu0=0.0, kappa0=1.0, nu0=1.0, Sigma0=1.0,
+                 allow_self_connections=True):
+
+        super(_MeanFieldSBM, self).__init__(population,
+                                            C=C,
+                                            c=c, pi=pi, m=m,
+                                            p=p, tau0=tau0, tau1=tau1,
+                                            mu=mu, Sigma=Sigma, mu0=mu0, kappa0=kappa0, Sigma0=Sigma0, nu0=nu0,
+                                            allow_self_connections=allow_self_connections)
+
+        # Initialize mean field parameters
+        self.mf_pi     = np.ones(self.C)
+
+        # To break symmetry, start with a sample of mf_m
+        self.mf_m      = np.random.dirichlet(10 * np.ones(self.C),
+                                            size=(self.N,))
+        self.mf_tau0   = self.tau0  * np.ones((self.C, self.C))
+        self.mf_tau1   = self.tau1  * np.ones((self.C, self.C))
+        self.mf_Mu     = self.Mu.copy()
+        self.mf_Sigma  = self.Sigma.copy()
+
+    def meanfieldupdate(self, augmented_data):
+        raise NotImplementedError()
+
+    def mf_expected_p(self):
+        """
+        Compute the expected probability of a connection, averaging over c
+        :return:
+        """
+        if self.fixed:
+            return self.P
+
+        E_p = np.zeros((self.N, self.N))
+        for c1 in xrange(self.C):
+            for c2 in xrange(self.C):
+                # Get the KxK matrix of joint class assignment probabilities
+                pc1c2 = self.mf_m[:,c1][:, None] * self.mf_m[:,c2][None, :]
+
+                # Get the probability of a connection for this pair of classes
+                E_p += pc1c2 * self.mf_tau1[c1,c2] / (self.mf_tau0[c1,c2] + self.mf_tau1[c1,c2])
+
+        if not self.allow_self_connections:
+            np.fill_diagonal(E_p, 0.0)
+
+        return E_p
+
+    def mf_expected_notp(self):
+        """
+        Compute the expected probability of NO connection, averaging over c
+        :return:
+        """
+        return 1.0 - self.expected_p()
+
+    def mf_expected_log_p(self):
+        """
+        Compute the expected log probability of a connection, averaging over c
+        :return:
+        """
+        if self.fixed:
+            E_ln_p = np.log(self.P)
+        else:
+            E_ln_p = np.zeros((self.N, self.N))
+            for c1 in xrange(self.C):
+                for c2 in xrange(self.C):
+                    # Get the KxK matrix of joint class assignment probabilities
+                    pc1c2 = self.mf_m[:,c1][:, None] * self.mf_m[:,c2][None, :]
+
+                    # Get the probability of a connection for this pair of classes
+                    E_ln_p += pc1c2 * (psi(self.mf_tau1[c1,c2])
+                                       - psi(self.mf_tau0[c1,c2] + self.mf_tau1[c1,c2]))
+
+        if not self.allow_self_connections:
+            np.fill_diagonal(E_ln_p, -np.inf)
+
+        return E_ln_p
+
+    def mf_expected_log_notp(self):
+        """
+        Compute the expected log probability of NO connection, averaging over c
+        :return:
+        """
+        if self.fixed:
+            E_ln_notp = np.log(1.0 - self.P)
+        else:
+            E_ln_notp = np.zeros((self.N, self.N))
+            for c1 in xrange(self.C):
+                for c2 in xrange(self.C):
+                    # Get the KxK matrix of joint class assignment probabilities
+                    pc1c2 = self.mf_m[:,c1][:, None] * self.mf_m[:,c2][None, :]
+
+                    # Get the probability of a connection for this pair of classes
+                    E_ln_notp += pc1c2 * (psi(self.mf_tau0[c1,c2])
+                                          - psi(self.mf_tau0[c1,c2] + self.mf_tau1[c1,c2]))
+
+        if not self.allow_self_connections:
+            np.fill_diagonal(E_ln_notp, 0.0)
+
+        return E_ln_notp
+
+    def mf_expected_mu(self):
+        # TODO: Use variational parameters
+        E_mu = self.Mu
+        return E_mu
+
+    def mf_expected_mumuT(self):
+        # TODO: Use variational parameters
+        E_mumuT = np.einsum("ijk,ijl->ijkl", self.Mu, self.Mu)
+
+        return E_mumuT
+
+    def mf_expected_Sigma_inv(self):
+        # TODO: Use variational parameters
+        E_Sigma_inv = self.Sigma.copy()
+        for n_pre in xrange(self.N):
+            for n_post in xrange(self.N):
+                E_Sigma_inv[n_pre, n_post, :, :] = \
+                    np.linalg.inv(E_Sigma_inv[n_pre, n_post, :, :])
+
+        return E_Sigma_inv
+
+    def mf_expected_logdet_Sigma(self):
+        # TODO: Use variational parameters
+        Sigma = self.Sigma
+        E_logdet_Sigma = np.zeros((self.N, self.N))
+        for n_pre in xrange(self.N):
+            for n_post in xrange(self.N):
+                E_logdet_Sigma[n_pre, n_post] = \
+                    np.linalg.slogdet(Sigma[n_pre, n_post, :, :])[1]
+        return E_logdet_Sigma
+
+    def get_vlb(self, augmented_data):
+        raise NotImplementedError()
+
+    def resample_from_mf(self, augmented_data):
+        raise NotImplementedError()
+
+
+class StochasticBlockModel(_GibbsSBM, _MeanFieldSBM):
+    pass
