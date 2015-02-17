@@ -155,7 +155,6 @@ class _PolyaGammaAugmentedCountsBase(GibbsSampling, MeanField):
         E_ln_notp = np.log(1-ps).mean(axis=1)
 
         vlb = self.expected_log_likelihood((E_lnp, E_ln_notp)).sum()
-        print "Obs VLB: ", vlb
         return vlb
 
 

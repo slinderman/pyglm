@@ -30,7 +30,7 @@ class GaussianBias(Component):
         Resample the bias given the weights and psi
         :return:
         """
-        self._resample_b()
+        self._resample_b(augmented_data)
 
     def _resample_b(self, augmented_data):
         # TODO: Parallelize this

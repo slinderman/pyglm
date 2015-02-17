@@ -8,20 +8,20 @@ import copy
 import numpy as np
 
 from pyglm.deps.pybasicbayes.abstractions import Model, ModelGibbsSampling, ModelMeanField
-from pyglm.utils.basis import CosineBasis
 
 from pyglmdos.internals.observations import BernoulliObservations
 from pyglmdos.internals.activation import DeterministicActivation
 from pyglmdos.internals.bias import GaussianBias
 from pyglmdos.internals.background import NoBackground
 from pyglmdos.internals.weights import SpikeAndSlabGaussianWeights
+from pyglmdos.internals.networks import GibbsSBM
 
+from pyglmdos.utils.basis import CosineBasis
 
 class _BayesianPopulationBase(Model):
     """
     Base model for a population of neurons
     """
-
     __metaclass__ = abc.ABCMeta
 
     # Define the model components and their default hyperparameters
@@ -35,7 +35,7 @@ class _BayesianPopulationBase(Model):
     _default_activation_hypers  = {}
 
     _bias_class                 = GaussianBias
-    _default_bias_hypers        = {'mu': 0.0, 'sigmasq': 1.0}
+    _default_bias_hypers        = {'mu_0': 0.0, 'sigma_0': 1.0}
 
     _background_class           = NoBackground
     _default_background_hypers  = {}
@@ -44,8 +44,8 @@ class _BayesianPopulationBase(Model):
     _weight_class               = SpikeAndSlabGaussianWeights
     _default_weight_hypers      = {}
 
-    _network_class              = None
-    _default_network_hypers     = {}
+    _network_class              = GibbsSBM
+    _default_network_hypers     = {"C": 1}
 
 
     def __init__(self, N, dt=1.0, dt_max=10.0, B=5,
@@ -85,8 +85,7 @@ class _BayesianPopulationBase(Model):
             # Use the given basis hyperparameters
             self.observation_hypers = copy.deepcopy(self._default_observation_hypers)
             self.observation_hypers.update(observation_hypers)
-            self.observation_model = self._observation_class(self.N, self.B,
-                                                             **self.observation_hypers)
+            self.observation_model = self._observation_class(self, **self.observation_hypers)
 
         # Initialize the activation model
         if activation is not None:
@@ -95,8 +94,7 @@ class _BayesianPopulationBase(Model):
             # Use the given basis hyperparameters
             self.activation_hypers = copy.deepcopy(self._default_activation_hypers)
             self.activation_hypers.update(activation_hypers)
-            self.activation_model = self._activation_class(self.N, self.B,
-                                                     **self.activation_hypers)
+            self.activation_model = self._activation_class(self,  **self.activation_hypers)
 
         # Initialize the bias
         if bias is not None:
@@ -105,7 +103,7 @@ class _BayesianPopulationBase(Model):
             # Use the given basis hyperparameters
             self.bias_hypers = copy.deepcopy(self._default_bias_hypers)
             self.bias_hypers.update(bias_hypers)
-            self.bias_model = self._bias_class(self.N, self.dt, **self.bias_hypers)
+            self.bias_model = self._bias_class(self, **self.bias_hypers)
 
         # Initialize the background model
         if background is not None:
@@ -114,17 +112,16 @@ class _BayesianPopulationBase(Model):
             # Use the given background hyperparameters
             self.background_hypers = copy.deepcopy(self._default_background_hypers)
             self.background_hypers.update(background_hypers)
-            self.background_model = self._background_class(self.N, self.dt, **self.background_hypers)
+            self.background_model = self._background_class(self, **self.background_hypers)
 
         # Initialize the network model
         if network is not None:
-            assert network.K == self.N
             self.network = network
         else:
             # Use the given network hyperparameters
             self.network_hypers = copy.deepcopy(self._default_network_hypers)
             self.network_hypers.update(network_hypers)
-            self.network = self._network_class(N=self.N,
+            self.network = self._network_class(self,
                                                **self.network_hypers)
 
         # Check that the model doesn't allow instantaneous self connections
@@ -139,11 +136,25 @@ class _BayesianPopulationBase(Model):
         else:
             self.weight_hypers = copy.deepcopy(self._default_weight_hypers)
             self.weight_hypers.update(weight_hypers)
-            self.weight_model = self._weight_class(self.N, self.network,
-                                                   **self.weight_hypers)
+            self.weight_model = self._weight_class(self, **self.weight_hypers)
 
         # Initialize the data list to empty
         self.data_list = []
+
+    def augment_data(self, S):
+        T = S.shape[0]
+        F = self.basis.convolve_with_basis(S)
+
+        # Augment the data with extra local variables and regressors
+        augmented_data = {"T": T, "S": S, "F": F}
+
+        # The model components may require local variables for each data point
+        self.observation_model.augment_data(augmented_data)
+        self.activation_model.augment_data(augmented_data)
+        self.background_model.augment_data(augmented_data)
+        self.weight_model.augment_data(augmented_data)
+
+        return augmented_data
 
     def add_data(self, S, F=None, minibatchsize=None):
         """
@@ -154,38 +165,40 @@ class _BayesianPopulationBase(Model):
         :param S: a TxK matrix of of event counts for each time bin
                   and each process.
         """
-        assert isinstance(S, np.ndarray) and S.ndim == 2 and S.shape[1] == self.K \
-               and np.amin(S) >= 0 and S.dtype == np.int, \
-               "Data must be a TxK array of event counts"
+        assert isinstance(S, np.ndarray) and S.ndim == 2 and S.shape[1] == self.N \
+               and np.amin(S) >= 0 and S.dtype == np.int32, \
+               "Data must be a TxN array of event counts"
 
         T = S.shape[0]
-
-        # Filter the data into a TxKxB array
-        if F is not None:
-            assert isinstance(F, np.ndarray) and F.shape == (T, self.K, self.B), \
-                "F must be a filtered event count matrix"
-        else:
-            print "Convolving with basis"
-            F = self.basis.convolve_with_basis(S)
-
+        #
+        # # Filter the data into a TxKxB array
+        # if F is not None:
+        #     assert isinstance(F, np.ndarray) and F.shape == (T, self.N, self.B), \
+        #         "F must be a filtered event count matrix"
+        # else:
+        #     print "Convolving with basis"
+        #     F = self.basis.convolve_with_basis(S)
+        #
         # Add the data in minibatches
         if minibatchsize is None:
             minibatchsize = T
 
         for offset in np.arange(T, step=minibatchsize):
             end = min(offset+minibatchsize, T)
-            T_mb = end - offset
             S_mb = S[offset:end, :]
-            F_mb = F[offset:end, :]
+            # T_mb = end - offset
+            # F_mb = F[offset:end, :]
 
             # Augment the data with extra local variables and regressors
-            augmented_data = {"T": T_mb, "S": S_mb, "F": F_mb}
+            # augmented_data = {"T": T_mb, "S": S_mb, "F": F_mb}
+            #
+            # # The model components may require local variables for each data point
+            # self.observation_model.augment_data(augmented_data)
+            # self.activation_model.augment_data(augmented_data)
+            # self.background_model.augment_data(augmented_data)
+            # self.weight_model.augment_data(augmented_data)
 
-            # The model components may require local variables for each data point
-            self.observation_model.augment_data(augmented_data)
-            self.activation_model.augment_data(augmented_data)
-            self.background_model.augment_data(augmented_data)
-            self.weight_model.augment_data(augmented_data)
+            augmented_data = self.augment_data(S_mb)
 
             # Add to the data list
             self.data_list.append(augmented_data)
@@ -204,18 +217,16 @@ class _BayesianPopulationBase(Model):
         L = self.basis.L    # Length of the impulse responses
 
         # Initialize output matrix of spike counts
-        S = np.zeros((T,N))
+        S = np.zeros((T,N), dtype=np.int32)
         # Initialize the rate matrix
         Psi = np.zeros((T+L,N))
         # TODO: Come up with a better symbol for the activation
         # Initialize the autoregressive activation matrix
-        X = np.zeros((T+L, N, B))
+        X = np.zeros((T+L, N))
 
-        # Precompute the impulse responses (LxKxK array)
-        G = np.tensordot(self.basis.basis, self.weight_model.W, axes=([1], [2]))
-        assert G.shape == (L,self.K, self.K)
-        H = self.weight_model.W_effective[None,:,:] * \
-            G
+        # Precompute the impulse responses (LxNxN array)
+        H = np.tensordot(self.basis.basis, self.weight_model.W, axes=([1], [2]))
+        assert H.shape == (L,self.N, self.N)
 
         # Transpose H so that it is faster for tensor mult
         H = np.transpose(H, axes=[0,2,1])
@@ -293,8 +304,15 @@ class _BayesianPopulationBase(Model):
     def heldout_log_likelihood(self, S):
         pass
 
-    def compute_rate(self):
-        pass
+    def compute_rate(self, augmented_data):
+        # Compute the activation
+        Psi = self.activation_model.compute_psi(augmented_data)
+
+        # Compute the expected spike count
+        ES = self.observation_model.expected_S(Psi)
+
+        # Normalize by the bin size
+        return ES / self.dt
 
 
 class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
@@ -302,7 +320,15 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
     Implement Gibbs sampling for the population model
     """
     def resample_model(self):
-        pass
+        assert len(self.data_list) == 1, "Can only do Gibbs sampling with one dataset"
+        data = self.data_list[0]
+
+        # update model components one at a time
+        self.observation_model.resample(data)
+        self.activation_model.resample(data)
+        self.weight_model.resample(data)
+        self.bias_model.resample(data)
+        # self.network.resample(data)
 
 
 class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
@@ -310,10 +336,10 @@ class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
     Implement mean field variational inference for the population model
     """
     def meanfield_coordinate_descent_step(self):
-        pass
+        raise NotImplementedError()
 
     def get_vlb(self):
-        pass
+        raise NotImplementedError()
 
 
 class _SVIPopulation(_MeanFieldPopulation):
@@ -321,4 +347,4 @@ class _SVIPopulation(_MeanFieldPopulation):
     Implement stochastic variational inference for the population model
     """
     def svi_step(self):
-        pass
+        raise NotImplementedError()

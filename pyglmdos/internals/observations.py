@@ -29,14 +29,17 @@ class _PolyaGammaAugmentedObservationsBase(Component):
         :return:
         """
         S = augmented_data["S"]
-        assert S.ndim == 1
         self.T = S.shape[0]
+        self.N = S.shape[1]
 
         # Initialize auxiliary variables
         augmented_data["omega"] = np.ones_like(S)
-        pgdrawv(np.ones_like(S, dtype=np.int32),
-                np.zeros_like(S),
-                augmented_data["omega"], self.rng)
+        for n in xrange(self.N):
+            tmp = np.empty(self.T)
+            pgdrawv(np.ones(self.T, dtype=np.int32),
+                    np.zeros(self.T),
+                    tmp, self.rng)
+            augmented_data["omega"][:,n] = tmp
 
     @abc.abstractmethod
     def a(self, augmented_data):
@@ -47,7 +50,7 @@ class _PolyaGammaAugmentedObservationsBase(Component):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def b(self, , augmented_data):
+    def b(self, augmented_data):
         """
         The exponent in the denominator of the logistic likelihood
             exp(\psi)^a / (1+exp(\psi)^b
@@ -63,6 +66,14 @@ class _PolyaGammaAugmentedObservationsBase(Component):
 
     def omega(self, augmented_data):
         return augmented_data["omega"]
+
+    @abc.abstractmethod
+    def rvs(self, Psi):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def expected_S(self, Psi):
+        raise NotImplementedError()
 
     def resample(self, augmented_data):
         """
@@ -81,10 +92,16 @@ class _PolyaGammaAugmentedObservationsBase(Component):
         # ppg.draw_vec(self.conditional_b, self.psi, self.omega)
 
         # Resample with Jesse Windle's ported code
-        pgdrawv(self.b(augmented_data),
-                psi,
-                augmented_data["omega"],
-                self.rng)
+        b = self.b(augmented_data)
+        for n in xrange(self.N):
+            bn   = b[:,n].copy("C")
+            psin = psi[:,n].copy("C")
+            tmpn = np.empty(augmented_data["T"])
+            pgdrawv(bn,
+                    psin,
+                    tmpn,
+                    self.rng)
+            augmented_data["omega"][:,n] = tmpn
 
 
 class BernoulliObservations(_PolyaGammaAugmentedObservationsBase):
@@ -101,6 +118,10 @@ class BernoulliObservations(_PolyaGammaAugmentedObservationsBase):
     def rvs(self, Psi):
         p = logistic(Psi)
         return np.random.rand(*p.shape) < p
+
+    def expected_S(self, Psi):
+        p = logistic(Psi)
+        return p
 
 
 class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
@@ -122,4 +143,8 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
 
     def rvs(self, Psi):
         p = logistic(Psi)
-        return np.random.rand(*p.shape) < p
+        return np.random.negative_binomial(self.xi, 1-p)
+
+    def expected_S(self, Psi):
+        p = logistic(Psi)
+        return self.xi * p / (1-p)

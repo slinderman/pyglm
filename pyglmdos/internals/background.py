@@ -11,6 +11,8 @@ class NoBackground(Component):
     """
     Null background model.
     """
+    def __init__(self, population):
+        pass
 
     def resample(self, augmented_data):
         pass

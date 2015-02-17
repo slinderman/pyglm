@@ -51,7 +51,7 @@ class _ActivationBase(Component):
         psi = np.zeros(T)
 
         if bias is None:
-            psi += self.population.bias_model.b[None, :]
+            psi += self.population.bias_model.b[None, n_post]
 
         for nn in xrange(N):
             if nn == n_pre:
@@ -71,7 +71,7 @@ class DeterministicActivation(_ActivationBase):
         F = augmented_data["F"]
 
         # compute psi
-        psi = np.zeros_like((T,N))
+        psi = np.zeros((T,N))
         psi += self.population.bias_model.b[None, :]
 
         W = self.population.weight_model.W
@@ -84,7 +84,17 @@ class DeterministicActivation(_ActivationBase):
         pass
 
     def precision(self, augmented_data, bias=None, synapse=None):
-        raise NotImplementedError()
+        F = augmented_data["F"]
+        obs = self.observation_model
+
+        n_pre, n_post = self._get_n(bias, synapse)
+
+        if bias is not None:
+            return obs.omega(augmented_data)[:,n_post].sum()
+        else:
+            omega = obs.omega(augmented_data)[:,n_post]
+            F_pre = F[:,n_pre,:]
+            return (F_pre * omega[:,None]).T.dot(F_pre)
 
     def mean_dot_precision(self, augmented_data, bias=None, synapse=None):
         F = augmented_data["F"]
@@ -99,8 +109,6 @@ class DeterministicActivation(_ActivationBase):
             return trm1.sum()
         else:
             return trm1.dot(F[:,n_pre,:])
-
-        return mu_dot_prec
 
     def rvs(self, X):
         return X
