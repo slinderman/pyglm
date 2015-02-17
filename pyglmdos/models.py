@@ -298,8 +298,34 @@ class _BayesianPopulationBase(Model):
         self.data_list = data_list
         return model_copy
 
+    def log_prior(self):
+        lprior  = 0
+        lprior += self.observation_model.log_prior()
+        lprior += self.activation_model.log_prior()
+        lprior += self.bias_model.log_prior()
+        lprior += self.background_model.log_prior()
+        lprior += self.weight_model.log_prior()
+        lprior += self.network.log_prior()
+    
+        return lprior
+    
+    def log_likelihood(self):
+        ll = 0
+        for augmented_data in self.data_list:
+            ll += np.sum(self.observation_model.log_likelihood(augmented_data))
+            ll += np.sum(self.activation_model.log_likelihood(augmented_data))
+            ll += np.sum(self.bias_model.log_likelihood(augmented_data))
+            ll += np.sum(self.background_model.log_likelihood(augmented_data))
+            ll += np.sum(self.weight_model.log_likelihood(augmented_data))
+            ll += np.sum(self.network.log_likelihood(augmented_data))
+
+        return ll
+        
     def log_probability(self):
-        pass
+        """
+        Compute the log probability of the datasets
+        """
+        return self.log_prior() + self.log_likelihood()
 
     def heldout_log_likelihood(self, S):
         pass

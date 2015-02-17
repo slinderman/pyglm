@@ -4,6 +4,7 @@ Weight models
 import numpy as np
 
 from pyglmdos.abstractions import Component
+from pyglmdos.internals.distributions import Bernoulli, Gaussian
 
 from pyglm.utils.utils import logistic, logit
 
@@ -36,6 +37,17 @@ class SpikeAndSlabGaussianWeights(Component):
     @property
     def activation(self):
         return self.population.activation_model
+
+    def log_prior(self):
+        lprior = 0
+        for n_pre in xrange(self.N):
+            for n_post in xrange(self.N):
+                lprior += Bernoulli(self.network.P[n_pre,n_post]).log_probability(self.A).sum()
+                lprior += self.A[n_pre,n_post] * \
+                          (Gaussian(self.network.Mu[n_pre,n_post,:],
+                                    self.network.Sigma[n_pre,n_post,:,:])
+                           .log_probability(self.W[n_pre,n_post])).sum()
+        return lprior
 
     def resample(self, augmented_data):
         for n_pre in xrange(self.N):

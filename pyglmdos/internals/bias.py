@@ -4,6 +4,7 @@ Bias models (of which there are only one)
 import numpy as np
 
 from pyglmdos.abstractions import Component
+from pyglmdos.internals.distributions import ScalarGaussian
 
 class GaussianBias(Component):
 
@@ -24,6 +25,9 @@ class GaussianBias(Component):
     @property
     def activation(self):
         return self.population.activation_model
+
+    def log_prior(self):
+        return ScalarGaussian(self.mu_0, self.sigma_0).log_probability(self.b).sum()
 
     def resample(self, augmented_data):
         """

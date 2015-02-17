@@ -105,6 +105,15 @@ class _PolyaGammaAugmentedObservationsBase(Component):
 
 
 class BernoulliObservations(_PolyaGammaAugmentedObservationsBase):
+    def log_likelihood(self, augmented_data):
+        S   = augmented_data["S"]
+        Psi = self.activation.compute_psi(augmented_data)
+        p   = logistic(Psi)
+        p   = np.clip(p, 1e-32, 1-1e-32)
+
+        ll = (S * np.log(p) + (1-S) * np.log(1-p))
+        return ll
+
     def a(self, augmented_data):
         return augmented_data["S"]
 
@@ -130,6 +139,9 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
 
         assert xi > 0, "Xi must greater than 0 for negative binomial NB(xi, p)"
         self.xi = xi
+
+    def log_likelihood(self, augmented_data):
+        raise NotImplementedError()
 
     def a(self, augmented_data):
         return augmented_data["S"]

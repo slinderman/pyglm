@@ -20,6 +20,17 @@ class _ComponentBase(object):
         """
         pass
 
+    def log_prior(self):
+        """
+        Compute the log prior probability of this component's global variables
+        """
+        return 0
+
+    def log_likelihood(self, augmented_data):
+        """
+        Compute the log likelihood of data-local variables owned by this component
+        """
+        return 0
 
 class _GibbsComponent(_ComponentBase):
     """
