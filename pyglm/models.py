@@ -415,9 +415,12 @@ class _BayesianPopulationBase(Model):
         self.weight_model.initialize_with_standard_model(standard_model)
         self.bias_model.initialize_with_standard_model(standard_model)
 
-    def augment_data(self, S):
+    def augment_data(self, S, F=None):
         T = S.shape[0]
-        F = self.basis.convolve_with_basis(S)
+
+        # Filter the spike train if necessary
+        if F is None:
+            F = self.basis.convolve_with_basis(S)
 
         # Augment the data with extra local variables and regressors
         augmented_data = {"T": T, "S": S, "F": F}
@@ -452,7 +455,14 @@ class _BayesianPopulationBase(Model):
         for offset in np.arange(T, step=minibatchsize):
             end = min(offset+minibatchsize, T)
             S_mb = S[offset:end, :]
-            augmented_data = self.augment_data(S_mb)
+
+            # Extract the filtered spikes if given
+            if F is not None:
+                F_mb = F[offset:end, ...]
+            else:
+                F_mb = None
+
+            augmented_data = self.augment_data(S_mb, F=F_mb)
 
             # Add to the data list
             self.data_list.append(augmented_data)
@@ -569,15 +579,8 @@ class _BayesianPopulationBase(Model):
     
         return lprior
     
-    def log_likelihood(self):
+    def log_likelihood(self, augmented_data):
         ll = 0
-        for augmented_data in self.data_list:
-            ll += np.sum(self.observation_model.log_likelihood(augmented_data))
-            ll += np.sum(self.activation_model.log_likelihood(augmented_data))
-            ll += np.sum(self.bias_model.log_likelihood(augmented_data))
-            ll += np.sum(self.background_model.log_likelihood(augmented_data))
-            ll += np.sum(self.weight_model.log_likelihood(augmented_data))
-            ll += np.sum(self.network.log_likelihood(augmented_data))
 
         return ll
         
@@ -585,10 +588,19 @@ class _BayesianPopulationBase(Model):
         """
         Compute the log probability of the datasets
         """
-        return self.log_prior() + self.log_likelihood()
+        lp = self.log_prior()
+        for augmented_data in self.data_list:
+            lp += self.log_likelihood(augmented_data).sum()
 
-    def heldout_log_likelihood(self, S):
-        raise NotImplementedError()
+        return lp
+
+    def heldout_log_likelihood(self, S, F=None):
+        """
+        Compute the heldout log likelihood on a spike train, S.
+        """
+        self.add_data(S, F=F)
+        self.log_likelihood(self.data_list[-1])
+        self.data_list.pop()
 
     def compute_rate(self, augmented_data):
         # Compute the activation
