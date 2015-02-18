@@ -4,9 +4,9 @@ import numpy as np
 from pyhsmm.models import WeakLimitHDPHMM
 from pyhsmm.util.text import progprint_xrange
 
-from pyglm.populations import ErdosRenyiBernoulliPopulation
+from oldpyglm.populations import ErdosRenyiBernoulliPopulation
 from deps.pybasicbayes.distributions import Gaussian
-from pyglm.utils.basis import  Basis
+from oldpyglm.utils.basis import  Basis
 
 
 np.random.seed(0)

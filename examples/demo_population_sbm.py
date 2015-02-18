@@ -3,8 +3,8 @@ from __future__ import division
 import numpy as np
 import matplotlib.pyplot as plt
 
-from pyglm.populations import SBMBernoulliPopulation
-from pyglm.utils.basis import  Basis
+from oldpyglm.populations import SBMBernoulliPopulation
+from oldpyglm.utils.basis import  Basis
 
 
 seed = np.random.randint(2**16)

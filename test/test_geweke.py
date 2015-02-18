@@ -4,8 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm, probplot, invgamma
 
-from pyglm.populations import *
-from pyglm.deps.pybasicbayes.distributions import DiagonalGaussian, GaussianFixed
+from oldpyglm.populations import *
+from oldpyglm.deps.pybasicbayes.distributions import DiagonalGaussian, GaussianFixed
 
 
 seed = np.random.randint(2**16)
@@ -233,7 +233,7 @@ def test_polya_gamma_geweke(N_samples=10000, thin=1, T=1):
 
     :return:
     """
-    from pyglm.internals.observations import AugmentedBernoulliCounts
+    from oldpyglm.internals.observations import AugmentedBernoulliCounts
 
     mu_psi = 0.0
     sigma_psi = 1.0

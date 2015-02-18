@@ -1,6 +1,6 @@
 import numpy as np
 
-from pyglm.neuron import BernoulliSpikeAndSlabNeuron
+from oldpyglm.neuron import BernoulliSpikeAndSlabNeuron
 from deps.pybasicbayes.distributions import Gaussian, GaussianFixedCov, GaussianFixedMean
 
 

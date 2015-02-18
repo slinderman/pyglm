@@ -5,8 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm, probplot, invgamma
 
-from pyglm.populations import *
-from pyglm.deps.pybasicbayes.distributions import DiagonalGaussian
+from oldpyglm.populations import *
+from oldpyglm.deps.pybasicbayes.distributions import DiagonalGaussian
 
 
 seed = np.random.randint(2**16)

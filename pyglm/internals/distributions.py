@@ -255,6 +255,7 @@ class Gaussian:
 
         assert Sigma.shape == (self.D, self.D), "Sigma must be a DxD covariance matrix"
         self.Sigma = Sigma
+        self.logdet_Sigma = np.linalg.slogdet(self.Sigma)[1]
 
     def log_probability(self, x):
         """
@@ -262,9 +263,10 @@ class Gaussian:
         :param x:
         :return:
         """
-        logdet_Sigma = np.linalg.slogdet(self.Sigma)[1]
+        # logdet_Sigma = np.linalg.slogdet(self.Sigma)[1]
         z = x-self.mu
-        lp = -0.5*np.log(2*np.pi) -0.5*logdet_Sigma -0.5 * z.T.dot(self.Sigma).dot(z)
+        lp = -0.5*self.D*np.log(2*np.pi) -0.5*self.D*self.logdet_Sigma \
+             -0.5 * z.T.dot(np.linalg.solve(self.Sigma, z))
         lp = np.nan_to_num(lp)
         return lp
 

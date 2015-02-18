@@ -3,9 +3,8 @@ Weight models
 """
 import numpy as np
 
-from pyglmdos.abstractions import Component
-from pyglmdos.internals.distributions import Bernoulli, Gaussian
-
+from pyglm.abstractions import Component
+from pyglm.internals.distributions import Bernoulli, Gaussian
 from pyglm.utils.utils import logistic, logit
 
 class _SpikeAndSlabGaussianWeightsBase(Component):
@@ -35,6 +34,19 @@ class _SpikeAndSlabGaussianWeightsBase(Component):
     @property
     def activation(self):
         return self.population.activation_model
+
+    def initialize_with_standard_model(self, standard_model):
+        """
+        Initialize with the weights from a standard model
+        :param standard_model:
+        :return:
+        """
+        W_std = standard_model.W
+
+        # Make sure it is the correct shape before copying
+        assert W_std.shape == (self.N, self.N, self.B)
+        self.W = W_std.copy()
+        self.A = np.ones((self.N, self.N))
 
     def log_prior(self):
         lprior = 0
@@ -141,6 +153,23 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         self.mf_p     = 0.5 * np.ones((self.N, self.N))
         self.mf_mu    = np.zeros((self.N, self.N, self.B))
         self.mf_Sigma = np.tile(np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
+
+    def initialize_with_standard_model(self, standard_model):
+        """
+        Initialize with the weights from a standard model
+        :param standard_model:
+        :return:
+        """
+        super(_MeanFieldSpikeAndSlabGaussianWeights, self).\
+            initialize_with_standard_model(standard_model)
+
+        W_std = standard_model.W
+        # Make sure it is the correct shape before copying
+        assert W_std.shape == (self.N, self.N, self.B)
+
+        self.mf_rho = 0.9 * np.ones((self.N, self.N))
+        self.mf_mu = W_std.copy()
+        self.mf_Sigma = np.tile(0.05 * np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
 
     def meanfieldupdate(self, augmented_data):
         for n_pre in xrange(self.N):

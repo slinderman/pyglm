@@ -6,7 +6,7 @@ For example:
 
 """
 import numpy as np
-from pyglmdos.abstractions import Component
+from pyglm.abstractions import Component
 
 class NoBackground(Component):
     """

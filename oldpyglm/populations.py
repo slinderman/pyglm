@@ -6,12 +6,12 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
-from pyglm.deps.pybasicbayes.abstractions import GibbsSampling, ModelGibbsSampling
-from pyglm.deps.pybasicbayes.distributions import ScalarGaussianNIX, Gaussian
-from pyglm.latent import LatentClass, _LatentVariableBase
-from pyglm.neuron import NegativeBinomialSpikeAndSlabNeuron, BernoulliSpikeAndSlabNeuron, BernoulliNeuron, NegativeBinomialNeuron
-from pyglm.networks import ErdosRenyiNetwork, StochasticBlockNetwork, CompleteNetwork
-from pyglm.utils.basis import  CosineBasis
+from oldpyglm.deps.pybasicbayes.abstractions import GibbsSampling, ModelGibbsSampling
+from oldpyglm.deps.pybasicbayes.distributions import ScalarGaussianNIX, Gaussian
+from oldpyglm.latent import LatentClass, _LatentVariableBase
+from oldpyglm.neuron import NegativeBinomialSpikeAndSlabNeuron, BernoulliSpikeAndSlabNeuron, BernoulliNeuron, NegativeBinomialNeuron
+from oldpyglm.networks import ErdosRenyiNetwork, StochasticBlockNetwork, CompleteNetwork
+from oldpyglm.utils.basis import  CosineBasis
 
 class _PopulationOfNeuronsBase(GibbsSampling, ModelGibbsSampling):
     """

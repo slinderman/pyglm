@@ -6,7 +6,7 @@ import gzip
 
 import matplotlib.pyplot as plt
 
-from pyglmdos.models import Population
+from pyglm.models import Population, StandardBernoulliPopulation
 
 def demo(seed=None):
     """
@@ -23,7 +23,9 @@ def demo(seed=None):
     # Load some example data.
     # See data/synthetic/generate.py to create more.
     ###########################################################
-    data_path = os.path.join("data", "synthetic", "synthetic_K20_C1_T10000.pkl.gz")
+    base_path = os.path.join("data", "synthetic", "synthetic_K20_C1_T10000")
+    data_path = base_path + ".pkl.gz"
+    init_path = base_path + ".standard_fit.pkl.gz"
     with gzip.open(data_path, 'r') as f:
         S, true_model = cPickle.load(f)
 
@@ -32,6 +34,18 @@ def demo(seed=None):
     B      = true_model.B
     dt     = true_model.dt
     dt_max = true_model.dt_max
+
+    ###########################################################
+    # Create and fit a standard model for initialization
+    ###########################################################
+    if os.path.exists(init_path):
+        with gzip.open(init_path, 'r'):
+            init_model = cPickle.load(init_path)
+    else:
+        init_model = StandardBernoulliPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
+                                                 basis_hypers=true_model.basis_hypers)
+        init_model.add_data(S)
+        init_model.fit()
 
     ###########################################################
     # Create a test spike-and-slab model
@@ -46,6 +60,7 @@ def demo(seed=None):
                             weight_hypers=true_model.weight_hypers,
                             network_hypers=true_model.network_hypers)
     test_model.add_data(S)
+    test_model.initialize_with_standard_model(init_model)
     # F_test = test_model.basis.convolve_with_basis(S_test)
 
     # Initialize plots

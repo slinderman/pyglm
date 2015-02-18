@@ -5,8 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm, probplot, invgamma
 
-from pyglm.populations import *
-from pyglm.deps.pybasicbayes.distributions import DiagonalGaussian
+from oldpyglm.populations import *
+from oldpyglm.deps.pybasicbayes.distributions import DiagonalGaussian
 
 
 seed = np.random.randint(2**16)
@@ -93,7 +93,7 @@ def unit_test_log_marginal_likelkhood():
     """
     Unit test the log marginal likelihood calculation
     """
-    from pyglm.deps.pybasicbayes.distributions import GaussianFixed
+    from oldpyglm.deps.pybasicbayes.distributions import GaussianFixed
     population = create_simple_population()
     synapse = population.neuron_models[0].synapse_models[0]
 

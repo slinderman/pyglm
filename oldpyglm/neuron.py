@@ -1,14 +1,14 @@
 import numpy as np
 from scipy.special import gammaln
 
-from pyglm.deps.pybasicbayes.abstractions import GibbsSampling, ModelGibbsSampling
-from pyglm.deps.pybasicbayes.distributions import GaussianFixedCov, GaussianFixed
-from pyglm.deps.pybasicbayes.util.stats import sample_discrete_from_log
-from pyglm.internals.distributions import InverseGamma
-from pyglm.internals.observations import NoisyAugmentedNegativeBinomialCounts, \
+from oldpyglm.deps.pybasicbayes.abstractions import GibbsSampling, ModelGibbsSampling
+from oldpyglm.deps.pybasicbayes.distributions import GaussianFixedCov, GaussianFixed
+from oldpyglm.deps.pybasicbayes.util.stats import sample_discrete_from_log
+from oldpyglm.internals.distributions import InverseGamma
+from oldpyglm.internals.observations import NoisyAugmentedNegativeBinomialCounts, \
     NoisyAugmentedBernoulliCounts, AugmentedBernoulliCounts
-from pyglm.internals.bias import GaussianBias
-from pyglm.synapses import GaussianVectorSynapse, SpikeAndSlabGaussianVectorSynapse
+from oldpyglm.internals.bias import GaussianBias
+from oldpyglm.synapses import GaussianVectorSynapse, SpikeAndSlabGaussianVectorSynapse
 
 
 class _NeuronBase(GibbsSampling, ModelGibbsSampling):

@@ -10,14 +10,14 @@ import numpy as np
 
 from pyglm.deps.pybasicbayes.abstractions import Model, ModelGibbsSampling, ModelMeanField
 
-from pyglmdos.internals.observations import BernoulliObservations
-from pyglmdos.internals.activation import DeterministicActivation
-from pyglmdos.internals.bias import GaussianBias
-from pyglmdos.internals.background import NoBackground
-from pyglmdos.internals.weights import SpikeAndSlabGaussianWeights
-from pyglmdos.internals.networks import StochasticBlockModel
+from pyglm.internals.observations import BernoulliObservations
+from pyglm.internals.activation import DeterministicActivation
+from pyglm.internals.bias import GaussianBias
+from pyglm.internals.background import NoBackground
+from pyglm.internals.weights import SpikeAndSlabGaussianWeights
+from pyglm.internals.networks import StochasticBlockModel
 
-from pyglmdos.utils.basis import CosineBasis
+from pyglm.utils.basis import CosineBasis
 from pyglm.utils.utils import logistic
 
 class StandardBernoulliPopulation(Model):
@@ -405,6 +405,15 @@ class _BayesianPopulationBase(Model):
 
         # Initialize the data list to empty
         self.data_list = []
+
+    def initialize_with_standard_model(self, standard_model):
+        """
+        Initialize the model parameters with a standard model.
+        :param standard_model:
+        :return:
+        """
+        self.weight_model.initialize_with_standard_model(standard_model)
+        self.bias_model.initialize_with_standard_model(standard_model)
 
     def augment_data(self, S):
         T = S.shape[0]

@@ -6,12 +6,12 @@ import abc
 import numpy as np
 from scipy.special import gammaln, psi
 
-from pyglmdos.abstractions import Component
+from pyglm.abstractions import Component
 
 from pyglm.deps.pybasicbayes.util.stats import sample_discrete_from_log
 from pyglm.deps.pybasicbayes.util.stats import sample_niw
 
-from pyglmdos.internals.distributions import Bernoulli
+from pyglm.internals.distributions import Bernoulli
 
 # TODO: Make a base class for networks
 

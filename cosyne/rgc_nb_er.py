@@ -6,9 +6,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from deps.pybasicbayes.distributions import DiagonalGaussian
-from pyglm.utils.datahelper import load_data
+from oldpyglm.utils.datahelper import load_data
 from utils.basis import  Basis
-from pyglm.populations import ErdosRenyiNegativeBinomialPopulation
+from oldpyglm.populations import ErdosRenyiNegativeBinomialPopulation
 
 
 

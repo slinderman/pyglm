@@ -6,7 +6,7 @@ import gzip
 
 import matplotlib.pyplot as plt
 
-from pyglmdos.models import StandardBernoulliPopulation
+from pyglm.models import StandardBernoulliPopulation
 
 def demo(seed=None):
     """
@@ -23,7 +23,8 @@ def demo(seed=None):
     # Load some example data.
     # See data/synthetic/generate.py to create more.
     ###########################################################
-    data_path = os.path.join("data", "synthetic", "synthetic_K20_C1_T10000.pkl.gz")
+    base_path = os.path.join("data", "synthetic", "synthetic_K20_C1_T10000")
+    data_path = base_path + ".pkl.gz"
     with gzip.open(data_path, 'r') as f:
         S, true_model = cPickle.load(f)
         true_model.add_data(S)
@@ -78,6 +79,13 @@ def demo(seed=None):
         plt.plot(np.arange(T), R_test[:,n], '-r', lw=1)
         plt.ylim([0,1])
     plt.show()
+
+    ###########################################################
+    # Save the fit model
+    ###########################################################
+    results_path = base_path + ".standard_fit.pkl.gz"
+    with gzip.open(data_path, 'w') as f:
+        cPickle.dump(test_model, protocol=-1)
 
 
 demo(1234)

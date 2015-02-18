@@ -6,7 +6,7 @@ import gzip
 
 import matplotlib.pyplot as plt
 
-from pyglmdos.models import Population
+from pyglm.models import Population
 
 def demo(seed=None):
     """

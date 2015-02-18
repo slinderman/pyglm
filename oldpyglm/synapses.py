@@ -1,11 +1,11 @@
 import numpy as np
-from pyglm.deps.pybasicbayes.abstractions import Collapsed, MeanField
-from pyglm.deps.pybasicbayes.distributions import GibbsSampling, GaussianFixed
-from pyglm.deps.pybasicbayes.util.stats import sample_discrete_from_log
+from oldpyglm.deps.pybasicbayes.abstractions import Collapsed, MeanField
+from oldpyglm.deps.pybasicbayes.distributions import GibbsSampling, GaussianFixed
+from oldpyglm.deps.pybasicbayes.util.stats import sample_discrete_from_log
 
-from pyglm.internals.distributions import Gaussian, Bernoulli
+from oldpyglm.internals.distributions import Gaussian, Bernoulli
 
-from pyglm.utils.utils import logistic, logit
+from oldpyglm.utils.utils import logistic, logit
 
 class GaussianVectorSynapse(GibbsSampling, Collapsed, MeanField):
     def __init__(self,

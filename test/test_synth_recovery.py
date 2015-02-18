@@ -3,8 +3,8 @@ from __future__ import division
 import numpy as np
 import matplotlib.pyplot as plt
 
-from pyglm.populations import ErdosRenyiBernoulliPopulation
-from pyglm.deps.pybasicbayes.distributions import DiagonalGaussian
+from oldpyglm.populations import ErdosRenyiBernoulliPopulation
+from oldpyglm.deps.pybasicbayes.distributions import DiagonalGaussian
 
 
 # seed = np.random.randint(2**16)

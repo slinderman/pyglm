@@ -4,9 +4,9 @@ import numpy as np
 from pyhsmm.util.text import progprint_xrange
 
 from deps.pybasicbayes.models import Mixture
-from pyglm.populations import ErdosRenyiBernoulliPopulation
+from oldpyglm.populations import ErdosRenyiBernoulliPopulation
 from nb.deps.pybasicbayes.distributions import Gaussian
-from pyglm.utils.basis import  Basis
+from oldpyglm.utils.basis import  Basis
 
 
 np.random.seed(0)

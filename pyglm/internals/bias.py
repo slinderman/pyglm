@@ -1,133 +1,124 @@
+"""
+Bias models (of which there are only one)
+"""
 import numpy as np
 
-from pyglm.deps.pybasicbayes.abstractions import MeanField, GibbsSampling
-from pyglm.deps.pybasicbayes.util.stats import getdatasize
+from pyglm.abstractions import Component
 from pyglm.internals.distributions import ScalarGaussian
 
-class GaussianBias(GibbsSampling, MeanField):
-    def __init__(self,
-                 neuron_model,
-                 mu, sigmasq):
-        self.neuron_model = neuron_model
-        self.mu_0 = mu
-        self.sigmasq = sigmasq
-        self.lambda_0 = 1.0/self.sigmasq
+class _GaussianBiasBase(Component):
 
-        # Initialize mean field parameters
-        self.mf_mu_bias = self.mu_0
-        self.mf_sigma_bias = self.sigmasq
+    def __init__(self, population, mu_0=0.0, sigma_0=1.0):
+        self.population = population
 
-        # Initialize the bias from the prior
-        self.resample()
+        # Save the prior parameters
+        self.mu_0, self.sigma_0 = mu_0, sigma_0
+        self.lambda_0 = 1.0/self.sigma_0
+
+        # Initialize the parameters
+        self.b = np.zeros((self.N,))
 
     @property
-    def sigma_inv(self):
-        return 1.0 / self.neuron_model.noise_model.sigma
+    def N(self):
+        return self.population.N
 
-    def log_likelihood(self,x):
-        return ScalarGaussian(self.mu_0, self.sigmasq).log_probability(x)
+    @property
+    def activation(self):
+        return self.population.activation_model
 
-    def log_probability(self):
-        return self.log_likelihood(self.bias)
+    def initialize_with_standard_model(self, standard_model):
+        b_std = standard_model.bias.copy()
+        assert b_std.shape == (self.N,)
 
-    def rvs(self,size=[]):
-        raise NotImplementedError()
+        self.b = b_std
 
-    def _get_statistics(self,data):
-        n = getdatasize(data)
-        if n > 0:
-            if isinstance(data,np.ndarray):
-                xbar = data.mean(0)
-            else:
-                xbar = sum(d.sum(0) for d in data) / n
-        else:
-            xbar = None
+    def log_prior(self):
+        return ScalarGaussian(self.mu_0, self.sigma_0).log_probability(self.b).sum()
 
-        return n, xbar
 
-    def _posterior_hypparams(self,n,xbar):
-        # It seems we should be working with lmbda and sigma inv (unless lmbda is a covariance, not a precision)
-        sigma_inv, mu_0, lambda_0 = self.sigma_inv, self.mu_0, self.lambda_0
-        if n > 0:
-            lambda_n = n*sigma_inv + lambda_0
-            # mu_n = np.linalg.solve(sigma_inv_n, sigma_inv_0.dot(mu_0) + n*sigma_inv.dot(xbar))
-            mu_n = (lambda_0 * mu_0 + n * sigma_inv * xbar) / lambda_n
-            return mu_n, lambda_n
-        else:
-            return mu_0, lambda_0
+class _GibbsGaussianBias(_GaussianBiasBase):
+    def __init__(self, population, mu_0=0.0, sigma_0=1.0):
+        super(_GibbsGaussianBias, self).__init__(population, mu_0=mu_0, sigma_0=sigma_0)
 
-    def resample(self):
+        # Initialize with a draw from the prior
+        self.resample(None)
+
+    def resample(self, augmented_data):
         """
         Resample the bias given the weights and psi
         :return:
         """
-        # Compute the posterior parameters
-        lkhd_prec           = self.neuron_model.activation_lkhd_precision(0)
-        lkhd_mean_dot_prec  = self.neuron_model.activation_lkhd_mean_dot_precision(0)
+        self._resample_b(augmented_data)
 
-        prior_prec          = self.lambda_0
-        prior_mean_dot_prec = self.lambda_0 * self.mu_0
+    def _resample_b(self, augmented_data):
+        # TODO: Parallelize this
+        for n in xrange(self.N):
+            # Compute the posterior parameters
+            if augmented_data is not None:
+                lkhd_prec           = self.activation.precision(augmented_data, bias=n)
+                lkhd_mean_dot_prec  = self.activation.mean_dot_precision(augmented_data, bias=n)
+            else:
+                lkhd_prec           = 0
+                lkhd_mean_dot_prec  = 0
 
-        post_prec           = prior_prec + lkhd_prec
-        post_mu             = 1.0 / post_prec * (prior_mean_dot_prec + lkhd_mean_dot_prec)
+            prior_prec          = self.lambda_0
+            prior_mean_dot_prec = self.lambda_0 * self.mu_0
 
-        self.bias = post_mu + np.sqrt(1.0/post_prec) * np.random.randn()
+            post_prec           = prior_prec + lkhd_prec
+            post_mu             = 1.0 / post_prec * (prior_mean_dot_prec + lkhd_mean_dot_prec)
 
-    def expected_log_likelihood(self,x):
-        # TODO
-        raise NotImplementedError()
+            self.b[n] = post_mu + np.sqrt(1.0/post_prec) * np.random.randn()
+
+
+class _MeanFieldGaussianBias(_GaussianBiasBase):
+    def __init__(self, population, mu_0=0.0, sigma_0=1.0):
+        super(_MeanFieldGaussianBias, self).__init__(population, mu_0=mu_0, sigma_0=sigma_0)
+
+        # Initialize mean field parameters
+        self.mf_mu_b    = mu_0 * np.ones(self.N)
+        self.mf_sigma_b = sigma_0 * np.ones(self.N)
+
+    def initialize_with_standard_model(self, standard_model):
+        super(_MeanFieldGaussianBias, self).\
+            initialize_with_standard_model(standard_model)
+
+        b_std = standard_model.bias.copy()
+        assert b_std.shape == (self.N,)
+
+        self.mf_mu_b = b_std
+        self.mf_sigma_b = 0.05 * np.ones(self.N)
 
     def mf_expected_bias(self):
-        return self.mf_mu_bias
+        return self.mf_mu_b
 
     def mf_expected_bias_sq(self):
         # Var(bias) = E[bias^2] - E[bias]^2
-        return self.mf_sigma_bias + self.mf_mu_bias**2
+        return self.mf_sigma_b + self.mf_mu_b**2
 
-    def meanfieldupdate(self):
+    def meanfieldupdate(self, augmented_data):
         """
-        Update the variational parameters for the bias
+        Mean field update of the bias given the weights and psi
+        :return:
         """
-        if len(self.neuron_model.data_list) > 0:
-            # residuals = []
-            # for d in self.neuron_model.data_list:
-            #     mu = np.zeros_like(d.psi)
-            #     for X,syn in zip(d.X, self.neuron_model.synapse_models):
-            #         mu += syn.mf_predict(X)
-            #
-            #     # Use mean field activation to compute residuals
-            #     residual = (d.mf_expected_psi() - mu)[:,None]
-            #     residuals.append(residual)
-            # residuals = np.vstack(residuals)
-            #
-            # # TODO: USE MF ETA to compute residual
-            # T = residuals.shape[0]
-            # E_eta_inv = self.neuron_model.noise_model.expected_eta_inv()
-            # self.mf_sigma_bias = 1.0/(T * E_eta_inv + 1.0/self.sigmasq)
-            # self.mf_mu_bias = self.mf_sigma_bias * (residuals.sum() * E_eta_inv +
-            #                                         self.mu_0/self.sigmasq)
-            #
-            # self.mf_sigma_bias = self.mf_sigma_bias
-            # self.mf_mu_bias = self.mf_mu_bias
+        self._meanfieldupdate_b(augmented_data)
 
-            # Compute the expected  posterior parameters
-            mf_lkhd_prec           = self.neuron_model.mf_activation_lkhd_precision(0)
-            mf_lkhd_mean_dot_prec  = self.neuron_model.mf_activation_lkhd_mean_dot_precision(0)
+    def _meanfieldupdate_b(self, augmented_data):
+        # TODO: Parallelize this
+        for n in xrange(self.N):
+            # Compute the expected posterior parameters
+            lkhd_prec           = self.activation.mf_precision(augmented_data, bias=n)
+            lkhd_mean_dot_prec  = self.activation.mf_mean_dot_precision(augmented_data, bias=n)
 
-            mf_prior_prec          = self.lambda_0
-            mf_prior_mean_dot_prec = self.lambda_0 * self.mu_0
+            prior_prec          = self.lambda_0
+            prior_mean_dot_prec = self.lambda_0 * self.mu_0
 
-            mf_post_prec           = mf_prior_prec + mf_lkhd_prec
-            mf_post_mu             = 1.0 / mf_post_prec * (mf_prior_mean_dot_prec + mf_lkhd_mean_dot_prec)
+            post_prec           = prior_prec + lkhd_prec
+            post_mu             = 1.0 / post_prec * (prior_mean_dot_prec + lkhd_mean_dot_prec)
 
-            self.mf_sigma_bias     = 1.0 / mf_post_prec
-            self.mf_mu_bias        = mf_post_mu
+            self.mf_mu_b[n]    = post_mu
+            self.mf_sigma_b[n] = 1.0 / post_prec
 
-        else:
-            self.mf_sigma_bias = self.sigmasq
-            self.mf_mu_bias = self.mu_0
-
-    def get_vlb(self):
+    def get_vlb(self, augmented_data):
         """
         Variational lower bound for the Gaussian bias
         E[LN p(b | \mu, \sigma^2)] -
@@ -141,14 +132,21 @@ class GaussianBias(GibbsSampling, MeanField):
         E_b   = self.mf_expected_bias()
         E_bsq = self.mf_expected_bias_sq()
 
-        vlb += ScalarGaussian(self.mu_0, self.sigmasq).negentropy(E_x=E_b,
+        vlb += ScalarGaussian(self.mu_0, self.sigma_0).negentropy(E_x=E_b,
                                                                   E_xsq=E_bsq).sum()
 
         # Second term
         # E[LN q(b | \tilde{\mu}, \tilde{\sigma^2})]
-        vlb -= ScalarGaussian(self.mf_mu_bias, self.mf_sigma_bias).negentropy().sum()
+        vlb -= ScalarGaussian(self.mf_mu_b, self.mf_sigma_b).negentropy().sum()
 
         return vlb
 
-    def resample_from_mf(self):
-        self.bias = self.mf_mu_bias + np.sqrt(self.mf_sigma_bias) * np.random.randn()
+    def resample_from_mf(self, augmented_data):
+        """
+        Resample from the variational distribution
+        """
+        self.b = self.mf_mu_b + np.sqrt(self.mf_sigma_b) * np.random.randn(self.N)
+
+
+class GaussianBias(_GibbsGaussianBias, _MeanFieldGaussianBias):
+    pass

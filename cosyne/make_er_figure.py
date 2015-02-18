@@ -10,9 +10,9 @@ from hips.plotting.layout import create_axis_at_location, create_figure
 from hips.plotting.colormaps import gradient_cmap
 
 from deps.pybasicbayes.distributions import DiagonalGaussian
-from pyglm.utils.datahelper import load_data
+from oldpyglm.utils.datahelper import load_data
 from utils.basis import  Basis
-from pyglm.populations import ErdosRenyiNegativeBinomialPopulation
+from oldpyglm.populations import ErdosRenyiNegativeBinomialPopulation
 
 
 

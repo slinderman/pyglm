@@ -3,7 +3,7 @@ Some modeling abstractions.
 """
 import abc
 
-# from pyglm.deps.pybasicbayes.abstractions import GibbsSampling, MeanField, MeanFieldSVI
+# from oldpyglm.deps.pybasicbayes.abstractions import GibbsSampling, MeanField, MeanFieldSVI
 
 class _ComponentBase(object):
     """

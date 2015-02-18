@@ -5,9 +5,9 @@ import gzip
 import numpy as np
 import matplotlib.pyplot as plt
 
-from pyglm.utils.datahelper import load_data
+from oldpyglm.utils.datahelper import load_data
 from utils.basis import  Basis
-from pyglm.populations import SBMNegativeBinomialPopulation
+from oldpyglm.populations import SBMNegativeBinomialPopulation
 
 
 

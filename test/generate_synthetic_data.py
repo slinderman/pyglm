@@ -5,9 +5,9 @@ parameters such that the number of synthetic spikes is realistic.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from pyglm.populations import ErdosRenyiBernoulliPopulation
-from pyglm.deps.pybasicbayes.distributions import DiagonalGaussian
-from pyglm.utils.utils import logit
+from oldpyglm.populations import ErdosRenyiBernoulliPopulation
+from oldpyglm.deps.pybasicbayes.distributions import DiagonalGaussian
+from oldpyglm.utils.utils import logit
 
 
 def create_simple_population(N=1, B=3, dt=0.001,

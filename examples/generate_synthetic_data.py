@@ -4,7 +4,7 @@ import gzip
 import numpy as np
 import matplotlib.pyplot as plt
 
-from pyglmdos.models import Population
+from pyglm.models import Population
 
 def generate_synthetic_data(seed=None):
     """
