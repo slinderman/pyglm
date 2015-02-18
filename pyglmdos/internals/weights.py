@@ -138,7 +138,7 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         super(_MeanFieldSpikeAndSlabGaussianWeights, self).__init__(population)
 
         # Initialize the mean field variational parameters
-        self.mf_p     = np.zeros((self.N, self.N))
+        self.mf_p     = 0.5 * np.ones((self.N, self.N))
         self.mf_mu    = np.zeros((self.N, self.N, self.B))
         self.mf_Sigma = np.tile(np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
 
@@ -159,6 +159,7 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         """
         Get the expected sufficient statistics for this synapse.
         """
+        # TODO: A joint factor for mu and Sigma could yield E_mu_dot_Sigma under the priro
         mu_w                = self.network.mf_Mu[n_pre, n_post, :]
         Sigma_w             = self.network.mf_Sigma[n_pre, n_post, :, :]
 
@@ -188,18 +189,24 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         :param stats:
         :return:
         """
-        post_mu, post_cov, post_prec = stats
-        mu_w                         = self.network.mf_Mu[n_pre, n_post, :]
-        Sigma_w                      = self.network.mf_Sigma[n_pre, n_post, :, :]
-        rho                          = self.network.P[n_pre, n_post]
+        # TODO: A joint factor for mu and Sigma could yield E_mu_dot_Sigma under the priro
+        mf_post_mu, mf_post_cov, mf_post_prec = stats
+        # mf_mu_w                         = self.network.mf_Mu[n_pre, n_post, :]
+        # mf_Sigma_w                      = self.network.mf_Sigma[n_pre, n_post, :, :]
+        # mf_rho                          = self.network.mf_P[n_pre, n_post]
+        E_ln_rho       = self.network.mf_expected_log_p()[n_pre, n_post]
+        E_ln_notrho    = self.network.mf_expected_log_notp()[n_pre, n_post]
+        E_mu           = self.network.mf_expected_mu()[n_pre, n_post, :]
+        E_Sigma_inv    = self.network.mf_expected_Sigma_inv()[n_pre, n_post, :, :]
+        E_logdet_Sigma = self.network.mf_expected_logdet_Sigma()[n_pre, n_post]
 
         # Compute the log odds ratio
-        logdet_prior_cov = np.linalg.slogdet(Sigma_w)[1]
-        logdet_post_cov  = np.linalg.slogdet(post_cov)[1]
-        logit_rho_post   = logit(rho) \
+        logdet_prior_cov = E_logdet_Sigma
+        logdet_post_cov  = np.linalg.slogdet(mf_post_cov)[1]
+        logit_rho_post   = E_ln_rho - E_ln_notrho \
                            + self.B / 2.0 * (logdet_post_cov - logdet_prior_cov) \
-                           + 0.5 * post_mu.dot(post_prec).dot(post_mu) \
-                           - 0.5 * mu_w.dot(np.linalg.solve(Sigma_w, mu_w))
+                           + 0.5 * mf_post_mu.dot(mf_post_prec).dot(mf_post_mu) \
+                           - 0.5 * E_mu.dot(E_Sigma_inv.dot(E_mu))
 
         rho_post = logistic(logit_rho_post)
 
@@ -299,6 +306,7 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         """
         for n_pre in np.arange(self.N):
             for n_post in np.arange(self.N):
+                self.A[n_pre, n_post] = np.random.rand() < self.mf_p[n_pre, n_post]
                 self.W[n_pre, n_post, :] = \
                     np.random.multivariate_normal(self.mf_mu[n_pre, n_post, :],
                                                   self.mf_Sigma[n_pre, n_post, :, :])

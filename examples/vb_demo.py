@@ -42,22 +42,24 @@ def demo(seed=None):
                             basis_hypers=true_model.basis_hypers,
                             observation_hypers=true_model.observation_hypers,
                             activation_hypers=true_model.activation_hypers,
+                            bias_hypers=true_model.bias_hypers,
                             weight_hypers=true_model.weight_hypers,
                             network_hypers=true_model.network_hypers)
     test_model.add_data(S)
     # F_test = test_model.basis.convolve_with_basis(S_test)
 
     # Initialize plots
-    ln, im_net = initialize_plots(true_model, test_model, S)
+    lns, im_net = initialize_plots(true_model, test_model, S)
 
     ###########################################################
     # Fit the test model with batch variational inference
     ###########################################################
-    N_samples = 500
+    N_iters = 100
     samples = []
     vlbs = []
     # plls = []
-    for itr in xrange(N_samples):
+    raw_input("Press enter to continue\n")
+    for itr in xrange(N_iters):
         vlbs.append(test_model.get_vlb())
         test_model.meanfield_coordinate_descent_step()
         # plls.append(test_model.heldout_log_likelihood(S_test, F=F_test))
@@ -71,7 +73,8 @@ def demo(seed=None):
 
         # Update plot
         if itr % 1 == 0:
-            update_plots(itr, test_model, S, ln, im_net)
+            update_plots(itr, test_model, S, lns, im_net)
+    plt.ioff()
 
     ###########################################################
     # Analyze the samples
@@ -91,11 +94,15 @@ def initialize_plots(true_model, test_model, S):
 
 
     # Plot the true and inferred firing rate
-    plt.figure(2)
-    plt.plot(np.arange(T), R[:,0], '-k', lw=2)
     plt.ion()
-    data = test_model.data_list[0]
-    ln = plt.plot(np.arange(T), test_model.mf_expected_rate(data)[:,0], '-r')[0]
+    lns = []
+    plt.figure(2)
+    for n in xrange(N):
+        plt.subplot(N,1,n+1)
+        plt.plot(np.arange(T), R[:,n], '-k', lw=2)
+        data = test_model.data_list[0]
+        lns.append(plt.plot(np.arange(T), test_model.mf_expected_rate(data)[:,n], '-r')[0])
+        plt.ylim([0,1])
     plt.show()
 
     # # Plot the block affiliations
@@ -115,16 +122,18 @@ def initialize_plots(true_model, test_model, S):
     plt.pause(0.001)
 
     # return ln, im_net, im_clus
-    return ln, im_net
+    return lns, im_net
 
-def update_plots(itr, test_model, S, ln, im_net):
+def update_plots(itr, test_model, S, lns, im_net):
     N = test_model.N
     C = test_model.network.C
     T = S.shape[0]
     plt.figure(2)
     data = test_model.data_list[0]
-    ln.set_data(np.arange(T), test_model.mf_expected_rate(data)[:,0])
-    plt.title("\lambda_{%d}. Iteration %d" % (0, itr))
+    for n in xrange(N):
+        plt.subplot(N,1,n+1)
+        lns[n].set_data(np.arange(T), test_model.mf_expected_rate(data)[:,n])
+    plt.title("Iteration %d" % (itr))
     plt.pause(0.001)
 
     # plt.figure(3)
@@ -142,34 +151,28 @@ def update_plots(itr, test_model, S, ln, im_net):
 def analyze_samples(true_model, init_model, samples, vlbs):
     N_samples = len(samples)
     # Compute sample statistics for second half of samples
-    A_samples       = np.array([s.weight_model.A     for s in samples])
-    W_samples       = np.array([s.weight_model.W     for s in samples])
-    g_samples       = np.array([s.impulse_model.g    for s in samples])
-    lambda0_samples = np.array([s.bias_model.lambda0 for s in samples])
-    c_samples       = np.array([s.network.c          for s in samples])
-    p_samples       = np.array([s.network.p          for s in samples])
-    v_samples       = np.array([s.network.v          for s in samples])
-    vlbs             = np.array(vlbs)
+    A_samples = np.array([s.weight_model.A     for s in samples])
+    W_samples = np.array([s.weight_model.W     for s in samples])
+    b_samples = np.array([s.bias_model.b       for s in samples])
+    c_samples = np.array([s.network.c          for s in samples])
+    p_samples = np.array([s.network.p          for s in samples])
+    # mu_samples = np.array([s.network.v          for s in samples])
+    vlbs      = np.array(vlbs)
 
     offset = N_samples // 2
-    A_mean       = A_samples[offset:, ...].mean(axis=0)
-    W_mean       = W_samples[offset:, ...].mean(axis=0)
-    g_mean       = g_samples[offset:, ...].mean(axis=0)
-    lambda0_mean = lambda0_samples[offset:, ...].mean(axis=0)
-    p_mean       = p_samples[offset:, ...].mean(axis=0)
-    v_mean       = v_samples[offset:, ...].mean(axis=0)
+    A_mean = A_samples[offset:, ...].mean(axis=0)
+    W_mean = W_samples[offset:, ...].mean(axis=0)
+    b_mean = b_samples[offset:, ...].mean(axis=0)
+    p_mean = p_samples[offset:, ...].mean(axis=0)
 
 
     print "A true:        ", true_model.weight_model.A
     print "W true:        ", true_model.weight_model.W
-    print "g true:        ", true_model.impulse_model.g
-    print "lambda0 true:  ", true_model.bias_model.lambda0
+    print "b true:        ", true_model.bias_model.b
     print ""
     print "A mean:        ", A_mean
     print "W mean:        ", W_mean
-    print "g mean:        ", g_mean
-    print "lambda0 mean:  ", lambda0_mean
-    print "v mean:        ", v_mean
+    print "b mean:        ", b_mean
     print "p mean:        ", p_mean
 
     plt.figure()
@@ -188,43 +191,43 @@ def analyze_samples(true_model, init_model, samples, vlbs):
     # plt.show()
 
     # Compute the link prediction accuracy curves
-    auc_init = roc_auc_score(true_model.weight_model.A.ravel(),
-                             init_model.W.ravel())
-    auc_A_mean = roc_auc_score(true_model.weight_model.A.ravel(),
-                               A_mean.ravel())
-    auc_W_mean = roc_auc_score(true_model.weight_model.A.ravel(),
-                               W_mean.ravel())
-
-    aucs = []
-    for A in A_samples:
-        aucs.append(roc_auc_score(true_model.weight_model.A.ravel(), A.ravel()))
-
-    plt.figure()
-    plt.plot(aucs, '-r')
-    plt.plot(auc_A_mean * np.ones_like(aucs), '--r')
-    plt.plot(auc_W_mean * np.ones_like(aucs), '--b')
-    plt.plot(auc_init * np.ones_like(aucs), '--k')
-    plt.xlabel("Iteration")
-    plt.ylabel("Link prediction AUC")
-    plt.show()
-
-
-    # Compute the adjusted mutual info score of the clusterings
-    amis = []
-    arss = []
-    for c in c_samples:
-        amis.append(adjusted_mutual_info_score(true_model.network.c, c))
-        arss.append(adjusted_rand_score(true_model.network.c, c))
-
-    plt.figure()
-    plt.plot(np.arange(N_samples), amis, '-r')
-    plt.plot(np.arange(N_samples), arss, '-b')
-    plt.xlabel("Iteration")
-    plt.ylabel("Clustering score")
+    # auc_init = roc_auc_score(true_model.weight_model.A.ravel(),
+    #                          init_model.W.ravel())
+    # auc_A_mean = roc_auc_score(true_model.weight_model.A.ravel(),
+    #                            A_mean.ravel())
+    # auc_W_mean = roc_auc_score(true_model.weight_model.A.ravel(),
+    #                            W_mean.ravel())
+    #
+    # aucs = []
+    # for A in A_samples:
+    #     aucs.append(roc_auc_score(true_model.weight_model.A.ravel(), A.ravel()))
+    #
+    # plt.figure()
+    # plt.plot(aucs, '-r')
+    # plt.plot(auc_A_mean * np.ones_like(aucs), '--r')
+    # plt.plot(auc_W_mean * np.ones_like(aucs), '--b')
+    # plt.plot(auc_init * np.ones_like(aucs), '--k')
+    # plt.xlabel("Iteration")
+    # plt.ylabel("Link prediction AUC")
+    # plt.show()
 
 
-    plt.ioff()
-    plt.show()
+    # # Compute the adjusted mutual info score of the clusterings
+    # amis = []
+    # arss = []
+    # for c in c_samples:
+    #     amis.append(adjusted_mutual_info_score(true_model.network.c, c))
+    #     arss.append(adjusted_rand_score(true_model.network.c, c))
+    #
+    # plt.figure()
+    # plt.plot(np.arange(N_samples), amis, '-r')
+    # plt.plot(np.arange(N_samples), arss, '-b')
+    # plt.xlabel("Iteration")
+    # plt.ylabel("Clustering score")
+    #
+    #
+    # plt.ioff()
+    # plt.show()
 
 
-demo(11223344)
+demo(1234)

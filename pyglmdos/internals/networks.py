@@ -84,32 +84,32 @@ class _StochasticBlockModelBase(Component):
         if p is not None:
             if np.isscalar(p):
                 assert p >= 0 and p <= 1, "p must be a probability"
-                self._p = p * np.ones((C,C))
+                self.p = p * np.ones((C,C))
 
             else:
                 assert isinstance(p, np.ndarray) and p.shape == (C,C) \
                        and np.amin(p) >= 0 and np.amax(p) <= 1.0, \
                     "p must be a CxC matrix of probabilities"
-                self._p = p
+                self.p = p
         else:
-            self._p = np.random.beta(self.tau1, self.tau0, size=(self.C, self.C))
+            self.p = np.random.beta(self.tau1, self.tau0, size=(self.C, self.C))
 
         if mu is not None and Sigma is not None:
             assert isinstance(mu, np.ndarray) and mu.shape == (C,C,self.B), \
                 "mu must be a CxCxB array of mean weights"
-            self._mu = mu
+            self.mu = mu
 
             assert isinstance(Sigma, np.ndarray) and Sigma.shape == (C,C,self.B,self.B), \
                 "Sigma must be a CxCxBxB array of weight covariance matrices"
-            self._Sigma = Sigma
+            self.sigma = Sigma
 
         else:
             # Sample from the normal inverse Wishart prior
-            self._mu = np.zeros((C, C, self.B))
-            self._Sigma = np.zeros((C, C, self.B, self.B))
+            self.mu = np.zeros((C, C, self.B))
+            self.sigma = np.zeros((C, C, self.B, self.B))
             for c1 in xrange(self.C):
                 for c2 in xrange(self.C):
-                    self._mu[c1,c2,:], self._Sigma[c1,c2,:,:] = \
+                    self.mu[c1,c2,:], self.sigma[c1,c2,:,:] = \
                         sample_niw(self.mu0, self.Sigma0, self.kappa0, self.nu0)
 
         # If m, p, and v are specified, then the model is fixed and the prior parameters
@@ -125,7 +125,7 @@ class _StochasticBlockModelBase(Component):
         Get the KxK matrix of probabilities
         :return:
         """
-        P = self._p[np.ix_(self.c, self.c)]
+        P = self.p[np.ix_(self.c, self.c)]
         if not self.allow_self_connections:
             np.fill_diagonal(P, 0.0)
         return P
@@ -136,7 +136,7 @@ class _StochasticBlockModelBase(Component):
         Get the NxNxB array of mean weights
         :return:
         """
-        return self._mu[np.ix_(self.c, self.c, np.arange(self.B))]
+        return self.mu[np.ix_(self.c, self.c, np.arange(self.B))]
 
     @property
     def Sigma(self):
@@ -144,7 +144,7 @@ class _StochasticBlockModelBase(Component):
         Get the NxNxB array of mean weights
         :return:
         """
-        return self._Sigma[np.ix_(self.c, self.c, np.arange(self.B), np.arange(self.B))]
+        return self.sigma[np.ix_(self.c, self.c, np.arange(self.B), np.arange(self.B))]
 
     # def log_likelihood(self, x):
     #     """
@@ -208,7 +208,7 @@ class _GibbsSBM(_StochasticBlockModelBase):
 
                 tau1 = self.tau1 + Ac1c2.sum()
                 tau0 = self.tau0 + (1-Ac1c2).sum()
-                self._p[c1,c2] = np.random.beta(tau1, tau0)
+                self.p[c1,c2] = np.random.beta(tau1, tau0)
 
     def resample_mu_Sigma(self, A, W):
         """
@@ -245,11 +245,11 @@ class _GibbsSBM(_StochasticBlockModelBase):
                 c_temp[k] = ck
 
                 # p(A[k,k'] | c)
-                lp[ck] += Bernoulli(self._p[ck, c_temp])\
+                lp[ck] += Bernoulli(self.p[ck, c_temp])\
                                 .log_probability(A[k,:]).sum()
 
                 # p(A[k',k] | c)
-                lp[ck] += Bernoulli(self._p[c_temp, ck])\
+                lp[ck] += Bernoulli(self.p[c_temp, ck])\
                                 .log_probability(A[:,k]).sum()
 
                 # p(W[k,k'] | c)

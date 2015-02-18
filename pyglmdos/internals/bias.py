@@ -131,5 +131,6 @@ class _MeanFieldGaussianBias(_GaussianBiasBase):
         """
         self.b = self.mf_mu_b + np.sqrt(self.mf_sigma_b) * np.random.randn(self.N)
 
+
 class GaussianBias(_GibbsGaussianBias, _MeanFieldGaussianBias):
     pass

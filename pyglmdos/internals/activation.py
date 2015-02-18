@@ -82,7 +82,7 @@ class DeterministicActivation(_ActivationBase):
         psi = np.zeros((T,N))
         psi += self.bias_model.b[None, :]
 
-        W = self.weight_model.W
+        W = self.weight_model.W_effective
         for n_post in xrange(N):
             psi[:,n_post] += np.tensordot(F, W[:,n_post,:], axes=((1,2), (0,1)))
 
@@ -131,10 +131,39 @@ class DeterministicActivation(_ActivationBase):
         Psi += self.bias_model.mf_expected_bias()[None, :]
 
         W = self.weight_model.mf_expected_W()
-        for n_post in xrange(self.N):
-            Psi[:,n_post] += np.tensordot(F, W[:,n_post,:], axes=((1,2), (0,1)))
+        # for n_post in xrange(self.N):
+        #     Psi[:,n_post] += np.tensordot(F, W[:,n_post,:], axes=((1,2), (0,1)))
+        for n_pre in xrange(self.N):
+            for n_post in xrange(self.N):
+                Psi[:,n_post] += np.dot(F[:,n_pre,:], W[n_pre,n_post,:])
 
         return Psi
+
+    def mf_expected_residual(self, augmented_data, bias=None, synapse=None):
+        """
+        Compute the expected residual activation for either the bias or the specified synapse.
+        """
+        N = self.N
+        T = augmented_data["T"]
+        F = augmented_data["F"]
+        W = self.weight_model.mf_expected_W()
+        b = self.bias_model.mf_expected_bias()
+
+        assert bias is not None or synapse is not None
+        n_pre, n_post = self._get_n(bias, synapse)
+
+        # compute psi, excluding the bias or synapse, whichever is specified
+        psi = np.zeros(T)
+
+        if bias is None:
+            psi += b[None, n_post]
+
+        for nn in xrange(N):
+            if nn == n_pre:
+                continue
+            psi += np.dot(F[:,nn,:], W[nn, n_post, :])
+
+        return psi
 
     def mf_sample_activation(self, augmented_data, N_samples=1):
         """
@@ -142,7 +171,7 @@ class DeterministicActivation(_ActivationBase):
         :param Xs:
         :return:
         """
-        psis = np.zeros((augmented_data["T"], self.N, N_samples))
+        psis = np.zeros((N_samples, augmented_data["T"], self.N))
         for smpl in xrange(N_samples):
 
             # Resample from the mean field distribution
@@ -150,7 +179,7 @@ class DeterministicActivation(_ActivationBase):
             self.weight_model.resample_from_mf(augmented_data)
 
             # Compute psi under this sample
-            psis[:,:,smpl] = self.compute_psi(augmented_data)
+            psis[smpl, :,:] = self.compute_psi(augmented_data)
 
         return psis
 
@@ -170,7 +199,7 @@ class DeterministicActivation(_ActivationBase):
     def mf_mean_dot_precision(self, augmented_data, bias=None, synapse=None):
         F = augmented_data["F"]
         obs = self.observation_model
-        residual = self.compute_residual(augmented_data, bias, synapse)
+        residual = self.mf_expected_residual(augmented_data, bias, synapse)
 
         n_pre, n_post = self._get_n(bias, synapse)
 

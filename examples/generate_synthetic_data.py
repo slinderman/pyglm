@@ -24,19 +24,19 @@ def generate_synthetic_data(seed=None):
     T = 10000                                               # Number of time bins
     dt = 1.0                                                # Time bin width
     dt_max = 100.0                                          # Max time of synaptic influence
-    B = 3                                                   # Number of basis functions for the weights
+    B = 1                                                   # Number of basis functions for the weights
 
     #   Bias hyperparameters
-    bias_hypers = {"mu_0": -3.0, "sigma_0": 0.25}
+    bias_hypers = {"mu_0": -1.0, "sigma_0": 0.25}
 
     ###########################################################
     #   Network hyperparameters
     ###########################################################
     c = np.arange(C).repeat((N // C))                       # Neuron to cluster assignments
-    p = np.ones((C,C))                                      # Probability of connection for each pair of clusters
+    p = 0.5 * np.ones((C,C))                                      # Probability of connection for each pair of clusters
     # p = 0.9 * np.eye(C) + 0.05 * (1-np.eye(C))              # Probability of connection for each pair of clusters
     mu = np.zeros((C,C,B))                                  # Mean weight for each pair of clusters
-    Sigma = np.tile(np.eye(B)[None,None,:,:], (C,C,1,1))    # Covariance of weight for each pair of clusters
+    Sigma = np.tile( 3**2 * np.eye(B)[None,None,:,:], (C,C,1,1))    # Covariance of weight for each pair of clusters
     T_test = 1000                                           # Number of time bins for test data set
 
     ###########################################################
