@@ -59,7 +59,9 @@ def demo(seed=None):
                             bias_hypers=true_model.bias_hypers,
                             weight_hypers=true_model.weight_hypers,
                             network_hypers=true_model.network_hypers)
-    test_model.add_data(S)
+
+    # Add the data in minibatches
+    test_model.add_data(S, minibatchsize=1000)
     test_model.initialize_with_standard_model(init_model)
     # F_test = test_model.basis.convolve_with_basis(S_test)
 
@@ -67,22 +69,24 @@ def demo(seed=None):
     lns, im_net = initialize_plots(true_model, test_model, S)
 
     ###########################################################
-    # Fit the test model with batch variational inference
+    # Fit the test model with stochastic variational inference (SVI)
     ###########################################################
-    N_iters = 100
+    # Stochastic variational inference
+    N_iters = 10000
     samples = []
-    vlbs = []
-    # plls = []
+    delay = 1.0
+    forgetting_rate = 0.25
+    stepsize = (np.arange(N_iters) + delay)**(-forgetting_rate)
     raw_input("Press enter to continue\n")
     for itr in xrange(N_iters):
-        vlbs.append(test_model.get_vlb())
-        test_model.meanfield_coordinate_descent_step()
+        print "SVI Iter: ", itr, "\tStepsize: ", stepsize[itr]
+        test_model.svi_step(stepsize=stepsize[itr])
         # plls.append(test_model.heldout_log_likelihood(S_test, F=F_test))
         samples.append(test_model.copy_sample())
 
-        print ""
-        print "VB iteration ", itr
-        print "VLB:         ", vlbs[-1]
+        # print ""
+        # print "VB iteration ", itr
+        # print "VLB:         ", vlbs[-1]
 
         # Update plot
         if itr % 1 == 0:
@@ -92,14 +96,15 @@ def demo(seed=None):
     ###########################################################
     # Analyze the samples
     ###########################################################
-    analyze_samples(true_model, None, samples, vlbs)
+    analyze_samples(true_model, None, samples)
 
 def initialize_plots(true_model, test_model, S):
     N = true_model.N
     C = true_model.network.C
-    true_model.add_data(S)
-    R = true_model.compute_rate(true_model.data_list[0])
-    T = S.shape[0]
+    data = test_model.data_list[0]
+    T = data["T"]
+    true_model.add_data(data["S"])
+    R = true_model.compute_rate(test_model.data_list[0])
     # Plot the true network
     plt.ion()
     plt.imshow(true_model.weight_model.W_effective.sum(2), vmax=1.0, vmin=-1.0, interpolation="none", cmap="RdGy")
@@ -140,9 +145,9 @@ def initialize_plots(true_model, test_model, S):
 def update_plots(itr, test_model, S, lns, im_net):
     N = test_model.N
     C = test_model.network.C
-    T = S.shape[0]
-    plt.figure(2)
     data = test_model.data_list[0]
+    T = data["T"]
+    plt.figure(2)
     for n in xrange(N):
         plt.subplot(N,1,n+1)
         lns[n].set_data(np.arange(T), test_model.mf_expected_rate(data)[:,n])
@@ -161,7 +166,7 @@ def update_plots(itr, test_model, S, lns, im_net):
     im_net.set_data(test_model.weight_model.mf_expected_W().sum(2))
     plt.pause(0.001)
 
-def analyze_samples(true_model, init_model, samples, vlbs):
+def analyze_samples(true_model, init_model, samples):
     N_samples = len(samples)
     # Compute sample statistics for second half of samples
     A_samples = np.array([s.weight_model.A     for s in samples])
@@ -170,7 +175,7 @@ def analyze_samples(true_model, init_model, samples, vlbs):
     c_samples = np.array([s.network.c          for s in samples])
     p_samples = np.array([s.network.p          for s in samples])
     # mu_samples = np.array([s.network.v          for s in samples])
-    vlbs      = np.array(vlbs)
+    # vlbs      = np.array(vlbs)
 
     offset = N_samples // 2
     A_mean = A_samples[offset:, ...].mean(axis=0)
@@ -188,11 +193,11 @@ def analyze_samples(true_model, init_model, samples, vlbs):
     print "b mean:        ", b_mean
     print "p mean:        ", p_mean
 
-    plt.figure()
-    plt.plot(np.arange(N_samples), vlbs, 'k')
-    plt.xlabel("Iteration")
-    plt.ylabel("VLB")
-    plt.show()
+    # plt.figure()
+    # plt.plot(np.arange(N_samples), vlbs, 'k')
+    # plt.xlabel("Iteration")
+    # plt.ylabel("VLB")
+    # plt.show()
 
     # # Predictive log likelihood
     # pll_init = init_model.heldout_log_likelihood(S_test)

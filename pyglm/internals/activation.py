@@ -217,6 +217,10 @@ class DeterministicActivation(_ActivationBase):
     def resample_from_mf(self, augmented_data):
         pass
 
+    ### SVI
+    def svi_step(self, augmented_data, minibatchfrac, stepsize):
+        pass
+
 class GaussianNoiseActivation(_ActivationBase):
     """
     The rate is the activation plus Gaussian noise.

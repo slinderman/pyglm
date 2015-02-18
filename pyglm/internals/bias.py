@@ -100,23 +100,29 @@ class _MeanFieldGaussianBias(_GaussianBiasBase):
         Mean field update of the bias given the weights and psi
         :return:
         """
-        self._meanfieldupdate_b(augmented_data)
-
-    def _meanfieldupdate_b(self, augmented_data):
-        # TODO: Parallelize this
         for n in xrange(self.N):
-            # Compute the expected posterior parameters
-            lkhd_prec           = self.activation.mf_precision(augmented_data, bias=n)
-            lkhd_mean_dot_prec  = self.activation.mf_mean_dot_precision(augmented_data, bias=n)
+            stats = self.get_expected_suff_stats(augmented_data, n)
+            self._meanfieldupdate_b(n, stats)
 
-            prior_prec          = self.lambda_0
-            prior_mean_dot_prec = self.lambda_0 * self.mu_0
+    def get_expected_suff_stats(self, augmented_data, n, minibatchfrac=1.0):
+        # Compute the expected posterior parameters
+        lkhd_prec           = self.activation.mf_precision(augmented_data, bias=n)
+        lkhd_mean_dot_prec  = self.activation.mf_mean_dot_precision(augmented_data, bias=n)
 
-            post_prec           = prior_prec + lkhd_prec
-            post_mu             = 1.0 / post_prec * (prior_mean_dot_prec + lkhd_mean_dot_prec)
+        prior_prec          = self.lambda_0
+        prior_mean_dot_prec = self.lambda_0 * self.mu_0
 
-            self.mf_mu_b[n]    = post_mu
-            self.mf_sigma_b[n] = 1.0 / post_prec
+        post_prec           = prior_prec + lkhd_prec / minibatchfrac
+        post_mu             = 1.0 / post_prec * (prior_mean_dot_prec + lkhd_mean_dot_prec / minibatchfrac)
+
+        return post_mu, post_prec
+
+    def _meanfieldupdate_b(self, n, stats, stepsize=1.0):
+        post_mu, post_prec = stats
+        self.mf_mu_b[n]    = (1-stepsize) * self.mf_mu_b[n] \
+                             + stepsize * post_mu
+        self.mf_sigma_b[n] = (1-stepsize) * self.mf_sigma_b[n] \
+                             + stepsize * 1.0 / post_prec
 
     def get_vlb(self, augmented_data):
         """
@@ -146,6 +152,13 @@ class _MeanFieldGaussianBias(_GaussianBiasBase):
         Resample from the variational distribution
         """
         self.b = self.mf_mu_b + np.sqrt(self.mf_sigma_b) * np.random.randn(self.N)
+
+    ### SVI
+    def svi_step(self, augmented_data, minibatchfrac, stepsize):
+        for n in xrange(self.N):
+            stats = self.get_expected_suff_stats(augmented_data, n,
+                                                 minibatchfrac=minibatchfrac)
+            self._meanfieldupdate_b(n, stats, stepsize=stepsize)
 
 
 class GaussianBias(_GibbsGaussianBias, _MeanFieldGaussianBias):

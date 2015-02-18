@@ -659,15 +659,26 @@ class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
         return vlb
 
 
-class _SVIPopulation(_MeanFieldPopulation):
+class _SVIPopulation(_BayesianPopulationBase):
     """
     Implement stochastic variational inference for the population model
     """
-    def svi_step(self):
-        raise NotImplementedError()
+    def svi_step(self, stepsize):
+        # Randomly select a minibatch from the data_list
+        mb = self.data_list[np.random.choice(len(self.data_list))]
+
+        # Compute the fraction of the total data this minibatch represents
+        mbfrac = float(mb["T"]) / sum([d["T"] for d in self.data_list])
+
+        # update model components one at a time
+        self.observation_model.svi_step(mb, minibatchfrac=mbfrac, stepsize=stepsize)
+        self.activation_model.svi_step(mb, minibatchfrac=mbfrac, stepsize=stepsize)
+        self.weight_model.svi_step(mb, minibatchfrac=mbfrac, stepsize=stepsize)
+        self.bias_model.svi_step(mb, minibatchfrac=mbfrac, stepsize=stepsize)
+        # self.network.svi_step(mb, minibatchfrac=mbfrac, stepsize=stepsize)
 
 
-class Population(_GibbsPopulation, _MeanFieldPopulation):
+class Population(_GibbsPopulation, _MeanFieldPopulation, _SVIPopulation):
     """
     The default population has a Bernoulli observation model and an Erdos-Renyi network.
     """

@@ -84,8 +84,8 @@ def demo(seed=None):
     # Save the fit model
     ###########################################################
     results_path = base_path + ".standard_fit.pkl.gz"
-    with gzip.open(data_path, 'w') as f:
-        cPickle.dump(test_model, protocol=-1)
+    with gzip.open(results_path, 'w') as f:
+        cPickle.dump(test_model, f, protocol=-1)
 
 
 demo(1234)

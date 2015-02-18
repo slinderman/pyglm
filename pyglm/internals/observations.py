@@ -145,6 +145,14 @@ class _PolyaGammaAugmentedObservationsBase(Component):
         # This is a no-op for the observation model
         pass
 
+    ### SVI
+    def svi_step(self, augmented_data, minibatchfrac, stepsize):
+        """
+        The observations only have global parameters, so the SVI
+        step is the same as a standard mean field update.
+        """
+        self.meanfieldupdate(augmented_data)
+
 
 class BernoulliObservations(_PolyaGammaAugmentedObservationsBase):
     def log_likelihood(self, augmented_data):

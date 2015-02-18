@@ -184,7 +184,7 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
                 self._meanfieldupdate_A(n_pre, n_post, stats)
 
 
-    def _get_expected_sufficient_statistics(self, augmented_data, n_pre, n_post):
+    def _get_expected_sufficient_statistics(self, augmented_data, n_pre, n_post, minibatchfrac=1.0):
         """
         Get the expected sufficient statistics for this synapse.
         """
@@ -203,14 +203,14 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
             lkhd_prec           = 0
             lkhd_mean_dot_prec  = 0
 
-        post_prec           = prior_prec + lkhd_prec
+        post_prec           = prior_prec + lkhd_prec  / minibatchfrac
         post_cov            = np.linalg.inv(post_prec)
-        post_mu             = (prior_mean_dot_prec + lkhd_mean_dot_prec).dot(post_cov)
+        post_mu             = (prior_mean_dot_prec + lkhd_mean_dot_prec  / minibatchfrac ).dot(post_cov)
         post_mu             = post_mu.ravel()
 
         return post_mu, post_cov, post_prec
 
-    def _meanfieldupdate_A(self, n_pre, n_post, stats):
+    def _meanfieldupdate_A(self, n_pre, n_post, stats, stepsize=1.0):
         """
         Mean field update the presence or absence of a connection (synapse)
         :param n_pre:
@@ -240,9 +240,10 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         rho_post = logistic(logit_rho_post)
 
         # Mean field update the binary indicator of an edge
-        self.mf_p[n_pre, n_post] = rho_post
+        self.mf_p[n_pre, n_post] = (1.0 - stepsize) * self.mf_p[n_pre, n_post] \
+                                   + stepsize * rho_post
 
-    def _meanfieldupdate_W(self, n_pre, n_post, stats):
+    def _meanfieldupdate_W(self, n_pre, n_post, stats, stepsize=1.0):
         """
         Resample the weight of a connection (synapse)
         :param n_pre:
@@ -252,8 +253,10 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         """
         mf_post_mu, mf_post_cov, _ = stats
 
-        self.mf_mu[n_pre, n_post, :]       = mf_post_mu
-        self.mf_Sigma[n_pre, n_post, :, :] = mf_post_cov
+        self.mf_mu[n_pre, n_post, :]       = (1-stepsize) * self.mf_mu[n_pre, n_post, :] \
+                                             + stepsize * mf_post_mu
+        self.mf_Sigma[n_pre, n_post, :, :] = (1-stepsize) * self.mf_Sigma[n_pre, n_post, :, :] \
+                                             + stepsize * mf_post_cov
 
     def mf_expected_w_given_A(self, A):
         return A * self.mf_mu
@@ -339,6 +342,19 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
                 self.W[n_pre, n_post, :] = \
                     np.random.multivariate_normal(self.mf_mu[n_pre, n_post, :],
                                                   self.mf_Sigma[n_pre, n_post, :, :])
+
+    ### SVI
+    def svi_step(self, augmented_data, minibatchfrac, stepsize):
+        for n_pre in xrange(self.N):
+            for n_post in xrange(self.N):
+                stats = self._get_expected_sufficient_statistics(augmented_data, n_pre, n_post,
+                                                                 minibatchfrac=minibatchfrac)
+
+                # Mean field update the slab variable
+                self._meanfieldupdate_W(n_pre, n_post, stats, stepsize=stepsize)
+
+                # Mean field update the spike variable
+                self._meanfieldupdate_A(n_pre, n_post, stats, stepsize=stepsize)
 
 
 class SpikeAndSlabGaussianWeights(_GibbsSpikeAndSlabGaussianWeights,

@@ -433,6 +433,8 @@ class _MeanFieldSBM(_StochasticBlockModelBase):
     def resample_from_mf(self, augmented_data):
         raise NotImplementedError()
 
+    def svi_step(self, augmented_data, minibatchfrac, stepsize):
+        raise NotImplementedError()
 
 class StochasticBlockModel(_GibbsSBM, _MeanFieldSBM):
     pass
