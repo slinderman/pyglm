@@ -19,7 +19,7 @@ def generate_synthetic_data(seed=None):
     ###########################################################
     # Create a population model
     ###########################################################
-    N = 2                                                   # Number of neurons
+    N = 20                                                  # Number of neurons
     C = 1                                                   # Number of clusters
     T = 10000                                               # Number of time bins
     dt = 1.0                                                # Time bin width
@@ -33,7 +33,7 @@ def generate_synthetic_data(seed=None):
     #   Network hyperparameters
     ###########################################################
     c = np.arange(C).repeat((N // C))                       # Neuron to cluster assignments
-    p = 0.5 * np.ones((C,C))                                      # Probability of connection for each pair of clusters
+    p = 0.1 * np.ones((C,C))                                      # Probability of connection for each pair of clusters
     # p = 0.9 * np.eye(C) + 0.05 * (1-np.eye(C))              # Probability of connection for each pair of clusters
     mu = np.zeros((C,C,B))                                  # Mean weight for each pair of clusters
     Sigma = np.tile( 3**2 * np.eye(B)[None,None,:,:], (C,C,1,1))    # Covariance of weight for each pair of clusters

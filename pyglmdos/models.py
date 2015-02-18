@@ -4,6 +4,7 @@ Models for neural spike trains.
 
 import abc
 import copy
+import sys
 
 import numpy as np
 
@@ -17,6 +18,340 @@ from pyglmdos.internals.weights import SpikeAndSlabGaussianWeights
 from pyglmdos.internals.networks import StochasticBlockModel
 
 from pyglmdos.utils.basis import CosineBasis
+from pyglm.utils.utils import logistic
+
+class StandardBernoulliPopulation(Model):
+
+    # Define the model components and their default hyperparameters
+    _basis_class                = CosineBasis
+    _default_basis_hypers       = {'norm': True, 'allow_instantaneous': False}
+
+
+    def __init__(self, N, dt=1.0, dt_max=10.0, B=5,
+                 basis=None, basis_hypers={},
+                 allow_self_connections=True):
+        """
+        Initialize a discrete time network Hawkes model with K processes.
+
+        :param N:  Number of processes
+        """
+        self.N      = N
+        self.dt     = dt
+        self.dt_max = dt_max
+        self.B      = B
+        self.allow_self_connections = allow_self_connections
+
+        # Initialize the basis
+        if basis is not None:
+            # assert basis.B == B
+            self.basis = basis
+            self.B     = basis.B
+        else:
+            # Use the given basis hyperparameters
+            self.basis_hypers = copy.deepcopy(self._default_basis_hypers)
+            self.basis_hypers.update(basis_hypers)
+            self.basis = self._basis_class(self.B, self.dt, self.dt_max,
+                                           **self.basis_hypers)
+
+        # Initialize the weights of the standard model.
+        # We have a weight for the background
+        self.b = np.zeros(self.N)
+        # And a weight for each basis function of each presynaptic neuron.
+        self.weights = 1e-3 * np.ones((self.N, self.N*self.B))
+        if not self.allow_self_connections:
+            self._remove_self_weights()
+
+        # Initialize the data list to empty
+        self.data_list = []
+
+    @property
+    def W(self):
+        WB = self.weights.reshape((self.N,self.N, self.B))
+
+        # DEBUG
+        assert WB[0,0,self.B-1] == self.weights[0,self.B-1]
+        assert WB[0,self.N-1,0] == self.weights[0,(self.N-1)*self.B]
+
+        if self.B > 2:
+            assert WB[self.N-1,self.N-1,self.B-2] == self.weights[self.N-1,-2]
+
+        # Weight matrix is summed over impulse response functions
+        W = np.transpose(WB, axes=[1,0,2])
+
+        return W
+
+    @property
+    def bias(self):
+        return self.b
+
+    def _remove_self_weights(self):
+        for n in xrange(self.N):
+                self.weights[n,(n*self.B):(n+1)*self.B] = 1e-32
+
+
+    def augment_data(self, S):
+        assert isinstance(S, np.ndarray) and S.ndim == 2 and S.shape[1] == self.N \
+               and np.amin(S) >= 0 and S.dtype == np.int32, \
+               "Data must be a TxN array of event counts"
+
+        T = S.shape[0]
+
+        # Filter the data into a TxKxB array
+        Ftens = self.basis.convolve_with_basis(S)
+
+        # Flatten this into a T x (KxB) matrix
+        # [F00, F01, F02, F10, F11, ... F(K-1)0, F(K-1)(B-1)]
+        F = Ftens.reshape((T, self.N * self.B))
+        assert np.allclose(F[:,0], Ftens[:,0,0])
+        if self.B > 1:
+            assert np.allclose(F[:,1], Ftens[:,0,1])
+        if self.N > 1:
+            assert np.allclose(F[:,self.B], Ftens[:,1,0])
+
+        augmented_data = {"T": T, "S": S, "F": F}
+        return augmented_data
+
+
+    def add_data(self, S, F=None, minibatchsize=None):
+        """
+        Add a data set to the list of observations.
+        First, filter the data with the impulse response basis,
+        then instantiate a set of parents for this data set.
+
+        :param S: a TxN matrix of of event counts for each time bin
+                  and each neuron.
+        """
+        assert isinstance(S, np.ndarray) and S.ndim == 2 and S.shape[1] == self.N \
+               and np.amin(S) >= 0 and S.dtype == np.int32, \
+               "Data must be a TxN array of event counts"
+
+        T = S.shape[0]
+        #
+        # if F is None:
+        #     # Filter the data into a TxKxB array
+        #     Ftens = self.basis.convolve_with_basis(S)
+        #
+        #     # Flatten this into a T x (KxB) matrix
+        #     # [F00, F01, F02, F10, F11, ... F(K-1)0, F(K-1)(B-1)]
+        #     F = Ftens.reshape((T, self.N * self.B))
+        #     assert np.allclose(F[:,0], Ftens[:,0,0])
+        #     if self.B > 1:
+        #         assert np.allclose(F[:,1], Ftens[:,0,1])
+        #     if self.N > 1:
+        #         assert np.allclose(F[:,self.B], Ftens[:,1,0])
+
+        if minibatchsize is None:
+            minibatchsize = T
+
+        for offset in np.arange(T, step=minibatchsize):
+            end = min(offset+minibatchsize, T)
+            S_mb = S[offset:end,:]
+
+            augmented_data = self.augment_data(S_mb)
+
+            # Add minibatch to the data list
+            self.data_list.append(augmented_data)
+
+    def copy_sample(self):
+        """
+        Return a copy of the parameters of the model
+        :return: The parameters of the model (A,W,\lambda_0, \beta)
+        """
+        # return copy.deepcopy(self.get_parameters())
+
+        # Shallow copy the data
+        data_list = copy.copy(self.data_list)
+        self.data_list = []
+
+        # Make a deep copy without the data
+        model_copy = copy.deepcopy(self)
+
+        # Reset the data and return the data-less copy
+        self.data_list = data_list
+        return model_copy
+
+    def generate(self,keep=True,**kwargs):
+        raise NotImplementedError()
+
+    # def compute_rate(self, index=None, ns=None):
+    #     """
+    #     Compute the rate of the k-th process.
+    #
+    #     :param index:   Which dataset to compute the rate of
+    #     :param ns:      Which neurons to compute the rate of
+    #     :return:
+    #     """
+    #     if index is None:
+    #         index = 0
+    #     F = self.data_list[index]["F"]
+    #
+    #     if ns is None:
+    #         ns = np.arange(self.N)
+    #
+    #     if isinstance(ns, int):
+    #         X = F.dot(self.weights[ns,:])
+    #         X += self.bias[ns]
+    #         R = logistic(X)
+    #         return R
+    #
+    #     elif isinstance(ns, np.ndarray):
+    #         Rs = []
+    #         for n in ns:
+    #             Xn = F.dot(self.weights[n,:])[:,None]
+    #             Xn += self.bias[n]
+    #             Rs.append(logistic(Xn))
+    #
+    #         return np.concatenate(Rs, axis=1)
+    #
+    #     else:
+    #         raise Exception("ns must be int or array of indices in 0..N-1")
+    #
+
+    def compute_rate(self, augmented_data):
+        """
+        Compute the rate of the augmented data
+
+        :param index:   Which dataset to compute the rate of
+        :param ns:      Which neurons to compute the rate of
+        :return:
+        """
+        F = augmented_data["F"]
+        R = np.zeros((augmented_data["T"], self.N))
+        for n in xrange(self.N):
+            Xn = F.dot(self.weights[n,:])
+            Xn += self.bias[n]
+            R[:,n] = logistic(Xn)
+
+        return R
+
+    # def log_likelihood(self, indices=None, ns=None):
+    #     """
+    #     Compute the log likelihood
+    #     :return:
+    #     """
+    #     ll = 0
+    #
+    #     if indices is None:
+    #         indices = np.arange(len(self.data_list))
+    #     if isinstance(indices, int):
+    #         indices = [indices]
+    #
+    #     for index in indices:
+    #         S,F = self.data_list[index]
+    #         R = self.compute_rate(index, ns=ns)
+    #
+    #         if ns is not None:
+    #             ll += (S[:,ns] * np.log(R[:,ns]) + (1-S[:,ns]) * np.log(1-R[:,ns])).sum()
+    #         else:
+    #             ll += (S * np.log(R) + (1-S) * np.log(1-R)).sum()
+    #
+    #     return ll
+
+    def log_likelihood(self, augmented_data=None):
+        """
+        Compute the log likelihood of the augmented data
+        :return:
+        """
+        ll = 0
+
+        if augmented_data is None:
+            datas = self.data_list
+        else:
+            datas = [augmented_data]
+
+        ll = 0
+        for data in datas:
+            S = data["S"]
+            R = self.compute_rate(data)
+            ll += (S * np.log(R) + (1-S) * np.log(1-R)).sum()
+
+        return ll
+
+    def heldout_log_likelihood(self, S=None, augmented_data=None):
+        if S is not None and augmented_data is None:
+            augmented_data = self.augment_data(S)
+        elif S is None and augmented_data is None:
+            raise Exception("Either S or augmented data must be given")
+
+        return self.log_likelihood(augmented_data)
+
+
+    def fit(self, L1=True):
+        """
+        Use scikit-learn's LogisticRegression model to fit the data
+
+        :param L1:  If True, use L1 penalty on the coefficients
+        """
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.svm import l1_min_c
+
+        print "Initializing with logistic regresion"
+        F = np.vstack([d["F"] for d in self.data_list])
+        S = np.vstack([d["S"] for d in self.data_list])
+
+        if L1:
+            # Hold out some data for cross validation
+            offset = int(0.75 * S.shape[0])
+            T_xv = S.shape[0] - offset
+            F_xv = F[offset:, ...]
+            S_xv = S[offset:, ...]
+            augmented_xv_data = {"T": T_xv, "S": S_xv, "F": F_xv}
+
+            F    = F[:offset, ...]
+            S    = S[:offset, ...]
+
+            for n_post in xrange(self.N):
+                # Get a L1 regularization path for inverse penalty C
+                cs = l1_min_c(F, S[:,n_post], loss='log') * np.logspace(1, 4., 10)
+                # The intercept is also subject to penalization, even though
+                # we don't really want to penalize it. To counteract this effect,
+                # we scale the intercept by a large value
+                intercept_scaling = 10**6
+
+
+                print "Computing regularization path for neuron %d ..." % n_post
+                ints      = []
+                coeffs    = []
+                xv_scores = []
+                lr = LogisticRegression(C=1.0, penalty='l1',
+                                        fit_intercept=True, intercept_scaling=intercept_scaling,
+                                        tol=1e-6)
+                for c in cs:
+                    lr.set_params(C=c)
+                    lr.fit(F, S[:,n_post])
+                    ints.append(lr.intercept_.copy())
+                    coeffs.append(lr.coef_.ravel().copy())
+                    # xv_scores.append(lr.score(F_xv, S_xv[:,n_post]).copy())
+
+                    # Temporarily set the weights and bias
+                    self.b[n_post] = lr.intercept_
+                    self.weights[n_post, :] = lr.coef_
+                    xv_scores.append(self.heldout_log_likelihood(augmented_data=augmented_xv_data))
+
+                # Choose the regularization penalty with cross validation
+                print "XV Scores: "
+                for c,score  in zip(cs, xv_scores):
+                    print "\tc: {%.2f}\tscore: {%.3f}" % (c,score)
+                best = np.argmax(xv_scores)
+                print "Best c: ", cs[best]
+
+                # Save the best weights
+                self.b[n_post]          = ints[best]
+                self.weights[n_post, :] = coeffs[best]
+
+        else:
+            # Just use standard L2 regularization
+            for n_post in xrange(self.N):
+                sys.stdout.write('.')
+                sys.stdout.flush()
+
+                lr = LogisticRegression(fit_intercept=True)
+                lr.fit(F,S[:,n_post])
+                self.b[n_post] = lr.intercept_
+                self.weights[n_post,:] = lr.coef_
+
+        print ""
+
 
 class _BayesianPopulationBase(Model):
     """
@@ -170,15 +505,7 @@ class _BayesianPopulationBase(Model):
                "Data must be a TxN array of event counts"
 
         T = S.shape[0]
-        #
-        # # Filter the data into a TxKxB array
-        # if F is not None:
-        #     assert isinstance(F, np.ndarray) and F.shape == (T, self.N, self.B), \
-        #         "F must be a filtered event count matrix"
-        # else:
-        #     print "Convolving with basis"
-        #     F = self.basis.convolve_with_basis(S)
-        #
+
         # Add the data in minibatches
         if minibatchsize is None:
             minibatchsize = T
@@ -186,18 +513,6 @@ class _BayesianPopulationBase(Model):
         for offset in np.arange(T, step=minibatchsize):
             end = min(offset+minibatchsize, T)
             S_mb = S[offset:end, :]
-            # T_mb = end - offset
-            # F_mb = F[offset:end, :]
-
-            # Augment the data with extra local variables and regressors
-            # augmented_data = {"T": T_mb, "S": S_mb, "F": F_mb}
-            #
-            # # The model components may require local variables for each data point
-            # self.observation_model.augment_data(augmented_data)
-            # self.activation_model.augment_data(augmented_data)
-            # self.background_model.augment_data(augmented_data)
-            # self.weight_model.augment_data(augmented_data)
-
             augmented_data = self.augment_data(S_mb)
 
             # Add to the data list
@@ -334,7 +649,7 @@ class _BayesianPopulationBase(Model):
         return self.log_prior() + self.log_likelihood()
 
     def heldout_log_likelihood(self, S):
-        pass
+        raise NotImplementedError()
 
     def compute_rate(self, augmented_data):
         # Compute the activation

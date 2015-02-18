@@ -23,7 +23,7 @@ def demo(seed=None):
     # Load some example data.
     # See data/synthetic/generate.py to create more.
     ###########################################################
-    data_path = os.path.join("data", "synthetic", "synthetic_K2_C1_T10000.pkl.gz")
+    data_path = os.path.join("data", "synthetic", "synthetic_K20_C1_T10000.pkl.gz")
     with gzip.open(data_path, 'r') as f:
         S, true_model = cPickle.load(f)
 
