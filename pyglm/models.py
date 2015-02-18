@@ -581,7 +581,9 @@ class _BayesianPopulationBase(Model):
     
     def log_likelihood(self, augmented_data):
         ll = 0
-
+        ll += self.observation_model.log_likelihood(augmented_data)
+        ll += self.activation_model.log_likelihood(augmented_data)
+        ll += self.weight_model.log_likelihood(augmented_data)
         return ll
         
     def log_probability(self):
