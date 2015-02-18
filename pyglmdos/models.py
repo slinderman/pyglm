@@ -126,19 +126,6 @@ class StandardBernoulliPopulation(Model):
                "Data must be a TxN array of event counts"
 
         T = S.shape[0]
-        #
-        # if F is None:
-        #     # Filter the data into a TxKxB array
-        #     Ftens = self.basis.convolve_with_basis(S)
-        #
-        #     # Flatten this into a T x (KxB) matrix
-        #     # [F00, F01, F02, F10, F11, ... F(K-1)0, F(K-1)(B-1)]
-        #     F = Ftens.reshape((T, self.N * self.B))
-        #     assert np.allclose(F[:,0], Ftens[:,0,0])
-        #     if self.B > 1:
-        #         assert np.allclose(F[:,1], Ftens[:,0,1])
-        #     if self.N > 1:
-        #         assert np.allclose(F[:,self.B], Ftens[:,1,0])
 
         if minibatchsize is None:
             minibatchsize = T
@@ -173,40 +160,6 @@ class StandardBernoulliPopulation(Model):
     def generate(self,keep=True,**kwargs):
         raise NotImplementedError()
 
-    # def compute_rate(self, index=None, ns=None):
-    #     """
-    #     Compute the rate of the k-th process.
-    #
-    #     :param index:   Which dataset to compute the rate of
-    #     :param ns:      Which neurons to compute the rate of
-    #     :return:
-    #     """
-    #     if index is None:
-    #         index = 0
-    #     F = self.data_list[index]["F"]
-    #
-    #     if ns is None:
-    #         ns = np.arange(self.N)
-    #
-    #     if isinstance(ns, int):
-    #         X = F.dot(self.weights[ns,:])
-    #         X += self.bias[ns]
-    #         R = logistic(X)
-    #         return R
-    #
-    #     elif isinstance(ns, np.ndarray):
-    #         Rs = []
-    #         for n in ns:
-    #             Xn = F.dot(self.weights[n,:])[:,None]
-    #             Xn += self.bias[n]
-    #             Rs.append(logistic(Xn))
-    #
-    #         return np.concatenate(Rs, axis=1)
-    #
-    #     else:
-    #         raise Exception("ns must be int or array of indices in 0..N-1")
-    #
-
     def compute_rate(self, augmented_data):
         """
         Compute the rate of the augmented data
@@ -223,29 +176,6 @@ class StandardBernoulliPopulation(Model):
             R[:,n] = logistic(Xn)
 
         return R
-
-    # def log_likelihood(self, indices=None, ns=None):
-    #     """
-    #     Compute the log likelihood
-    #     :return:
-    #     """
-    #     ll = 0
-    #
-    #     if indices is None:
-    #         indices = np.arange(len(self.data_list))
-    #     if isinstance(indices, int):
-    #         indices = [indices]
-    #
-    #     for index in indices:
-    #         S,F = self.data_list[index]
-    #         R = self.compute_rate(index, ns=ns)
-    #
-    #         if ns is not None:
-    #             ll += (S[:,ns] * np.log(R[:,ns]) + (1-S[:,ns]) * np.log(1-R[:,ns])).sum()
-    #         else:
-    #             ll += (S * np.log(R) + (1-S) * np.log(1-R)).sum()
-    #
-    #     return ll
 
     def log_likelihood(self, augmented_data=None):
         """
