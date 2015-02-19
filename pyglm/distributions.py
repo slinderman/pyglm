@@ -38,36 +38,45 @@ class PopulationDistribution(Population, GibbsSampling):
 
         # Pack F and S together
         packed_data = np.hstack((F_flat, S))
+        return packed_data
 
     def _unpack_data(self, packed_data):
         T = packed_data.shape[0]
         assert packed_data.shape[1] == self.N * self.B + self.N
 
+        # Extract F
         F_flat = packed_data[:, :(self.N * self.B)]
+        F      = F_flat.reshape((T, self.N, self.B))
+        # Extract S
         S      = packed_data[:, (self.N * self.B):]
+        S      = S.astype(np.int32)
 
 
-        # Reshape F
-        F = F_flat.reshape((T, self.N, self.B))
         return S, F
 
     def rvs(self,size=[]):
-        raise NotImplementedError()
+        S = self.generate(keep=False, T=size)
+        return S
 
     def log_likelihood(self, packed_data):
         '''
         log likelihood (either log probability mass function or log probability
         density function) of x, which has the same type as the output of rvs()
         '''
-        # Unpack the data
-        S,F = self._unpack_data(packed_data)
-
-        # Add the data to the data list, compute the LL, then remove the data
+        # Make sure packed_data is a list
         assert len(self.data_list) == 0
+        # Unpack the data and add it to the model data list
+        S,F = self._unpack_data(packed_data)
         self.add_data(S, F=F)
-        ll = self.log_likelihood(self.data_list[-1])
+
+        # Compute the log likelihood
+        lls = super(PopulationDistribution, self).log_likelihood(self.data_list[-1]).sum(axis=1)
+
+        # Remove the data from the datalist
         self.data_list.pop()
-        return ll
+
+        assert len(self.data_list) == 0
+        return lls
 
     def resample(self, data=[]):
         """
@@ -78,15 +87,24 @@ class PopulationDistribution(Population, GibbsSampling):
         :param data:
         :return:
         """
-        # Unpack the data
-        S,F = self._unpack_data(data)
-
-        # Add the data to the data list, resample the model, then remove the data
         assert len(self.data_list) == 0
-        self.add_data(S, F=F)
+        # Make sure packed_data is a list
+        if not isinstance(data, list):
+            data = [data]
 
+        # Unpack the data and add it to the model data list
+        for pdata in data:
+            if pdata.size > 0:
+                S,F = self._unpack_data(pdata)
+                self.add_data(S, F=F)
+
+        # Resample with the given data
         for itr in xrange(self.n_iters_per_resample):
             self.resample_model()
 
-        self.data_list.pop()
+        # Remove the data from the datalist
+        for pdata in data:
+            if pdata.size > 0:
+                self.data_list.pop()
 
+        assert len(self.data_list) == 0

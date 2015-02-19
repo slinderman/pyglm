@@ -19,7 +19,7 @@ def generate_synthetic_data(seed=None):
     ###########################################################
     # Create a population model
     ###########################################################
-    N = 20                                                  # Number of neurons
+    N = 2                                                   # Number of neurons
     C = 1                                                   # Number of clusters
     T = 10000                                               # Number of time bins
     dt = 1.0                                                # Time bin width
@@ -33,7 +33,7 @@ def generate_synthetic_data(seed=None):
     #   Network hyperparameters
     ###########################################################
     c = np.arange(C).repeat((N // C))                       # Neuron to cluster assignments
-    p = 0.1 * np.ones((C,C))                                      # Probability of connection for each pair of clusters
+    p = 0.5 * np.ones((C,C))                                      # Probability of connection for each pair of clusters
     # p = 0.9 * np.eye(C) + 0.05 * (1-np.eye(C))              # Probability of connection for each pair of clusters
     mu = np.zeros((C,C,B))                                  # Mean weight for each pair of clusters
     Sigma = np.tile( 3**2 * np.eye(B)[None,None,:,:], (C,C,1,1))    # Covariance of weight for each pair of clusters
@@ -95,9 +95,9 @@ def generate_synthetic_data(seed=None):
 
     # Pickle and save the data
     out_dir  = os.path.join('data', "synthetic")
-    out_name = 'synthetic_test_K%d_C%d_T%d.pkl' % (N,C,T_test)
+    out_name = 'synthetic_K%d_C%d_T%d_test.pkl.gz' % (N,C,T)
     out_path = os.path.join(out_dir, out_name)
-    with open(out_path, 'w') as f:
+    with gzip.open(out_path, 'w') as f:
         print "Saving output to ", out_path
         cPickle.dump((S_test, true_model.copy_sample()), f, protocol=-1)
 
