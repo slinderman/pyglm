@@ -54,9 +54,4 @@ docs/_build/
 target/
 
 # Specific files
-nb/polya_gamma/pypolyagamma.cpp
-/iter*
-/runs
 /*.pdf
-/data
-/results

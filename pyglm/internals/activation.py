@@ -5,6 +5,7 @@ import abc
 import numpy as np
 
 from pyglm.abstractions import Component
+from pyglm.utils.profiling import line_profiled
 
 class _ActivationBase(Component):
     """
@@ -43,6 +44,7 @@ class _ActivationBase(Component):
             n_pre, n_post = synapse
         return n_pre, n_post
 
+    @line_profiled
     def compute_residual(self, augmented_data, bias=None, synapse=None):
         """
         Compute the residual activation for either the bias or the specified synapse.
@@ -107,14 +109,18 @@ class DeterministicActivation(_ActivationBase):
             F_pre = F[:,n_pre,:]
             return (F_pre * omega[:,None]).T.dot(F_pre)
 
-    def mean_dot_precision(self, augmented_data, bias=None, synapse=None):
+    @line_profiled
+    def mean_dot_precision(self, augmented_data, bias=None, synapse=None, psi_other=None):
         F = augmented_data["F"]
         obs = self.observation_model
-        residual = self.compute_residual(augmented_data, bias, synapse)
+
+        # If psi_other is not given, compute it.
+        if psi_other is None:
+            psi_other = self.compute_residual(augmented_data, bias, synapse)
 
         n_pre, n_post = self._get_n(bias, synapse)
 
-        trm1 = obs.kappa(augmented_data)[:,n_post] - residual * obs.omega(augmented_data)[:,n_post]
+        trm1 = obs.kappa(augmented_data)[:,n_post] - psi_other * obs.omega(augmented_data)[:,n_post]
 
         if bias is not None:
             return trm1.sum()

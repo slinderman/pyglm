@@ -41,6 +41,9 @@ class _PolyaGammaAugmentedObservationsBase(Component):
                     tmp, self.rng)
             augmented_data["omega"][:,n] = tmp
 
+        # Precompute kappa (assuming that it is constant given data)
+        augmented_data["kappa"] = self.a(augmented_data) - self.b(augmented_data)/2.0
+
         # Initialize the mean field local variational parameters
         augmented_data["omega"] = np.empty((self.T, self.N))
 
@@ -65,7 +68,8 @@ class _PolyaGammaAugmentedObservationsBase(Component):
         Compute kappa = b-a/2
         :return:
         """
-        return self.a(augmented_data) - self.b(augmented_data)/2.0
+        # return self.a(augmented_data) - self.b(augmented_data)/2.0
+        return augmented_data["kappa"]
 
     def omega(self, augmented_data):
         return augmented_data["omega"]

@@ -23,7 +23,7 @@ def demo(seed=None):
     # Load some example data.
     # See data/synthetic/generate.py to create more.
     ###########################################################
-    data_path = os.path.join("data", "synthetic", "synthetic_K2_C1_T10000.pkl.gz")
+    data_path = os.path.join("data", "synthetic", "synthetic_K20_C1_T10000.pkl.gz")
     with gzip.open(data_path, 'r') as f:
         S, true_model = cPickle.load(f)
 
@@ -53,7 +53,7 @@ def demo(seed=None):
     ###########################################################
     # Fit the test model with Gibbs sampling
     ###########################################################
-    N_samples = 500
+    N_samples = 10
     samples = []
     lps = []
     # plls = []
@@ -72,10 +72,14 @@ def demo(seed=None):
         if itr % 1 == 0:
             update_plots(itr, test_model, S, ln, im_net)
 
+    from pyglm.utils.profiling import show_line_stats
+    with open("gibbs_profile3.txt", "w") as f:
+        show_line_stats(f)
+
     ###########################################################
     # Analyze the samples
     ###########################################################
-    analyze_samples(true_model, None, samples, lps)
+    # analyze_samples(true_model, None, samples, lps)
 
 def initialize_plots(true_model, test_model, S):
     N = true_model.N

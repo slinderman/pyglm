@@ -20,6 +20,10 @@ from pyglm.internals.networks import StochasticBlockModel
 from pyglm.utils.basis import CosineBasis
 from pyglm.utils.utils import logistic
 
+
+from pyglm.utils.profiling import line_profiled
+
+
 class StandardBernoulliPopulation(Model):
 
     # Define the model components and their default hyperparameters
@@ -629,6 +633,7 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
     """
     Implement Gibbs sampling for the population model
     """
+    @line_profiled
     def resample_model(self):
         # TODO: Support multile datasets
         assert len(self.data_list) == 1, "Can only do Gibbs sampling with one dataset"

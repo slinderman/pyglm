@@ -7,6 +7,44 @@ from pyglm.abstractions import Component
 from pyglm.internals.distributions import Bernoulli, Gaussian
 from pyglm.utils.utils import logistic, logit
 
+from pyglm.utils.profiling import line_profiled
+
+class NoWeights(Component):
+    def __init__(self, population):
+        self.population = population
+
+        # Hard code the parameters to zero (no connections)
+        self.A = np.zeros((self.N, self.N))
+        self.W = np.zeros((self.N, self.N, self.B))
+
+    @property
+    def N(self):
+        return self.population.N
+
+    @property
+    def B(self):
+        return self.population.B
+
+    @property
+    def W_effective(self):
+        return self.W
+
+    def resample(self, augmented_data):
+        pass
+
+    def meanfieldupdate(self, augmented_data):
+        pass
+
+    def get_vlb(self, augmented_data):
+        return 0
+
+    def resample_from_mf(self, augmented_data):
+        pass
+
+    def svi_step(self, augmented_data, minibatchfrac, stepsize):
+        pass
+
+
 class _SpikeAndSlabGaussianWeightsBase(Component):
     def __init__(self, population):
         self.population = population
@@ -64,40 +102,80 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
     def __init__(self, population):
         super(_GibbsSpikeAndSlabGaussianWeights, self).__init__(population)
 
-        self.resample(None)
+        self.resample()
 
-    def resample(self, augmented_data):
-        for n_pre in xrange(self.N):
-            #  TODO: We can parallelize over n_post
-            for n_post in xrange(self.N):
-                stats = self._get_sufficient_statistics(augmented_data, n_pre, n_post)
+    @line_profiled
+    def resample(self, augmented_data=[]):
+
+        # TODO: Handle lists of data
+        if not isinstance(augmented_data, list):
+            augmented_data = [augmented_data]
+
+        # Precompute Psi. We can update it as we add and remove edges
+        Psis = [self.activation.compute_psi(data) for data in augmented_data]
+
+        #  TODO: We can parallelize over n_post
+        for n_post in xrange(self.N):
+            for n_pre in xrange(self.N):
+                # Get the filtered spike trains associated with this synapse
+                F_pres = [data["F"][:,n_pre,:] for data in augmented_data]
+
+                # Compute the activation from other neurons
+                if self.A[n_pre, n_post]:
+                    for Psi, F_pre in zip(Psis, F_pres):
+                        Psi[:,n_post] -= F_pre.dot(self.W[n_pre, n_post,:])
+
+                psi_others = [Psi[:,n_post] for Psi in Psis]
+
+
+                # Compute the sufficient statistics for this synapse
+                suff_stats = self._get_sufficient_statistics(augmented_data,
+                                                             n_pre, n_post,
+                                                             psi_others)
+                post_stats = self._posterior_statistics(n_pre, n_post,
+                                                        suff_stats)
+
 
                 # Sample the spike variable
-                self._resample_A(n_pre, n_post, stats)
+                self._resample_A(n_pre, n_post, post_stats)
 
                 # Sample the slab variable
                 if self.A[n_pre, n_post]:
-                    self._resample_W(n_pre, n_post, stats)
+                    self._resample_W(n_pre, n_post, post_stats)
                 else:
                     self.W[n_pre, n_post,:] = 0.0
 
-    def _get_sufficient_statistics(self, augmented_data, n_pre, n_post):
+                # Update Psi
+                for F_pre, Psi, psi_other in zip(F_pres, Psis, psi_others):
+                    Psi[:,n_post] = psi_other
+                    if self.A[n_pre, n_post]:
+                        Psi[:,n_post] += F_pre.dot(self.W[n_pre, n_post,:])
+
+    @line_profiled
+    def _get_sufficient_statistics(self, augmented_data, n_pre, n_post, psi_others):
         """
         Get the sufficient statistics for this synapse.
         """
+        lkhd_prec           = 0
+        lkhd_mean_dot_prec  = 0
+
+        # Compute the sufficient statistics of the likelihood
+        for data, psi_other in zip(augmented_data, psi_others):
+            lkhd_prec           += self.activation.precision(data, synapse=(n_pre,n_post))
+            lkhd_mean_dot_prec  += self.activation.mean_dot_precision(data,
+                                                                      synapse=(n_pre,n_post),
+                                                                      psi_other=psi_others)
+
+        return lkhd_prec, lkhd_mean_dot_prec
+
+    def _posterior_statistics(self, n_pre, n_post, stats):
+        lkhd_prec, lkhd_mean_dot_prec = stats
+
         mu_w                = self.network.Mu[n_pre, n_post, :]
         Sigma_w             = self.network.Sigma[n_pre, n_post, :, :]
 
         prior_prec          = np.linalg.inv(Sigma_w)
         prior_mean_dot_prec = mu_w.dot(prior_prec)
-
-        # Compute the posterior parameters
-        if augmented_data is not None:
-            lkhd_prec           = self.activation.precision(augmented_data, synapse=(n_pre,n_post))
-            lkhd_mean_dot_prec  = self.activation.mean_dot_precision(augmented_data, synapse=(n_pre,n_post))
-        else:
-            lkhd_prec           = 0
-            lkhd_mean_dot_prec  = 0
 
         post_prec           = prior_prec + lkhd_prec
         post_cov            = np.linalg.inv(post_prec)
@@ -106,6 +184,7 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
         return post_mu, post_cov, post_prec
 
+    @line_profiled
     def _resample_A(self, n_pre, n_post, stats):
         """
         Resample the presence or absence of a connection (synapse)
