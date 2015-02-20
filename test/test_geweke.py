@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from scipy.stats import norm, probplot
+from scipy.stats import norm, probplot, invgamma
 
 
 from pyglm.models import Population
@@ -54,7 +54,8 @@ def demo(seed=None):
     samples = []
     lps = []
     for itr in xrange(N_samples):
-        print "Geweke iteration ", itr
+        if itr % 100 == 0:
+            print "Geweke iteration ", itr
         lps.append(test_model.log_probability())
         samples.append(test_model.copy_sample())
 
@@ -139,8 +140,10 @@ def check_weight_samples(test_model, samples):
     plt.plot(bincenters, w_dist.pdf(bincenters), 'r--', linewidth=1)
     plt.show()
 
-def check_etaa_samples(test_model, samples):
-    assert isinstance(test_model.activation_model, NoisyActivation)
+def check_eta_samples(test_model, samples):
+    from pyglm.internals.activation import GaussianNoiseActivation
+    if not isinstance(test_model.activation_model, GaussianNoiseActivation):
+        return
     alpha_eta = test_model.activation_model.alpha_0
     beta_eta  = test_model.activation_model.beta_0
 

@@ -202,7 +202,7 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         logdet_prior_cov = np.linalg.slogdet(Sigma_w)[1]
         logdet_post_cov  = np.linalg.slogdet(post_cov)[1]
         logit_rho_post   = logit(rho) \
-                           + self.B / 2.0 * (logdet_post_cov - logdet_prior_cov) \
+                           + 0.5 * (logdet_post_cov - logdet_prior_cov) \
                            + 0.5 * post_mu.dot(post_prec).dot(post_mu) \
                            - 0.5 * mu_w.dot(np.linalg.solve(Sigma_w, mu_w))
 
@@ -312,7 +312,7 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         logdet_prior_cov = E_logdet_Sigma
         logdet_post_cov  = np.linalg.slogdet(mf_post_cov)[1]
         logit_rho_post   = E_ln_rho - E_ln_notrho \
-                           + self.B / 2.0 * (logdet_post_cov - logdet_prior_cov) \
+                           + 0.5 * (logdet_post_cov - logdet_prior_cov) \
                            + 0.5 * mf_post_mu.dot(mf_post_prec).dot(mf_post_mu) \
                            - 0.5 * E_mu.dot(E_Sigma_inv.dot(E_mu))
 
