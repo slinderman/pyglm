@@ -116,7 +116,10 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
         #  TODO: We can parallelize over n_post
         for n_post in xrange(self.N):
-            for n_pre in xrange(self.N):
+
+            # Randomly permute the order in which we resample presynaptic weights
+            perm = np.random.permutation(self.N)
+            for n_pre in perm:
                 # Get the filtered spike trains associated with this synapse
                 F_pres = [data["F"][:,n_pre,:] for data in augmented_data]
 

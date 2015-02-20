@@ -53,7 +53,7 @@ def demo(seed=None):
     ###########################################################
     # Fit the test model with Gibbs sampling
     ###########################################################
-    N_samples = 10
+    N_samples = 1000
     samples = []
     lps = []
     # plls = []
@@ -72,14 +72,10 @@ def demo(seed=None):
         if itr % 1 == 0:
             update_plots(itr, test_model, S, ln, im_net)
 
-    from pyglm.utils.profiling import show_line_stats
-    with open("gibbs_profile3.txt", "w") as f:
-        show_line_stats(f)
-
     ###########################################################
     # Analyze the samples
     ###########################################################
-    # analyze_samples(true_model, None, samples, lps)
+    analyze_samples(true_model, None, samples, lps)
 
 def initialize_plots(true_model, test_model, S):
     N = true_model.N
@@ -145,34 +141,27 @@ def update_plots(itr, test_model, S, ln, im_net):
 def analyze_samples(true_model, init_model, samples, lps):
     N_samples = len(samples)
     # Compute sample statistics for second half of samples
-    A_samples       = np.array([s.weight_model.A     for s in samples])
-    W_samples       = np.array([s.weight_model.W     for s in samples])
-    g_samples       = np.array([s.impulse_model.g    for s in samples])
-    lambda0_samples = np.array([s.bias_model.lambda0 for s in samples])
-    c_samples       = np.array([s.network.c          for s in samples])
-    p_samples       = np.array([s.network.p          for s in samples])
-    v_samples       = np.array([s.network.v          for s in samples])
-    lps             = np.array(lps)
+    A_samples = np.array([s.weight_model.A for s in samples])
+    W_samples = np.array([s.weight_model.W for s in samples])
+    b_samples = np.array([s.bias_model.b   for s in samples])
+    c_samples = np.array([s.network.c      for s in samples])
+    p_samples = np.array([s.network.p      for s in samples])
+    lps       = np.array(lps)
 
     offset = N_samples // 2
     A_mean       = A_samples[offset:, ...].mean(axis=0)
     W_mean       = W_samples[offset:, ...].mean(axis=0)
-    g_mean       = g_samples[offset:, ...].mean(axis=0)
-    lambda0_mean = lambda0_samples[offset:, ...].mean(axis=0)
+    b_mean       = b_samples[offset:, ...].mean(axis=0)
     p_mean       = p_samples[offset:, ...].mean(axis=0)
-    v_mean       = v_samples[offset:, ...].mean(axis=0)
 
 
     print "A true:        ", true_model.weight_model.A
     print "W true:        ", true_model.weight_model.W
-    print "g true:        ", true_model.impulse_model.g
-    print "lambda0 true:  ", true_model.bias_model.lambda0
+    print "b true:        ", true_model.bias_model.b
     print ""
     print "A mean:        ", A_mean
     print "W mean:        ", W_mean
-    print "g mean:        ", g_mean
-    print "lambda0 mean:  ", lambda0_mean
-    print "v mean:        ", v_mean
+    print "b mean:        ", b_mean
     print "p mean:        ", p_mean
 
     plt.figure()
@@ -191,43 +180,39 @@ def analyze_samples(true_model, init_model, samples, lps):
     # plt.show()
 
     # Compute the link prediction accuracy curves
-    auc_init = roc_auc_score(true_model.weight_model.A.ravel(),
-                             init_model.W.ravel())
-    auc_A_mean = roc_auc_score(true_model.weight_model.A.ravel(),
-                               A_mean.ravel())
-    auc_W_mean = roc_auc_score(true_model.weight_model.A.ravel(),
-                               W_mean.ravel())
-
-    aucs = []
-    for A in A_samples:
-        aucs.append(roc_auc_score(true_model.weight_model.A.ravel(), A.ravel()))
-
-    plt.figure()
-    plt.plot(aucs, '-r')
-    plt.plot(auc_A_mean * np.ones_like(aucs), '--r')
-    plt.plot(auc_W_mean * np.ones_like(aucs), '--b')
-    plt.plot(auc_init * np.ones_like(aucs), '--k')
-    plt.xlabel("Iteration")
-    plt.ylabel("Link prediction AUC")
-    plt.show()
-
+    # auc_init = roc_auc_score(true_model.weight_model.A.ravel(),
+    #                          init_model.W.ravel())
+    # auc_A_mean = roc_auc_score(true_model.weight_model.A.ravel(),
+    #                            A_mean.ravel())
+    # auc_W_mean = roc_auc_score(true_model.weight_model.A.ravel(),
+    #                            W_mean.ravel())
+    #
+    # aucs = []
+    # for A in A_samples:
+    #     aucs.append(roc_auc_score(true_model.weight_model.A.ravel(), A.ravel()))
+    #
+    # plt.figure()
+    # plt.plot(aucs, '-r')
+    # plt.plot(auc_A_mean * np.ones_like(aucs), '--r')
+    # plt.plot(auc_W_mean * np.ones_like(aucs), '--b')
+    # plt.plot(auc_init * np.ones_like(aucs), '--k')
+    # plt.xlabel("Iteration")
+    # plt.ylabel("Link prediction AUC")
+    # plt.show()
+    #
 
     # Compute the adjusted mutual info score of the clusterings
-    amis = []
-    arss = []
-    for c in c_samples:
-        amis.append(adjusted_mutual_info_score(true_model.network.c, c))
-        arss.append(adjusted_rand_score(true_model.network.c, c))
-
-    plt.figure()
-    plt.plot(np.arange(N_samples), amis, '-r')
-    plt.plot(np.arange(N_samples), arss, '-b')
-    plt.xlabel("Iteration")
-    plt.ylabel("Clustering score")
-
-
-    plt.ioff()
-    plt.show()
+    # amis = []
+    # arss = []
+    # for c in c_samples:
+    #     amis.append(adjusted_mutual_info_score(true_model.network.c, c))
+    #     arss.append(adjusted_rand_score(true_model.network.c, c))
+    #
+    # plt.figure()
+    # plt.plot(np.arange(N_samples), amis, '-r')
+    # plt.plot(np.arange(N_samples), arss, '-b')
+    # plt.xlabel("Iteration")
+    # plt.ylabel("Clustering score")
 
 
 demo(11223344)
