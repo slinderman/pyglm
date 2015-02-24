@@ -145,7 +145,7 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
                 else:
                     self.W[n_pre, n_post,:] = 0.0
 
-                # Update Psi
+                # Update Psi to account for new weight
                 for F_pre, Psi, psi_other in zip(F_pres, Psis, psi_others):
                     Psi[:,n_post] = psi_other
                     if self.A[n_pre, n_post]:

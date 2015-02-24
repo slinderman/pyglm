@@ -13,7 +13,86 @@ from pyglm.deps.pybasicbayes.util.stats import sample_niw
 
 from pyglm.internals.distributions import Bernoulli
 
-# TODO: Make a base class for networks
+# Import graph models from graphistician
+from pyglm.deps.graphistician.networks import GaussianWeightedEigenmodel
+
+class Eigenmodel(Component):
+    """
+    Expose the GaussianWeightedEigenmodel through the Component interface
+    """
+    def __init__(self, population, D=2,
+                 p=0.5, sigma_mu0=1.0, sigma_F=1.0,
+                 lmbda=None, mu_lmbda=0, sigma_lmbda=1.0):
+        self.population = population
+        self.N = population.N
+        self.B = population.B
+        self.D = D
+
+        # Instantiate the Gaussian weighted eigenmodel
+        import pdb; pdb.set_trace()
+        eigenmodel_args = {"p": p, "sigma_mu0": sigma_mu0, "sigma_F": sigma_F,
+                           "lmbda": lmbda, "mu_lmbda": mu_lmbda, "sigma_lmbda": sigma_lmbda}
+        self._model = GaussianWeightedEigenmodel(self.N, D, self.B,
+                                                 eigenmodel_args=eigenmodel_args)
+
+    @property
+    def weight_model(self):
+        return self.population.weight_model
+
+    @property
+    def P(self):
+        """
+        Get the NxN matrix of connection probabilities
+        :return:
+        """
+        P = self._model.graph_model.P
+        # if not self.allow_self_connections:
+        #     np.fill_diagonal(P, 0.0)
+        return P
+
+    @property
+    def Mu(self):
+        """
+        Get the NxNxB array of mean weights
+        :return:
+        """
+        return np.tile(self._model.weight_model.mu[None, None, :],
+                       [self.N, self.N, 1])
+
+    @property
+    def Sigma(self):
+        """
+        Get the NxNxBxB array of weight covariances
+        :return:
+        """
+        return np.tile(self._model.weight_model.sigma[None, None, :, :],
+                       [self.N, self.N, 1, 1])
+
+    def log_prior(self):
+        return self._model.log_prior()
+
+    # Gibbs sampling
+    def resample(self, augmented_data):
+        self._model.resample((self.weight_model.A, self.weight_model.W))
+
+    # Mean field
+    def meanfieldupdate(self, augmented_data):
+        E_A = self.weight_model.mf_expected_A()
+        E_W = self.weight_model.mf_expected_w_given_A(A=1)
+        E_WWT = self.weight_model.mf_expected_wwT_given_A(A=1)
+        self._model.meanfieldupdate(E_A, E_W, E_WWT)
+
+    def get_vlb(self, augmented_data):
+        return self._model.get_vlb()
+
+    def resample_from_mf(self, augmented_data):
+        self._model.resample_from_mf()
+
+    def svi_step(self, augmented_data, minibatchfrac, stepsize):
+        raise NotImplementedError()
+
+
+# TODO: Move the SBM to graphistician
 
 class _StochasticBlockModelBase(Component):
     """

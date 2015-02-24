@@ -4,3 +4,6 @@
 [submodule "pyglmdos/deps/pybasicbayes"]
 	path = pyglmdos/deps/pybasicbayes
 	url = https://github.com/mattjj/pybasicbayes.git
+[submodule "pyglm/deps/graphistician"]
+	path = pyglm/deps/graphistician
+	url = https://github.com/slinderman/graphistician.git

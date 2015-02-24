@@ -19,8 +19,8 @@ def generate_synthetic_data(seed=None):
     ###########################################################
     # Create a population model
     ###########################################################
-    N = 2                                                   # Number of neurons
-    C = 1                                                   # Number of clusters
+    N = 20                                                  # Number of neurons
+    # C = 1                                                   # Number of clusters
     T = 10000                                               # Number of time bins
     dt = 1.0                                                # Time bin width
     dt_max = 100.0                                          # Max time of synaptic influence
@@ -32,17 +32,18 @@ def generate_synthetic_data(seed=None):
     ###########################################################
     #   Network hyperparameters
     ###########################################################
-    c = np.arange(C).repeat((N // C))                       # Neuron to cluster assignments
-    p = 0.5 * np.ones((C,C))                                      # Probability of connection for each pair of clusters
-    # p = 0.9 * np.eye(C) + 0.05 * (1-np.eye(C))              # Probability of connection for each pair of clusters
-    mu = np.zeros((C,C,B))                                  # Mean weight for each pair of clusters
-    Sigma = np.tile( 3**2 * np.eye(B)[None,None,:,:], (C,C,1,1))    # Covariance of weight for each pair of clusters
-    T_test = 1000                                           # Number of time bins for test data set
+    # c = np.arange(C).repeat((N // C))                       # Neuron to cluster assignments
+    # p = 0.5 * np.ones((C,C))                                      # Probability of connection for each pair of clusters
+    # # p = 0.9 * np.eye(C) + 0.05 * (1-np.eye(C))              # Probability of connection for each pair of clusters
+    # mu = np.zeros((C,C,B))                                  # Mean weight for each pair of clusters
+    # Sigma = np.tile( 3**2 * np.eye(B)[None,None,:,:], (C,C,1,1))    # Covariance of weight for each pair of clusters
+    # network_hypers = {'C': C, 'c': c, 'p': p, 'mu': mu, 'Sigma': Sigma}
 
     ###########################################################
     # Create the model with these parameters
     ###########################################################
-    network_hypers = {'C': C, 'c': c, 'p': p, 'mu': mu, 'Sigma': Sigma}
+    network_hypers = {}
+    import pdb; pdb.set_trace()
     true_model = Population(N=N, dt=dt, dt_max=dt_max, B=B,
                             bias_hypers=bias_hypers,
                             network_hypers=network_hypers)
@@ -91,11 +92,12 @@ def generate_synthetic_data(seed=None):
         cPickle.dump((S, true_model.copy_sample()), f, protocol=-1)
 
     # Sample test data
+    T_test = 1000                                           # Number of time bins for test data set
     S_test = true_model.generate(T=T_test, keep=False)
 
     # Pickle and save the data
     out_dir  = os.path.join('data', "synthetic")
-    out_name = 'synthetic_K%d_C%d_T%d_test.pkl.gz' % (N,C,T)
+    out_name = 'synthetic_eigenmodel_K%d_C%d_T%d_test.pkl.gz' % (N,C,T)
     out_path = os.path.join(out_dir, out_name)
     with gzip.open(out_path, 'w') as f:
         print "Saving output to ", out_path
