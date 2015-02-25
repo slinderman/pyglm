@@ -29,7 +29,6 @@ class Eigenmodel(Component):
         self.D = D
 
         # Instantiate the Gaussian weighted eigenmodel
-        import pdb; pdb.set_trace()
         eigenmodel_args = {"p": p, "sigma_mu0": sigma_mu0, "sigma_F": sigma_F,
                            "lmbda": lmbda, "mu_lmbda": mu_lmbda, "sigma_lmbda": sigma_lmbda}
         self._model = GaussianWeightedEigenmodel(self.N, D, self.B,

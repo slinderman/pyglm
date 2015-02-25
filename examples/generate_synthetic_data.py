@@ -43,7 +43,6 @@ def generate_synthetic_data(seed=None):
     # Create the model with these parameters
     ###########################################################
     network_hypers = {}
-    import pdb; pdb.set_trace()
     true_model = Population(N=N, dt=dt, dt_max=dt_max, B=B,
                             bias_hypers=bias_hypers,
                             network_hypers=network_hypers)
@@ -82,7 +81,8 @@ def generate_synthetic_data(seed=None):
     # Pickle and save the data
     ###########################################################
     out_dir  = os.path.join('data', "synthetic")
-    out_name = 'synthetic_K%d_C%d_T%d.pkl' % (N,C,T)
+    # out_name = 'synthetic_sbm_K%d_C%d_T%d.pkl' % (N,C,T)
+    out_name = 'synthetic_eigenmodel_K%d_T%d.pkl' % (N,T)
     out_path = os.path.join(out_dir, out_name)
     with open(out_path, 'w') as f:
         print "Saving output to ", out_path
@@ -97,7 +97,8 @@ def generate_synthetic_data(seed=None):
 
     # Pickle and save the data
     out_dir  = os.path.join('data', "synthetic")
-    out_name = 'synthetic_eigenmodel_K%d_C%d_T%d_test.pkl.gz' % (N,C,T)
+    # out_name = 'synthetic_sbm_K%d_C%d_T%d_test.pkl.gz' % (N,C,T)
+    out_name = 'synthetic_eigenmodel_K%d_T%d_test.pkl.gz' % (N,T)
     out_path = os.path.join(out_dir, out_name)
     with gzip.open(out_path, 'w') as f:
         print "Saving output to ", out_path
