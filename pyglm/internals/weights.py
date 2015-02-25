@@ -271,10 +271,10 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         Get the expected sufficient statistics for this synapse.
         """
         # TODO: A joint factor for mu and Sigma could yield E_mu_dot_Sigma under the priro
-        mu_w                = self.network.mf_Mu[n_pre, n_post, :]
-        Sigma_w             = self.network.mf_Sigma[n_pre, n_post, :, :]
+        mu_w                = self.network.mf_expected_mu[n_pre, n_post, :]
+        prec_w              = self.network.mf_expected_Sigma_inv[n_pre, n_post, :, :]
 
-        prior_prec          = np.linalg.inv(Sigma_w)
+        prior_prec          = np.linalg.inv(prec_w)
         prior_mean_dot_prec = mu_w.dot(prior_prec)
 
         # Compute the posterior parameters
@@ -302,9 +302,7 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         """
         # TODO: A joint factor for mu and Sigma could yield E_mu_dot_Sigma under the priro
         mf_post_mu, mf_post_cov, mf_post_prec = stats
-        # mf_mu_w                         = self.network.mf_Mu[n_pre, n_post, :]
-        # mf_Sigma_w                      = self.network.mf_Sigma[n_pre, n_post, :, :]
-        # mf_rho                          = self.network.mf_P[n_pre, n_post]
+
         E_ln_rho       = self.network.mf_expected_log_p()[n_pre, n_post]
         E_ln_notrho    = self.network.mf_expected_log_notp()[n_pre, n_post]
         E_mu           = self.network.mf_expected_mu()[n_pre, n_post, :]

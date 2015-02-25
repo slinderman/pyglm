@@ -399,6 +399,113 @@ class _MeanFieldSBM(_StochasticBlockModelBase):
     def meanfieldupdate(self, augmented_data):
         raise NotImplementedError()
 
+    def mf_update_c(self, E_A, E_notA, E_W_given_A, E_ln_W_given_A, stepsize=1.0):
+        """
+        Update the block assignment probabilitlies one at a time.
+        This one involves a number of not-so-friendly expectations.
+        :return:
+        """
+        # Sample each assignment in order
+        for n1 in xrange(self.N):
+            notk = np.concatenate((np.arange(n1), np.arange(n1+1,self.N)))
+
+            # Compute unnormalized log probs of each connection
+            lp = np.zeros(self.C)
+
+            # Prior from m
+            lp += self.expected_log_m()
+
+            # Likelihood from network
+            for ck in xrange(self.C):
+
+                # Compute expectations with respect to other block assignments, c_{\neg k}
+                # Initialize vectors for expected parameters
+                E_ln_p_ck_to_cnotk    = np.zeros(self.N-1)
+                E_ln_notp_ck_to_cnotk = np.zeros(self.N-1)
+                E_ln_p_cnotk_to_ck    = np.zeros(self.N-1)
+                E_ln_notp_cnotk_to_ck = np.zeros(self.N-1)
+                E_v_ck_to_cnotk       = np.zeros(self.N-1)
+                E_ln_v_ck_to_cnotk    = np.zeros(self.N-1)
+                E_v_cnotk_to_ck       = np.zeros(self.N-1)
+                E_ln_v_cnotk_to_ck    = np.zeros(self.N-1)
+
+                for cnotk in xrange(self.C):
+                    # Get the (K-1)-vector of other class assignment probabilities
+                    p_cnotk = self.mf_m[notk,cnotk]
+
+                    # Expected log probability of a connection from ck to cnotk
+                    E_ln_p_ck_to_cnotk    += p_cnotk * (psi(self.mf_tau1[ck, cnotk])
+                                                        - psi(self.mf_tau0[ck, cnotk] + self.mf_tau1[ck, cnotk]))
+                    E_ln_notp_ck_to_cnotk += p_cnotk * (psi(self.mf_tau0[ck, cnotk])
+                                                        - psi(self.mf_tau0[ck, cnotk] + self.mf_tau1[ck, cnotk]))
+
+                    # Expected log probability of a connection from cnotk to ck
+                    E_ln_p_cnotk_to_ck    += p_cnotk * (psi(self.mf_tau1[cnotk, ck])
+                                                        - psi(self.mf_tau0[cnotk, ck] + self.mf_tau1[cnotk, ck]))
+                    E_ln_notp_cnotk_to_ck += p_cnotk * (psi(self.mf_tau0[cnotk, ck])
+                                                        - psi(self.mf_tau0[cnotk, ck] + self.mf_tau1[cnotk, ck]))
+
+                    # Expected log scale of connections from ck to cnotk
+                    E_v_ck_to_cnotk       += p_cnotk * (self.mf_alpha[ck, cnotk] / self.mf_beta[ck, cnotk])
+                    E_ln_v_ck_to_cnotk    += p_cnotk * (psi(self.mf_alpha[ck, cnotk])
+                                                        - np.log(self.mf_beta[ck, cnotk]))
+
+                    # Expected log scale of connections from cnotk to ck
+                    E_v_cnotk_to_ck       += p_cnotk * (self.mf_alpha[cnotk, ck] / self.mf_beta[cnotk, ck])
+                    E_ln_v_cnotk_to_ck    += p_cnotk * (psi(self.mf_alpha[cnotk, ck])
+                                                        - np.log(self.mf_beta[cnotk, ck]))
+
+                # Compute E[ln p(A | c, p)]
+                lp[ck] += Bernoulli().negentropy(E_x=E_A[n1, notk],
+                                                 E_notx=E_notA[n1, notk],
+                                                 E_ln_p=E_ln_p_ck_to_cnotk,
+                                                 E_ln_notp=E_ln_notp_ck_to_cnotk).sum()
+
+                lp[ck] += Bernoulli().negentropy(E_x=E_A[notk, n1],
+                                                 E_notx=E_notA[notk, n1],
+                                                 E_ln_p=E_ln_p_cnotk_to_ck,
+                                                 E_ln_notp=E_ln_notp_cnotk_to_ck).sum()
+
+                # Compute E[ln p(W | A=1, c, v)]
+                lp[ck] += (E_A[n1, notk] *
+                           Gamma(self.kappa).negentropy(E_ln_lambda=E_ln_W_given_A[n1, notk],
+                                                        E_lambda=E_W_given_A[n1,notk],
+                                                        E_beta=E_v_ck_to_cnotk,
+                                                        E_ln_beta=E_ln_v_ck_to_cnotk)).sum()
+
+                lp[ck] += (E_A[n1, notk] *
+                           Gamma(self.kappa).negentropy(E_ln_lambda=E_ln_W_given_A[notk, n1],
+                                                        E_lambda=E_W_given_A[notk,n1],
+                                                        E_beta=E_v_cnotk_to_ck,
+                                                        E_ln_beta=E_ln_v_cnotk_to_ck)).sum()
+
+                # Compute expected log prob of self connection
+                if self.allow_self_connections:
+                    E_ln_p_ck_to_ck    = psi(self.mf_tau1[ck, ck]) - psi(self.mf_tau0[ck, ck] + self.mf_tau1[ck, ck])
+                    E_ln_notp_ck_to_ck = psi(self.mf_tau0[ck, ck]) - psi(self.mf_tau0[ck, ck] + self.mf_tau1[ck, ck])
+                    lp[ck] += Bernoulli().negentropy(E_x=E_A[n1, n1],
+                                                     E_notx=E_notA[n1, n1],
+                                                     E_ln_p=E_ln_p_ck_to_ck,
+                                                     E_ln_notp=E_ln_notp_ck_to_ck
+                                                    )
+                    E_v_ck_to_ck    = self.mf_alpha[ck, ck] / self.mf_beta[ck, ck]
+                    E_ln_v_ck_to_ck = psi(self.mf_alpha[ck, ck]) - np.log(self.mf_beta[ck, ck])
+                    lp[ck] += (E_A[n1, n1] *
+                               Gamma(self.kappa).negentropy(E_ln_lambda=E_ln_W_given_A[n1, n1],
+                                                            E_lambda=E_W_given_A[n1,n1],
+                                                            E_beta=E_v_ck_to_ck,
+                                                            E_ln_beta=E_ln_v_ck_to_ck))
+
+
+                # TODO: Get probability of impulse responses g
+
+
+            # Normalize the log probabilities to update mf_m
+            Z = logsumexp(lp)
+            mk_hat = np.exp(lp - Z)
+
+            self.mf_m[n1,:] = (1.0 - stepsize) * self.mf_m[n1,:] + stepsize * mk_hat
+
     def mf_expected_p(self):
         """
         Compute the expected probability of a connection, averaging over c
@@ -505,11 +612,66 @@ class _MeanFieldSBM(_StochasticBlockModelBase):
                     np.linalg.slogdet(Sigma[n_pre, n_post, :, :])[1]
         return E_logdet_Sigma
 
-    def get_vlb(self, augmented_data):
-        raise NotImplementedError()
+    def get_vlb(self,
+                vlb_c=True,
+                vlb_p=True,
+                vlb_v=True,
+                vlb_m=True):
+        # import pdb; pdb.set_trace()
+        vlb = 0
 
-    def resample_from_mf(self, augmented_data):
-        raise NotImplementedError()
+        # Get the VLB of the expected class assignments
+        if vlb_c:
+            E_ln_m = self.expected_log_m()
+            for k in xrange(self.K):
+                # Add the cross entropy of p(c | m)
+                vlb += Discrete().negentropy(E_x=self.mf_m[k,:], E_ln_p=E_ln_m)
+
+                # Subtract the negative entropy of q(c)
+                vlb -= Discrete(self.mf_m[k,:]).negentropy()
+
+        # Get the VLB of the connection probability matrix
+        # Add the cross entropy of p(p | tau1, tau0)
+        if vlb_p:
+            vlb += Beta(self.tau1, self.tau0).\
+                negentropy(E_ln_p=(psi(self.mf_tau1) - psi(self.mf_tau0 + self.mf_tau1)),
+                           E_ln_notp=(psi(self.mf_tau0) - psi(self.mf_tau0 + self.mf_tau1))).sum()
+
+            # Subtract the negative entropy of q(p)
+            vlb -= Beta(self.mf_tau1, self.mf_tau0).negentropy().sum()
+
+        # Get the VLB of the weight scale matrix, v
+        # Add the cross entropy of p(v | alpha, beta)
+        if vlb_v:
+            vlb += Gamma(self.alpha, self.beta).\
+                negentropy(E_lambda=self.mf_alpha/self.mf_beta,
+                           E_ln_lambda=psi(self.mf_alpha) - np.log(self.mf_beta)).sum()
+
+            # Subtract the negative entropy of q(v)
+            vlb -= Gamma(self.mf_alpha, self.mf_beta).negentropy().sum()
+
+        # Get the VLB of the block probability vector, m
+        # Add the cross entropy of p(m | pi)
+        if vlb_m:
+            vlb += Dirichlet(self.pi).negentropy(E_ln_g=self.expected_log_m())
+
+            # Subtract the negative entropy of q(m)
+            vlb -= Dirichlet(self.mf_pi).negentropy()
+
+        return vlb
+
+    def resample_from_mf(self):
+        """
+        Resample from the mean field distribution
+        :return:
+        """
+        self.m = np.random.dirichlet(self.mf_pi)
+        self.p = np.random.beta(self.mf_tau1, self.mf_tau0)
+        self.v = np.random.gamma(self.mf_alpha, 1.0/self.mf_beta)
+
+        self.c = np.zeros(self.K, dtype=np.int)
+        for k in xrange(self.K):
+            self.c[k] = int(np.random.choice(self.C, p=self.mf_m[k,:]))
 
     def svi_step(self, augmented_data, minibatchfrac, stepsize):
         raise NotImplementedError()
