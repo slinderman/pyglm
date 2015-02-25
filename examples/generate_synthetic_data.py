@@ -2,6 +2,11 @@ import cPickle
 import os
 import gzip
 import numpy as np
+
+if not os.environ.has_key("DISPLAY"):
+    import matplotlib
+    matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 
 from pyglm.models import Population

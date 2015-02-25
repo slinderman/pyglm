@@ -4,6 +4,10 @@ import cPickle
 import gzip
 # np.seterr(all='raise')
 
+if not os.environ.has_key("DISPLAY"):
+    import matplotlib
+    matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 
 from pyglm.models import Population

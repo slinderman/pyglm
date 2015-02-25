@@ -251,6 +251,7 @@ class StandardBernoulliPopulation(Model):
                                         fit_intercept=True, intercept_scaling=intercept_scaling,
                                         tol=1e-6)
                 for c in cs:
+                    print "Fitting for C=%.5f" % c
                     lr.set_params(C=c)
                     lr.fit(F, S[:,n_post])
                     ints.append(lr.intercept_.copy())
@@ -265,7 +266,7 @@ class StandardBernoulliPopulation(Model):
                 # Choose the regularization penalty with cross validation
                 print "XV Scores: "
                 for c,score  in zip(cs, xv_scores):
-                    print "\tc: {%.2f}\tscore: {%.3f}" % (c,score)
+                    print "\tc: %.5f\tscore: %.1f" % (c,score)
                 best = np.argmax(xv_scores)
                 print "Best c: ", cs[best]
 

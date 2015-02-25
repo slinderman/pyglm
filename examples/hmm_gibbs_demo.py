@@ -3,6 +3,10 @@ import os
 import cPickle
 import gzip
 
+if not os.environ.has_key("DISPLAY"):
+    import matplotlib
+    matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 
 from pyglm.switching_models import SwitchingPopulation

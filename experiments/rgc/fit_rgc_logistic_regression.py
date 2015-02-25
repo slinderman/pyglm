@@ -1,12 +1,11 @@
+"""
+Fit the RGC data with a simple logistic regression model
+"""
 import numpy as np
 import os
 import cPickle
 import gzip
 # np.seterr(all='raise')
-
-if not os.environ.has_key("DISPLAY"):
-    import matplotlib
-    matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
@@ -24,50 +23,43 @@ def demo(seed=None):
     np.random.seed(seed)
 
     ###########################################################
-    # Load some example data.
-    # See data/synthetic/generate.py to create more.
+    # Load the RGC data
     ###########################################################
-    base_path = os.path.join("data", "synthetic", "synthetic_K20_C1_T10000")
-    data_path = base_path + ".pkl.gz"
-    with gzip.open(data_path, 'r') as f:
-        S, true_model = cPickle.load(f)
-        true_model.add_data(S)
+    base_path = os.path.join("data", "rgc", "rgc_60T")
+    data_path = base_path + ".pkl"
+    with open(data_path, 'r') as f:
+        data = cPickle.load(f)
 
-    T      = S.shape[0]
-    N      = true_model.N
-    B      = true_model.B
-    dt     = true_model.dt
-    dt_max = true_model.dt_max
+    S      = data["S"].astype(np.int32)
+    T      = data["T"]
+    N      = data["N"]
+    dt     = data["dt"]
+
+    # Set model parameters
+    B      = 3
+    dt_max = 0.100
 
     ###########################################################
     # Create a test spike-and-slab model
     ###########################################################
 
     # Copy the network hypers.
-    test_model = StandardBernoulliPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
-                                             basis_hypers=true_model.basis_hypers)
-    test_model.add_data(S)
-    # F_test = test_model.basis.convolve_with_basis(S_test)
+    model = StandardBernoulliPopulation(N=N, dt=dt, dt_max=dt_max, B=B)
+    model.add_data(S)
 
     ###########################################################
     # Fit the test model with L1-regularized logistic regression
     ###########################################################
-    test_model.fit(L1=True)
+    model.fit(L1=True)
 
     ###########################################################
     # Plot the true and inferred network
     ###########################################################
     plt.figure()
-    plt.subplot(121)
-    plt.imshow(true_model.weight_model.W_effective.sum(2),
-               vmax=1.0, vmin=-1.0,
-               interpolation="none", cmap="RdGy")
-    plt.suptitle("True network")
-
-    # Plot the inferred network
-    plt.subplot(122)
-    plt.imshow(test_model.W.sum(2),
-               vmax=1.0, vmin=-1.0,
+    W_eff = model.W.sum(2)
+    lim = np.amax(abs(W_eff))
+    plt.imshow(W_eff,
+               vmax=lim, vmin=-lim,
                interpolation="none", cmap="RdGy")
     plt.suptitle("Inferred network")
 
@@ -75,21 +67,19 @@ def demo(seed=None):
     # Plot the true and inferred rates
     #
     plt.figure()
-    R_true = true_model.compute_rate(true_model.data_list[0])
-    R_test = test_model.compute_rate(test_model.data_list[0])
-    for n in xrange(N):
+    R = model.compute_rate(model.data_list[0])
+    for n in xrange(2):
         plt.subplot(N,1,n+1)
-        plt.plot(np.arange(T), R_true[:,n], '-k', lw=2)
-        plt.plot(np.arange(T), R_test[:,n], '-r', lw=1)
+        plt.plot(np.arange(T), R[:,n], '-r', lw=1)
         plt.ylim([0,1])
     plt.show()
 
     ###########################################################
     # Save the fit model
     ###########################################################
-    results_path = base_path + ".standard_fit.pkl.gz"
+    results_path = base_path + ".standard_fit.l1.pkl.gz"
     with gzip.open(results_path, 'w') as f:
-        cPickle.dump(test_model, f, protocol=-1)
+        cPickle.dump(model, f, protocol=-1)
 
 
 demo(1234)
