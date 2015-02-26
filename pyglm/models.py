@@ -397,7 +397,7 @@ class _BayesianPopulationBase(Model):
             # Use the given network hyperparameters
             self.network_hypers = copy.deepcopy(self._default_network_hypers)
             self.network_hypers.update(network_hypers)
-            self.network = self._network_class(self, self.N, self.B,
+            self.network = self._network_class(self.N, self.B,
                                                **self.network_hypers)
 
         # Check that the model doesn't allow instantaneous self connections
