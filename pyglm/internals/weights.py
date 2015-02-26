@@ -4,6 +4,7 @@ Weight models
 import numpy as np
 
 from pyglm.abstractions import Component
+from pyglm.deps.graphistician.abstractions import GaussianWeightedDirectedNetwork
 from pyglm.internals.distributions import Bernoulli, Gaussian
 from pyglm.utils.utils import logistic, logit
 
@@ -45,17 +46,25 @@ class NoWeights(Component):
         pass
 
 
-class _SpikeAndSlabGaussianWeightsBase(Component):
+class _SpikeAndSlabGaussianWeightsBase(Component, GaussianWeightedDirectedNetwork):
     def __init__(self, population):
         self.population = population
 
         # Initialize the parameters
-        self.A = np.zeros((self.N, self.N))
-        self.W = np.zeros((self.N, self.N, self.B))
+        self._A = np.zeros((self.N, self.N))
+        self._W = np.zeros((self.N, self.N, self.B))
 
     @property
     def N(self):
         return self.population.N
+
+    @property
+    def A(self):
+        return self._A
+
+    @property
+    def W(self):
+        return self._W
 
     @property
     def B(self):
@@ -235,6 +244,19 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         self.mf_p     = 0.5 * np.ones((self.N, self.N))
         self.mf_mu    = np.zeros((self.N, self.N, self.B))
         self.mf_Sigma = np.tile(np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
+
+    @property
+    def E_A(self):
+        return self.mf_p
+
+    @property
+    def E_W(self):
+        return self.mf_expected_W()
+
+    @property
+    def E_WWT(self):
+        raise NotImplementedError("Fix me!")
+        return self.mf_expected_wwT()
 
     def initialize_with_standard_model(self, standard_model):
         """

@@ -15,7 +15,7 @@ from pyglm.internals.activation import DeterministicActivation
 from pyglm.internals.bias import GaussianBias
 from pyglm.internals.background import NoBackground
 from pyglm.internals.weights import SpikeAndSlabGaussianWeights
-from pyglm.internals.networks import StochasticBlockModel, Eigenmodel
+from pyglm.internals.networks import GaussianEigenmodel
 
 from pyglm.utils.basis import CosineBasis
 from pyglm.utils.utils import logistic
@@ -317,8 +317,9 @@ class _BayesianPopulationBase(Model):
     # _network_class              = StochasticBlockModel
     # _default_network_hypers     = {"C": 1}
 
-    _network_class              = Eigenmodel
-    _default_network_hypers     = {"D": 2, "p": 0.5, "lmbda": np.ones(2)}
+    _network_class              = GaussianEigenmodel
+    _default_network_hypers     = {"D": 2,
+                                   "p": 0.5, "lmbda": np.ones(2)}
 
 
     def __init__(self, N, dt=1.0, dt_max=10.0, B=5,
