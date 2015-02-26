@@ -15,10 +15,9 @@ from pyglm.internals.activation import DeterministicActivation
 from pyglm.internals.bias import GaussianBias
 from pyglm.internals.background import NoBackground
 from pyglm.internals.weights import SpikeAndSlabGaussianWeights
-# from pyglm.internals.networks import GaussianEigenmodel
 
 # Import network models
-from pyglm.deps.graphistician import GaussianWeightedEigenmodel, GaussianErdosRenyiFixedSparsity
+from pyglm.deps.graphistician import GaussianErdosRenyiFixedSparsity
 
 from pyglm.utils.basis import CosineBasis
 from pyglm.utils.utils import logistic

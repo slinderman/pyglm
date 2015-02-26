@@ -27,7 +27,7 @@ def demo(seed=None):
     # Load some example data.
     # See data/synthetic/generate.py to create more.
     ###########################################################
-    data_path = os.path.join("data", "synthetic", "synthetic_K20_C1_T10000.pkl.gz")
+    data_path = os.path.join("data", "synthetic", "synthetic_er_K20_T10000.pkl.gz")
     with gzip.open(data_path, 'r') as f:
         S, true_model = cPickle.load(f)
 
@@ -83,7 +83,6 @@ def demo(seed=None):
 
 def initialize_plots(true_model, test_model, S):
     N = true_model.N
-    C = true_model.network.C
     true_model.add_data(S)
     R = true_model.compute_rate(true_model.data_list[0])
     T = S.shape[0]
@@ -122,7 +121,6 @@ def initialize_plots(true_model, test_model, S):
 
 def update_plots(itr, test_model, S, ln, im_net):
     N = test_model.N
-    C = test_model.network.C
     T = S.shape[0]
     plt.figure(2)
     data = test_model.data_list[0]
@@ -148,7 +146,6 @@ def analyze_samples(true_model, init_model, samples, lps):
     A_samples = np.array([s.weight_model.A for s in samples])
     W_samples = np.array([s.weight_model.W for s in samples])
     b_samples = np.array([s.bias_model.b   for s in samples])
-    c_samples = np.array([s.network.c      for s in samples])
     p_samples = np.array([s.network.p      for s in samples])
     lps       = np.array(lps)
 
