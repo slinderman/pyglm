@@ -15,7 +15,10 @@ from pyglm.internals.activation import DeterministicActivation
 from pyglm.internals.bias import GaussianBias
 from pyglm.internals.background import NoBackground
 from pyglm.internals.weights import SpikeAndSlabGaussianWeights
-from pyglm.internals.networks import GaussianEigenmodel
+# from pyglm.internals.networks import GaussianEigenmodel
+
+# Import network models
+from pyglm.deps.graphistician.networks import GaussianWeightedEigenmodel
 
 from pyglm.utils.basis import CosineBasis
 from pyglm.utils.utils import logistic
@@ -317,9 +320,8 @@ class _BayesianPopulationBase(Model):
     # _network_class              = StochasticBlockModel
     # _default_network_hypers     = {"C": 1}
 
-    _network_class              = GaussianEigenmodel
-    _default_network_hypers     = {"D": 2,
-                                   "p": 0.5, "lmbda": np.ones(2)}
+    _network_class              = GaussianWeightedEigenmodel
+    _default_network_hypers     = {"D": 2, "p": 0.5, "lmbda": np.ones(2)}
 
 
     def __init__(self, N, dt=1.0, dt_max=10.0, B=5,
@@ -395,7 +397,7 @@ class _BayesianPopulationBase(Model):
             # Use the given network hyperparameters
             self.network_hypers = copy.deepcopy(self._default_network_hypers)
             self.network_hypers.update(network_hypers)
-            self.network = self._network_class(self,
+            self.network = self._network_class(self, self.N, self.B,
                                                **self.network_hypers)
 
         # Check that the model doesn't allow instantaneous self connections
@@ -649,7 +651,9 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         self.activation_model.resample(data)
         self.weight_model.resample(data)
         self.bias_model.resample(data)
-        # self.network.resample(data)
+
+        # Resample the network given the weight model
+        self.network.resample(self.weight_model)
 
 
 class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
