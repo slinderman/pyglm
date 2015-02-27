@@ -80,7 +80,7 @@ def demo(seed=None):
     ###########################################################
     # Fit the test model with batch variational inference
     ###########################################################
-    N_iters = 20
+    N_iters = 1000
     plot_interval = 1
     samples = [test_model.copy_sample()]
     lps = [test_model.log_probability()]
@@ -103,6 +103,15 @@ def demo(seed=None):
         # Update plot
         if itr % plot_interval == 0:
             update_plots(itr, test_model, S, lns, im_net, eigen_ax)
+
+        # Save intermediate sample
+        with gzip.open(
+                os.path.join("data", "rgc",
+                             "eigen_gibbs",
+                             "itr%04d.pkl.gz" % itr),
+                "w") as f:
+            cPickle.dump((test_model, timestamps[-1]), f, protocol=-1)
+
     plt.ioff()
 
     ###########################################################

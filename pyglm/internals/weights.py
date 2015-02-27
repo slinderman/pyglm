@@ -111,12 +111,19 @@ class _SpikeAndSlabGaussianWeightsBase(Component, GaussianWeightedDirectedNetwor
 
     def log_prior(self):
         lprior = 0
+        P = self.network.P
+        Mu = self.network.Mu
+        Sigma = self.network.Sigma
+
+        # Log prob of connections
+        lprior += Bernoulli(P).log_probability(self.A).sum()
+
+        # Log prob of weights
         for n_pre in xrange(self.N):
             for n_post in xrange(self.N):
-                lprior += Bernoulli(self.network.P[n_pre,n_post]).log_probability(self.A).sum()
                 lprior += self.A[n_pre,n_post] * \
-                          (Gaussian(self.network.Mu[n_pre,n_post,:],
-                                    self.network.Sigma[n_pre,n_post,:,:])
+                          (Gaussian(Mu[n_pre,n_post,:],
+                                    Sigma[n_pre,n_post,:,:])
                            .log_probability(self.W[n_pre,n_post])).sum()
         return lprior
 
