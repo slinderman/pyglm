@@ -62,9 +62,17 @@ class _SpikeAndSlabGaussianWeightsBase(Component, GaussianWeightedDirectedNetwor
     def A(self):
         return self._A
 
+    @A.setter
+    def A(self, value):
+        self._A = value
+
     @property
     def W(self):
         return self._W
+
+    @W.setter
+    def W(self, value):
+        self._W = value
 
     @property
     def B(self):
@@ -93,7 +101,13 @@ class _SpikeAndSlabGaussianWeightsBase(Component, GaussianWeightedDirectedNetwor
         # Make sure it is the correct shape before copying
         assert W_std.shape == (self.N, self.N, self.B)
         self.W = W_std.copy()
-        self.A = np.ones((self.N, self.N))
+
+        # Keep all the connections
+        # self.A = np.ones((self.N, self.N))
+
+        # Only keep the top 1/4 of the connections
+        W_cutoff = np.percentile(self.W.sum(2), 75)
+        self.A = self.W.sum(2) > W_cutoff
 
     def log_prior(self):
         lprior = 0
@@ -251,12 +265,11 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
     @property
     def E_W(self):
-        return self.mf_expected_W()
+        return self.mf_expected_w_given_A(1)
 
     @property
     def E_WWT(self):
-        raise NotImplementedError("Fix me!")
-        return self.mf_expected_wwT()
+        return self.mf_expected_wwT_given_A(1)
 
     def initialize_with_standard_model(self, standard_model):
         """
@@ -271,14 +284,16 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         # Make sure it is the correct shape before copying
         assert W_std.shape == (self.N, self.N, self.B)
 
-        self.mf_rho = 0.9 * np.ones((self.N, self.N))
+        self.mf_p = np.ones((self.N, self.N))
         self.mf_mu = W_std.copy()
-        self.mf_Sigma = np.tile(0.05 * np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
+        self.mf_Sigma = np.tile(self.network.weight_dist.sigma_0 * np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
 
     def meanfieldupdate(self, augmented_data):
-        for n_pre in xrange(self.N):
-            #  TODO: We can parallelize over n_post
-            for n_post in xrange(self.N):
+        #  TODO: We can parallelize over n_post
+        for n_post in xrange(self.N):
+            # Randomly permute the order in which we resample presynaptic weights
+            perm = np.random.permutation(self.N)
+            for n_pre in perm:
                 stats = self._get_expected_sufficient_statistics(augmented_data, n_pre, n_post)
 
                 # Mean field update the slab variable
@@ -292,9 +307,8 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         """
         Get the expected sufficient statistics for this synapse.
         """
-        # TODO: A joint factor for mu and Sigma could yield E_mu_dot_Sigma under the priro
-        mu_w                = self.network.mf_expected_mu[n_pre, n_post, :]
-        prec_w              = self.network.mf_expected_Sigma_inv[n_pre, n_post, :, :]
+        mu_w                = self.network.mf_expected_mu()[n_pre, n_post, :]
+        prec_w              = self.network.mf_expected_Sigma_inv()[n_pre, n_post, :, :]
 
         prior_prec          = np.linalg.inv(prec_w)
         prior_mean_dot_prec = mu_w.dot(prior_prec)
@@ -365,31 +379,34 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
     def mf_expected_wwT_given_A(self, A):
         if A == 1:
-            mumuT = np.zeros((self.N, self.N, self.B, self.B))
-            for n_pre in xrange(self.N):
-                for n_post in xrange(self.N):
-                    mumuT[n_pre, n_post, :, :] = np.outer(self.mf_mu[n_pre, n_post, :],
-                                                          self.mf_mu[n_pre, n_post, :])
+            # mumuT_dbg = np.zeros((self.N, self.N, self.B, self.B))
+            # for n_pre in xrange(self.N):
+            #     for n_post in xrange(self.N):
+            #         mumuT_dbg[n_pre, n_post, :, :] = np.outer(self.mf_mu[n_pre, n_post, :],
+            #                                               self.mf_mu[n_pre, n_post, :])
 
             # TODO: Compute with einsum instead
-            mumuT_einsum = np.einsum("ijk,ijl->ijkl", self.mf_mu, self.mf_mu)
-            assert np.allclose(mumuT, mumuT_einsum)
+            mumuT = np.einsum("ijk,ijl->ijkl", self.mf_mu, self.mf_mu)
+            # assert np.allclose(mumuT, mumuT_dbg)
 
             return self.mf_Sigma + mumuT
         else:
             return np.zeros((self.N, self.N, self.B, self.B))
 
+    def mf_expected_wwT(self):
+        return self.mf_p[:,:,None,None] * self.mf_expected_wwT_given_A(1)
+
     def mf_expected_W(self):
         return self.mf_p[:,:,None] * self.mf_mu
 
-    def mf_expected_wwT(self, n_pre, n_post):
-        """
-        E[ww^T] = E_{A}[ E_{W|A}[ww^T | A] ]
-                = rho * E[ww^T | A=1] + (1-rho) * 0
-        :return:
-        """
-        mumuT = np.outer(self.mf_mu[n_pre, n_post, :], self.mf_mu[n_pre, n_post, :])
-        return self.mf_p[n_pre, n_post] * (self.mf_Sigma[n_pre, n_post, :, :] + mumuT)
+    # def mf_expected_wwT(self, n_pre, n_post):
+    #     """
+    #     E[ww^T] = E_{A}[ E_{W|A}[ww^T | A] ]
+    #             = rho * E[ww^T | A=1] + (1-rho) * 0
+    #     :return:
+    #     """
+    #     mumuT = np.outer(self.mf_mu[n_pre, n_post, :], self.mf_mu[n_pre, n_post, :])
+    #     return self.mf_p[n_pre, n_post] * (self.mf_Sigma[n_pre, n_post, :, :] + mumuT)
 
     def get_vlb(self, augmented_data):
         """
@@ -444,6 +461,12 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
                 self.W[n_pre, n_post, :] = \
                     np.random.multivariate_normal(self.mf_mu[n_pre, n_post, :],
                                                   self.mf_Sigma[n_pre, n_post, :, :])
+
+    def mf_mode(self):
+        for n_pre in np.arange(self.N):
+            for n_post in np.arange(self.N):
+                self.A[n_pre, n_post] = 1
+                self.W[n_pre, n_post, :] = self.mf_p[n_pre, n_post] * self.mf_mu[n_pre, n_post, :]
 
     ### SVI
     def svi_step(self, augmented_data, minibatchfrac, stepsize):

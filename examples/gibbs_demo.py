@@ -27,9 +27,14 @@ def demo(seed=None):
     # Load some example data.
     # See data/synthetic/generate.py to create more.
     ###########################################################
-    data_path = os.path.join("data", "synthetic", "synthetic_er_K20_T10000.pkl.gz")
+    data_path = os.path.join("data", "synthetic", "synthetic_er_K5_T10000.pkl.gz")
     with gzip.open(data_path, 'r') as f:
         S, true_model = cPickle.load(f)
+
+    # Load the test data
+    test_path = os.path.join("data", "synthetic", "synthetic_er_K5_T10000_test.pkl.gz")
+    with gzip.open(test_path, 'r') as f:
+        S_test, _ = cPickle.load(f)
 
     T      = S.shape[0]
     N      = true_model.N
@@ -49,7 +54,9 @@ def demo(seed=None):
                             weight_hypers=true_model.weight_hypers,
                             network_hypers=true_model.network_hypers)
     test_model.add_data(S)
-    # F_test = test_model.basis.convolve_with_basis(S_test)
+
+    # Convolve the test data for fast heldout likelihood calculations
+    F_test = test_model.basis.convolve_with_basis(S_test)
 
     # Initialize plots
     ln, im_net = initialize_plots(true_model, test_model, S)
@@ -57,13 +64,13 @@ def demo(seed=None):
     ###########################################################
     # Fit the test model with Gibbs sampling
     ###########################################################
-    N_samples = 1000
+    N_samples = 100
     samples = []
     lps = []
-    # plls = []
+    plls = []
     for itr in xrange(N_samples):
         lps.append(test_model.log_probability())
-        # plls.append(test_model.heldout_log_likelihood(S_test, F=F_test))
+        plls.append(test_model.heldout_log_likelihood(S_test, F=F_test))
         samples.append(test_model.copy_sample())
 
         print ""
@@ -73,22 +80,29 @@ def demo(seed=None):
         test_model.resample_model()
 
         # Update plot
-        if itr % 1 == 0:
+        if itr % 5 == 0:
             update_plots(itr, test_model, S, ln, im_net)
+
+    plt.ioff()
 
     ###########################################################
     # Analyze the samples
     ###########################################################
-    analyze_samples(true_model, None, samples, lps)
+    analyze_samples(true_model, None, samples, lps, plls)
 
 def initialize_plots(true_model, test_model, S):
     N = true_model.N
     true_model.add_data(S)
+    W_lim = np.amax(abs(true_model.weight_model.W_effective.sum(2)))
+    print "W_lim: ", W_lim
     R = true_model.compute_rate(true_model.data_list[0])
     T = S.shape[0]
     # Plot the true network
     plt.ion()
-    plt.imshow(true_model.weight_model.W_effective.sum(2), vmax=1.0, vmin=-1.0, interpolation="none", cmap="RdGy")
+    plt.imshow(true_model.weight_model.W_effective.sum(2),
+               vmax=W_lim, vmin=-W_lim,
+               interpolation="none", cmap="RdGy")
+    plt.colorbar()
     plt.pause(0.001)
 
 
@@ -109,7 +123,9 @@ def initialize_plots(true_model, test_model, S):
     #                 aspect=float(C)/K)
     #
     plt.figure(4)
-    im_net = plt.imshow(test_model.weight_model.W_effective.sum(2), vmax=1.0, vmin=-1.0, interpolation="none", cmap="RdGy")
+    im_net = plt.imshow(test_model.weight_model.W_effective.sum(2),
+                        vmax=W_lim, vmin=-W_lim,
+                        interpolation="none", cmap="RdGy")
     plt.colorbar()
     plt.pause(0.001)
 
@@ -140,7 +156,7 @@ def update_plots(itr, test_model, S, ln, im_net):
     im_net.set_data(test_model.weight_model.W_effective.sum(2))
     plt.pause(0.001)
 
-def analyze_samples(true_model, init_model, samples, lps):
+def analyze_samples(true_model, init_model, samples, lps, plls):
     N_samples = len(samples)
     # Compute sample statistics for second half of samples
     A_samples = np.array([s.weight_model.A for s in samples])
@@ -173,12 +189,12 @@ def analyze_samples(true_model, init_model, samples, lps):
 
     # # Predictive log likelihood
     # pll_init = init_model.heldout_log_likelihood(S_test)
-    # plt.figure()
+    plt.figure()
     # plt.plot(np.arange(N_samples), pll_init * np.ones(N_samples), 'k')
-    # plt.plot(np.arange(N_samples), plls, 'r')
-    # plt.xlabel("Iteration")
-    # plt.ylabel("Predictive log probability")
-    # plt.show()
+    plt.plot(np.arange(N_samples), plls, 'r')
+    plt.xlabel("Iteration")
+    plt.ylabel("Predictive log probability")
+    plt.show()
 
     # Compute the link prediction accuracy curves
     # auc_init = roc_auc_score(true_model.weight_model.A.ravel(),

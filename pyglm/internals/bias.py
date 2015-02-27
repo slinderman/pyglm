@@ -153,6 +153,9 @@ class _MeanFieldGaussianBias(_GaussianBiasBase):
         """
         self.b = self.mf_mu_b + np.sqrt(self.mf_sigma_b) * np.random.randn(self.N)
 
+    def mf_mode(self):
+        self.b = self.mf_mu_b.copy()
+
     ### SVI
     def svi_step(self, augmented_data, minibatchfrac, stepsize):
         for n in xrange(self.N):

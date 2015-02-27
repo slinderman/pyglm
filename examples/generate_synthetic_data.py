@@ -24,7 +24,7 @@ def generate_synthetic_data(seed=None):
     ###########################################################
     # Create a population model
     ###########################################################
-    N = 20                                                  # Number of neurons
+    N = 5                                                  # Number of neurons
     # C = 1                                                   # Number of clusters
     T = 10000                                               # Number of time bins
     dt = 1.0                                                # Time bin width
@@ -47,7 +47,7 @@ def generate_synthetic_data(seed=None):
     ###########################################################
     # Create the model with these parameters
     ###########################################################
-    network_hypers = {}
+    network_hypers = {"Sigma_0": 10*np.eye(B)}
     true_model = Population(N=N, dt=dt, dt_max=dt_max, B=B,
                             bias_hypers=bias_hypers,
                             network_hypers=network_hypers)

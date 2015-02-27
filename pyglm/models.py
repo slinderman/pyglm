@@ -17,7 +17,8 @@ from pyglm.internals.background import NoBackground
 from pyglm.internals.weights import SpikeAndSlabGaussianWeights
 
 # Import network models
-from pyglm.deps.graphistician import GaussianErdosRenyiFixedSparsity
+from pyglm.deps.graphistician import GaussianErdosRenyiFixedSparsity, \
+    GaussianWeightedEigenmodel, GaussianStochasticBlockModel
 
 from pyglm.utils.basis import CosineBasis
 from pyglm.utils.utils import logistic
@@ -199,6 +200,7 @@ class StandardBernoulliPopulation(Model):
         for data in datas:
             S = data["S"]
             R = self.compute_rate(data)
+            R   = np.clip(R, 1e-32, 1-1e-32)
             ll += (S * np.log(R) + (1-S) * np.log(1-R)).sum()
 
         return ll
@@ -614,8 +616,9 @@ class _BayesianPopulationBase(Model):
         Compute the heldout log likelihood on a spike train, S.
         """
         self.add_data(S, F=F)
-        self.log_likelihood(self.data_list[-1])
+        hll = self.log_likelihood(self.data_list[-1]).sum()
         self.data_list.pop()
+        return hll
 
     def compute_rate(self, augmented_data):
         # Compute the activation
@@ -642,6 +645,15 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
     """
     Implement Gibbs sampling for the population model
     """
+    def initialize_with_standard_model(self, standard_model):
+        super(_GibbsPopulation, self).\
+            initialize_with_standard_model(standard_model)
+
+        # Update the network model a few times
+        N_network_updates = 10
+        for itr in xrange(N_network_updates):
+            self.network.resample(self.weight_model)
+
     @line_profiled
     def resample_model(self):
         # TODO: Support multile datasets
@@ -662,6 +674,15 @@ class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
     """
     Implement mean field variational inference for the population model
     """
+    def initialize_with_standard_model(self, standard_model):
+        super(_MeanFieldPopulation, self).\
+            initialize_with_standard_model(standard_model)
+
+        # Update the network model a few times
+        N_network_updates = 10
+        for itr in xrange(N_network_updates):
+            self.network.meanfieldupdate(self.weight_model)
+
     def meanfield_coordinate_descent_step(self):
         # TODO: Support multile datasets
         assert len(self.data_list) == 1, "Can only do mean field variational inference with one dataset"
@@ -672,7 +693,9 @@ class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
         self.activation_model.meanfieldupdate(data)
         self.weight_model.meanfieldupdate(data)
         self.bias_model.meanfieldupdate(data)
-        # self.network.meanfieldupdate(data)
+
+        # Update the network given the weights
+        self.network.meanfieldupdate(self.weight_model)
 
     def get_vlb(self):
         # TODO: Support multile datasets
@@ -684,10 +707,20 @@ class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
         vlb += self.activation_model.get_vlb(data)
         vlb += self.weight_model.get_vlb(data)
         vlb += self.bias_model.get_vlb(data)
-        # vlb += self.network.get_vlb(data)
+        vlb += self.network.get_vlb()
 
         return vlb
 
+    def resample_from_mf(self):
+        # TODO: Support multile datasets
+        assert len(self.data_list) == 1, "Can only compute VLBs with one dataset"
+        data = self.data_list[0]
+
+        self.observation_model.resample_from_mf(data)
+        self.activation_model.resample_from_mf(data)
+        self.weight_model.resample_from_mf(data)
+        self.bias_model.resample_from_mf(data)
+        self.network.resample_from_mf()
 
 class _SVIPopulation(_BayesianPopulationBase):
     """
@@ -710,6 +743,17 @@ class _SVIPopulation(_BayesianPopulationBase):
 
 class Population(_GibbsPopulation, _MeanFieldPopulation, _SVIPopulation):
     """
-    The default population has a Bernoulli observation model and an Erdos-Renyi network.
+    The default population has a Bernoulli observation model
+    and an Erdos-Renyi network.
     """
     pass
+
+
+class BernoulliEigenmodelPopulation(Population):
+    _network_class              = GaussianWeightedEigenmodel
+    _default_network_hypers     = {"D": 2, "p": 0.05, "sigma_F": 10, "lmbda": 1*np.ones(2)}
+
+
+class BernoulliSBMPopulation(Population):
+    _network_class              = GaussianStochasticBlockModel
+    _default_network_hypers     = {"C": 2, "p": 0.25}
