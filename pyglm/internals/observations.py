@@ -1,5 +1,6 @@
 import abc
 import numpy as np
+from scipy.special import gammaln
 
 # from hips.distributions.polya_gamma import polya_gamma
 from pypolyagamma import pgdrawv, PyRNG
@@ -203,7 +204,15 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
         self.xi = xi
 
     def log_likelihood(self, augmented_data):
-        raise NotImplementedError()
+        S = augmented_data["S"]
+        Psi = self.activation.compute_psi(augmented_data)
+        p   = logistic(Psi)
+        p   = np.clip(p, 1e-32, 1-1e-32)
+
+        return self.log_normalizer(S) + S * np.log(p) + self.xi * np.log(1-p)
+
+    def log_normalizer(self, S):
+        return gammaln(S+self.xi) - gammaln(self.xi) - gammaln(S+1)
 
     def a(self, augmented_data):
         return augmented_data["S"]
@@ -217,8 +226,19 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
 
     def rvs(self, Psi):
         p = logistic(Psi)
+        p = np.clip(p, 1e-32, 1-1e-32)
         return np.random.negative_binomial(self.xi, 1-p)
 
     def expected_S(self, Psi):
         p = logistic(Psi)
+        p = np.clip(p, 1e-32, 1-1e-32)
         return self.xi * p / (1-p)
+
+
+    def expected_log_likelihood(self, augmented_data, expected_suff_stats):
+        """
+        Compute the expected log likelihood with expected parameters x
+        """
+        S = augmented_data["S"]
+        E_ln_p, E_ln_notp = expected_suff_stats
+        return self.log_normalizer(S) + S * E_ln_p + self.xi * E_ln_notp

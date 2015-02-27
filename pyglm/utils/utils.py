@@ -6,6 +6,9 @@ from numpy.linalg import slogdet
 def logistic(x):
     return 1./(1+exp(-x))
 
+def dlogistic_dx(x):
+    return logistic(x) * (1-logistic(x))
+
 def logit(p):
     return log(p/(1-p))
 

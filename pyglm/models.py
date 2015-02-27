@@ -7,10 +7,12 @@ import copy
 import sys
 
 import numpy as np
+from scipy.special import gammaln
+from scipy.optimize import minimize
 
 from pyglm.deps.pybasicbayes.abstractions import Model, ModelGibbsSampling, ModelMeanField
 
-from pyglm.internals.observations import BernoulliObservations
+from pyglm.internals.observations import BernoulliObservations, NegativeBinomialObservations
 from pyglm.internals.activation import DeterministicActivation
 from pyglm.internals.bias import GaussianBias
 from pyglm.internals.background import NoBackground
@@ -21,7 +23,7 @@ from pyglm.deps.graphistician import GaussianErdosRenyiFixedSparsity, \
     GaussianWeightedEigenmodel, GaussianStochasticBlockModel
 
 from pyglm.utils.basis import CosineBasis
-from pyglm.utils.utils import logistic
+from pyglm.utils.utils import logistic, dlogistic_dx
 
 
 from pyglm.utils.profiling import line_profiled
@@ -205,6 +207,12 @@ class StandardBernoulliPopulation(Model):
 
         return ll
 
+    def log_probability(self):
+        lp = 0
+        for data in self.data_list:
+            lp += self.log_likelihood(data)
+        return lp
+
     def heldout_log_likelihood(self, S=None, augmented_data=None):
         if S is not None and augmented_data is None:
             augmented_data = self.augment_data(S)
@@ -290,6 +298,168 @@ class StandardBernoulliPopulation(Model):
                 self.weights[n_post,:] = lr.coef_
 
         print ""
+
+
+class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
+    """
+    Overload the Bernoulli population with negative binomial likelihood
+    """
+    def __init__(self, N, xi=10, dt=1.0, dt_max=10.0, B=5,
+                 basis=None, basis_hypers={},
+                 allow_self_connections=True):
+        super(StandardNegativeBinomialPopulation, self).\
+            __init__(N, dt=dt, dt_max=dt_max, B=B,
+                     basis=basis, basis_hypers=basis_hypers,
+                     allow_self_connections=allow_self_connections)
+
+        self.xi = xi
+
+        # Set L1-regularization penalty
+        self.lmbda = 0
+
+    def compute_activation(self, augmented_data, n=None):
+        """
+        Compute the rate of the augmented data
+
+        :param index:   Which dataset to compute the rate of
+        :param ns:      Which neurons to compute the rate of
+        :return:
+        """
+        F = augmented_data["F"]
+
+        if n is None:
+            X = np.zeros((augmented_data["T"], self.N))
+            for n in xrange(self.N):
+                X[:,n] = F.dot(self.weights[n,:])
+                X[:,n] += self.bias[n]
+        else:
+            X = F.dot(self.weights[n,:])
+            X += self.bias[n]
+
+        return X
+
+    def compute_rate(self, augmented_data, n=None):
+        """
+        Compute the rate of the augmented data
+
+        :param index:   Which dataset to compute the rate of
+        :param ns:      Which neurons to compute the rate of
+        :return:
+        """
+        X = self.compute_activation(augmented_data, n=n)
+        R = self.xi * np.exp(X) / self.dt
+        return R
+
+    def log_normalizer(self, S, n=None):
+        if n is not None:
+            S = S[:,n]
+
+        return gammaln(S+self.xi) - gammaln(self.xi) - gammaln(S+1)
+
+    def log_prior(self, n=None):
+        if n is None:
+            return -self.lmbda * np.abs(self.weights).sum()
+        else:
+            return -self.lmbda * np.abs(self.weights[n,:]).sum()
+
+    def log_likelihood(self, augmented_data=None, n=None):
+        """
+        Compute the log likelihood of the augmented data
+        :return:
+        """
+        if augmented_data is None:
+            datas = self.data_list
+        else:
+            datas = [augmented_data]
+
+        ll = 0
+        for data in datas:
+            S = data["S"][:,n] if n is not None else data["S"]
+            Z = self.log_normalizer(S)
+            X = self.compute_activation(data, n=n)
+            P = logistic(X)
+            P = np.clip(P, 1e-32, 1-1e-32)
+            ll += (Z + S * np.log(P) + self.xi * np.log(1-P)).sum()
+
+        return ll
+
+    def _neg_log_posterior(self, x, n):
+        """
+        Helper function to compute the negative log likelihood
+        """
+        assert x.shape == (1+self.N * self.B,)
+        self.b[n] = x[0]
+        self.weights[n,:] = x[1:]
+
+        nlp =  -self.log_likelihood(n=n)
+        nlp += -self.log_prior(n=n)
+
+        return nlp
+
+    def _grad_neg_log_posterior(self, x, n):
+        """
+        Helper function to compute the negative log likelihood
+        """
+        assert x.shape == (1+self.N * self.B,)
+        self.b[n] = x[0]
+        self.weights[n,:] = x[1:]
+
+        # Compute the gradient
+        d_ll_d_x = np.zeros_like(x)
+
+        for data in self.data_list:
+            S = data["S"][:,n]
+            F = data["F"]
+            X = self.compute_activation(data, n=n)
+            P = logistic(X)
+            P = np.clip(P, 1e-32, 1-1e-32)
+
+            # Compute each term in the gradient
+            d_ll_d_p  = S / P - self.xi / (1-P)     # 1xT
+            d_p_d_psi = dlogistic_dx(P)             # technically TxT diagonal
+            d_psi_d_b = 1.0                         # technically Tx1
+            d_psi_d_w = F                           # TxNB
+
+            # Multiply em up!
+            d_ll_d_x[0]  += (d_ll_d_p * d_p_d_psi * d_psi_d_b).sum()
+            d_ll_d_x[1:] += (d_ll_d_p * d_p_d_psi).dot(d_psi_d_w)
+
+        # Compute gradient of the log prior
+        d_lp_d_x = np.zeros_like(x)
+        d_lp_d_x[1:] += -self.lmbda * np.sign(self.weights[n,:])
+
+        d_lpost_d_x = d_ll_d_x + d_lp_d_x
+
+        return -d_lpost_d_x
+
+    def fit(self, L1=True):
+        """
+        Fit the negative binomial model using maximum likelihood
+        """
+        itr = [0]
+        def callback(x):
+            if itr[0] % 10 == 0:
+                print "Iteration: %03d\t LP: %.1f" % (itr[0], self.log_probability())
+            itr[0] = itr[0] + 1
+
+        # TODO: Use the L1 regularization!
+        if L1:
+            self.lmbda = 0.0
+
+        # Fit neurons one at a time
+        for n in xrange(self.N):
+            print "Optimizing process ", n
+            itr[0] = 0
+            x0 = np.concatenate(([self.b[n]], self.weights[n,:]))
+            res = minimize(self._neg_log_posterior,
+                           x0,
+                           jac=self._grad_neg_log_posterior,
+                           args=(n,),
+                           callback=callback)
+
+            xf = res.x
+            self.b[n]         = xf[0]
+            self.weights[n,:] = xf[1:]
 
 
 class _BayesianPopulationBase(Model):
@@ -547,10 +717,10 @@ class _BayesianPopulationBase(Model):
             if np.any(S[t,:] >= max_spks_per_bin):
                 n_exceptions += 1
 
-            if np.any(S[t,:]>100):
-                print "More than 10 spikes in a bin! " \
-                      "Decrease variance on impulse weights or decrease simulation bin width."
-                import pdb; pdb.set_trace()
+            # if np.any(S[t,:]>100):
+            #     print "More than 10 spikes in a bin! " \
+            #           "Decrease variance on impulse weights or decrease simulation bin width."
+            #     import pdb; pdb.set_trace()
 
         if verbose:
             print "Number of exceptions arising from multiple spikes per bin: %d" % n_exceptions
@@ -747,6 +917,14 @@ class Population(_GibbsPopulation, _MeanFieldPopulation, _SVIPopulation):
     and an Erdos-Renyi network.
     """
     pass
+
+
+class NegativeBinomialPopulation(_GibbsPopulation, _MeanFieldPopulation, _SVIPopulation):
+    """
+    Population with negative binomial observations and Erdos-Renyi network
+    """
+    _observation_class          = NegativeBinomialObservations
+    _default_observation_hypers = {"xi": 10.0}
 
 
 class BernoulliEigenmodelPopulation(Population):
