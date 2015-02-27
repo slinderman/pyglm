@@ -222,7 +222,7 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
         The first parameter of the conditional Polya-gamma distribution
         p(\omega | \psi, s) = PG(b, \psi)
         """
-        return augmented_data["S"] + self.xi
+        return (augmented_data["S"] + self.xi).astype(np.int32)
 
     def rvs(self, Psi):
         p = logistic(Psi)
