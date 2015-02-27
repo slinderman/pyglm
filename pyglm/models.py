@@ -66,7 +66,7 @@ class StandardBernoulliPopulation(Model):
         # We have a weight for the background
         self.b = np.zeros(self.N)
         # And a weight for each basis function of each presynaptic neuron.
-        self.weights = 1e-3 * np.ones((self.N, self.N*self.B))
+        self.weights = 1e-1 * np.ones((self.N, self.N*self.B))
         if not self.allow_self_connections:
             self._remove_self_weights()
 
