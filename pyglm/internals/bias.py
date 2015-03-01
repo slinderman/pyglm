@@ -86,7 +86,7 @@ class _MeanFieldGaussianBias(_GaussianBiasBase):
         assert b_std.shape == (self.N,)
 
         self.mf_mu_b = b_std
-        self.mf_sigma_b = 0.05 * np.ones(self.N)
+        self.mf_sigma_b = 1e-6 * np.ones(self.N)
 
     def mf_expected_bias(self):
         return self.mf_mu_b

@@ -90,10 +90,11 @@ class _SpikeAndSlabGaussianWeightsBase(Component, GaussianWeightedDirectedNetwor
     def activation(self):
         return self.population.activation_model
 
-    def initialize_with_standard_model(self, standard_model):
+    def initialize_with_standard_model(self, standard_model, threshold=75):
         """
         Initialize with the weights from a standard model
         :param standard_model:
+        :param threshold:      percentile [0,100] of minimum weight
         :return:
         """
         W_std = standard_model.W
@@ -103,11 +104,13 @@ class _SpikeAndSlabGaussianWeightsBase(Component, GaussianWeightedDirectedNetwor
         self.W = W_std.copy()
 
         # Keep all the connections
-        # self.A = np.ones((self.N, self.N))
-
-        # Only keep the top 1/4 of the connections
-        W_cutoff = np.percentile(self.W.sum(2), 75)
-        self.A = self.W.sum(2) > W_cutoff
+        if threshold is None:
+            self.A = np.ones((self.N, self.N))
+        else:
+            # Only keep the weights that exceed the threshold
+            assert threshold >= 0 and threshold <= 100
+            W_cutoff = np.percentile(abs(self.W.sum(2)), threshold)
+            self.A = abs(self.W.sum(2)) > W_cutoff
 
     def log_prior(self):
         lprior = 0
@@ -293,29 +296,42 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
         self.mf_p = np.ones((self.N, self.N))
         self.mf_mu = W_std.copy()
-        self.mf_Sigma = np.tile(self.network.weight_dist.sigma_0 * np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
+        # self.mf_Sigma = np.tile(self.network.weight_dist.sigma_0 * np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
+        self.mf_Sigma = np.tile(1e-6 * np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
 
     def meanfieldupdate(self, augmented_data):
+
+        # Get network expectations
+        E_ln_rho       = self.network.mf_expected_log_p()
+        E_ln_notrho    = self.network.mf_expected_log_notp()
+        E_mu           = self.network.mf_expected_mu()
+        E_Sigma_inv    = self.network.mf_expected_Sigma_inv()
+        E_logdet_Sigma = self.network.mf_expected_logdet_Sigma()
+
+        E_net = E_ln_rho, E_ln_notrho, E_mu, E_Sigma_inv, E_logdet_Sigma
+
+
         #  TODO: We can parallelize over n_post
         for n_post in xrange(self.N):
             # Randomly permute the order in which we resample presynaptic weights
             perm = np.random.permutation(self.N)
             for n_pre in perm:
-                stats = self._get_expected_sufficient_statistics(augmented_data, n_pre, n_post)
+                stats = self._get_expected_sufficient_statistics(augmented_data, E_net, n_pre, n_post)
 
                 # Mean field update the slab variable
                 self._meanfieldupdate_W(n_pre, n_post, stats)
 
                 # Mean field update the spike variable
-                self._meanfieldupdate_A(n_pre, n_post, stats)
+                self._meanfieldupdate_A(n_pre, n_post, stats, E_net)
 
 
-    def _get_expected_sufficient_statistics(self, augmented_data, n_pre, n_post, minibatchfrac=1.0):
+    def _get_expected_sufficient_statistics(self, augmented_data, E_net, n_pre, n_post, minibatchfrac=1.0):
         """
         Get the expected sufficient statistics for this synapse.
         """
-        mu_w                = self.network.mf_expected_mu()[n_pre, n_post, :]
-        prec_w              = self.network.mf_expected_Sigma_inv()[n_pre, n_post, :, :]
+        E_ln_rho, E_ln_notrho, E_mu, E_Sigma_inv, E_logdet_Sigma = E_net
+        mu_w                = E_mu[n_pre, n_post, :]
+        prec_w              = E_Sigma_inv[n_pre, n_post, :, :]
 
         prior_prec          = np.linalg.inv(prec_w)
         prior_mean_dot_prec = mu_w.dot(prior_prec)
@@ -335,7 +351,7 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
         return post_mu, post_cov, post_prec
 
-    def _meanfieldupdate_A(self, n_pre, n_post, stats, stepsize=1.0):
+    def _meanfieldupdate_A(self, n_pre, n_post, stats, E_net, stepsize=1.0):
         """
         Mean field update the presence or absence of a connection (synapse)
         :param n_pre:
@@ -345,12 +361,18 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         """
         # TODO: A joint factor for mu and Sigma could yield E_mu_dot_Sigma under the priro
         mf_post_mu, mf_post_cov, mf_post_prec = stats
+        E_ln_rho, E_ln_notrho, E_mu, E_Sigma_inv, E_logdet_Sigma = E_net
 
-        E_ln_rho       = self.network.mf_expected_log_p()[n_pre, n_post]
-        E_ln_notrho    = self.network.mf_expected_log_notp()[n_pre, n_post]
-        E_mu           = self.network.mf_expected_mu()[n_pre, n_post, :]
-        E_Sigma_inv    = self.network.mf_expected_Sigma_inv()[n_pre, n_post, :, :]
-        E_logdet_Sigma = self.network.mf_expected_logdet_Sigma()[n_pre, n_post]
+        # E_ln_rho       = self.network.mf_expected_log_p()[n_pre, n_post]
+        # E_ln_notrho    = self.network.mf_expected_log_notp()[n_pre, n_post]
+        # E_mu           = self.network.mf_expected_mu()[n_pre, n_post, :]
+        # E_Sigma_inv    = self.network.mf_expected_Sigma_inv()[n_pre, n_post, :, :]
+        # E_logdet_Sigma = self.network.mf_expected_logdet_Sigma()[n_pre, n_post]
+        E_ln_rho       = E_ln_rho[n_pre, n_post]
+        E_ln_notrho    = E_ln_notrho[n_pre, n_post]
+        E_mu           = E_mu[n_pre, n_post,:]
+        E_Sigma_inv    = E_Sigma_inv[n_pre, n_post,:,:]
+        E_logdet_Sigma = E_logdet_Sigma[n_pre, n_post]
 
         # Compute the log odds ratio
         logdet_prior_cov = E_logdet_Sigma

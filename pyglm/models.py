@@ -23,11 +23,63 @@ from pyglm.deps.graphistician import GaussianErdosRenyiFixedSparsity, \
     GaussianWeightedEigenmodel, GaussianStochasticBlockModel
 
 from pyglm.utils.basis import CosineBasis
-from pyglm.utils.utils import logistic, dlogistic_dx
+from pyglm.utils.utils import logistic, dlogistic_dx, logit
 
 
 from pyglm.utils.profiling import line_profiled
 
+
+class HomogeneousPoissonModel(Model):
+
+    def __init__(self, N):
+        self.N = N
+        # Initialize biases (rates)
+        self.b = np.ones(N)
+
+        self.data_list = []
+
+    @property
+    def bias(self):
+        return self.b
+
+    def add_data(self, S):
+        assert S.ndim == 2 and S.shape[1] == self.N and \
+            S.dtype==np.int32 and np.amin(S) >= 0
+
+        self.data_list.append(S)
+
+    def log_likelihood(self, S):
+        assert S.ndim == 2 and S.shape[1] == self.N and \
+            S.dtype==np.int32 and np.amin(S) >= 0
+
+        log_Z = -gammaln(S+1)
+        ll = (log_Z +
+                S * np.log(self.b)[None, :]
+                - self.b[None, :])
+
+        # Return the log likelihood per time bin
+        return ll.sum(1)
+
+    def generate(self):
+        raise NotImplementedError()
+
+    def heldout_log_likelihood(self, S):
+        return self.log_likelihood(S).sum()
+
+    def fit(self):
+        """
+        Maximum likelihood fit
+        :return:
+        """
+        # Compute the average rate
+        T_tot = 0
+        M_tot = np.zeros(self.N)    # Number of spikes
+
+        for data in self.data_list:
+            T_tot += data.shape[0]
+            M_tot += data.sum(0)
+
+        self.b = M_tot / float(T_tot)
 
 class StandardBernoulliPopulation(Model):
 
@@ -64,9 +116,9 @@ class StandardBernoulliPopulation(Model):
 
         # Initialize the weights of the standard model.
         # We have a weight for the background
-        self.b = np.zeros(self.N)
+        self.b = 1e-2 * np.ones(self.N)
         # And a weight for each basis function of each presynaptic neuron.
-        self.weights = 1e-1 * np.ones((self.N, self.N*self.B))
+        self.weights = 1e-2 * np.ones((self.N, self.N*self.B))
         if not self.allow_self_connections:
             self._remove_self_weights()
 
@@ -432,10 +484,31 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
 
         return -d_lpost_d_x
 
+    def _initialize_bias_to_mean(self):
+        # Initialize the bias at the mean
+        # and zero out the weights
+
+        # To compute the mean bias:
+        # E[s]  = 1/T \sum_t s_t  = \xi p / (1-p)
+        # p/1-p = 1/(\xi T) \sum_t s_t = X
+        #     p = X / (1+X)
+        #     p = \sum_t s_t / (\xi T + \sum_t s_t)
+        T_tot = 0
+        N_tot = np.zeros(self.N)
+        for data in self.data_list:
+            T_tot += data["T"]
+            N_tot += data["S"].sum(0)
+
+        pmean = N_tot / (self.xi * T_tot + N_tot)
+        self.b = logit(pmean)
+        self.weights.fill(1e-3)
+
     def fit(self, L1=True):
         """
         Fit the negative binomial model using maximum likelihood
         """
+        self._initialize_bias_to_mean()
+
         itr = [0]
         def callback(x):
             if itr[0] % 10 == 0:
@@ -444,7 +517,7 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
 
         # TODO: Use the L1 regularization!
         if L1:
-            self.lmbda = 0.0
+            self.lmbda = 1.0
 
         # Fit neurons one at a time
         for n in xrange(self.N):
@@ -824,7 +897,6 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         for itr in xrange(N_network_updates):
             self.network.resample(self.weight_model)
 
-    @line_profiled
     def resample_model(self):
         # TODO: Support multile datasets
         assert len(self.data_list) == 1, "Can only do Gibbs sampling with one dataset"
@@ -853,8 +925,9 @@ class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
         for itr in xrange(N_network_updates):
             self.network.meanfieldupdate(self.weight_model)
 
+    @line_profiled
     def meanfield_coordinate_descent_step(self):
-        # TODO: Support multile datasets
+        # TODO: Support multiple datasets
         assert len(self.data_list) == 1, "Can only do mean field variational inference with one dataset"
         data = self.data_list[0]
 
@@ -867,8 +940,9 @@ class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
         # Update the network given the weights
         self.network.meanfieldupdate(self.weight_model)
 
+    @line_profiled
     def get_vlb(self):
-        # TODO: Support multile datasets
+        # TODO: Support multiple datasets
         assert len(self.data_list) == 1, "Can only compute VLBs with one dataset"
         data = self.data_list[0]
 
@@ -882,7 +956,7 @@ class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
         return vlb
 
     def resample_from_mf(self):
-        # TODO: Support multile datasets
+        # TODO: Support multiple datasets
         assert len(self.data_list) == 1, "Can only compute VLBs with one dataset"
         data = self.data_list[0]
 
@@ -930,6 +1004,11 @@ class NegativeBinomialPopulation(_GibbsPopulation, _MeanFieldPopulation, _SVIPop
 class BernoulliEigenmodelPopulation(Population):
     _network_class              = GaussianWeightedEigenmodel
     _default_network_hypers     = {"D": 2, "p": 0.05, "sigma_F": 10, "lmbda": 1*np.ones(2)}
+
+
+class NegativeBinomialEigenmodelPopulation(NegativeBinomialPopulation):
+    _network_class              = GaussianWeightedEigenmodel
+    _default_network_hypers     = {"D": 2, "p": 0.01, "sigma_F": 2**2, "lmbda": 1*np.ones(2)}
 
 
 class BernoulliSBMPopulation(Population):

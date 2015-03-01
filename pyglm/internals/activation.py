@@ -79,14 +79,18 @@ class DeterministicActivation(_ActivationBase):
         N = self.N
         T = augmented_data["T"]
         F = augmented_data["F"]
+        W = self.weight_model.W_effective
 
         # compute psi
-        psi = np.zeros((T,N))
-        psi += self.bias_model.b[None, :]
+        # psi = np.zeros((T,N))
+        # psi += self.bias_model.b[None, :]
+        #
+        # for n_post in xrange(N):
+        #     psi[:,n_post] += np.tensordot(F, W[:,n_post,:], axes=((1,2), (0,1)))
 
-        W = self.weight_model.W_effective
-        for n_post in xrange(N):
-            psi[:,n_post] += np.tensordot(F, W[:,n_post,:], axes=((1,2), (0,1)))
+        psi = np.einsum("tmb,mnb->tn", F, W)
+        psi += self.bias_model.b[None, :]
+        # assert np.allclose(psi, psi2)
 
         return psi
 

@@ -2,6 +2,7 @@ import cPickle
 import os
 import gzip
 import numpy as np
+# np.seterr(all="raise")
 
 if not os.environ.has_key("DISPLAY"):
     import matplotlib
@@ -9,7 +10,7 @@ if not os.environ.has_key("DISPLAY"):
 
 import matplotlib.pyplot as plt
 
-from pyglm.models import NegativeBinomialPopulation
+from pyglm.models import NegativeBinomialEigenmodelPopulation
 
 def generate_synthetic_data(seed=None):
     """
@@ -25,7 +26,7 @@ def generate_synthetic_data(seed=None):
     # Create a population model
     ###########################################################
     N = 50                                                  # Number of neurons
-    T = 10000                                               # Number of time bins
+    T = 100000                                               # Number of time bins
     dt = 1.0                                                # Time bin width
     dt_max = 100.0                                          # Max time of synaptic influence
     B = 1                                                   # Number of basis functions for the weights
@@ -36,18 +37,30 @@ def generate_synthetic_data(seed=None):
     ###########################################################
     #   Network hyperparameters
     ###########################################################
-    network_hypers = {"p": 0.25, "mu_0": np.zeros(B), "Sigma_0": 1*np.eye(B)}
+    network_hypers = {"p": 0.05, "mu_0": np.zeros(B), "Sigma_0": 1.0**2*np.eye(B),
+                      "sigma_F": 1.0}
 
     ###########################################################
     # Create the model with these parameters
     ###########################################################
-    true_model = NegativeBinomialPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
+    true_model = NegativeBinomialEigenmodelPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
                                             bias_hypers=bias_hypers,
                                             network_hypers=network_hypers)
 
     # Override the mean weight
     true_model.network.weight_dist.mu = np.zeros(B)
-    true_model.network.weight_dist.sigma = np.eye(B)
+    true_model.network.weight_dist.sigma = 0.5**2 * np.eye(B)
+    true_model.weight_model.resample()
+
+    plt.figure()
+    W_lim = np.amax(abs(true_model.weight_model.W_effective.sum(2)))
+    plt.imshow(true_model.weight_model.W_effective.sum(2),
+               vmin=-W_lim, vmax=W_lim,
+               interpolation="none", cmap="RdGy")
+    plt.colorbar()
+    plt.show()
+
+    true_model.network.plot(true_model.weight_model.A)
 
     ###########################################################
     # Sample from the true model
@@ -59,13 +72,6 @@ def generate_synthetic_data(seed=None):
     ###########################################################
     #  Plot the network, the spike train and mean rate
     ###########################################################
-    plt.figure()
-    W_lim = np.amax(abs(true_model.weight_model.W_effective.sum(2)))
-    plt.imshow(true_model.weight_model.W_effective.sum(2),
-               vmin=-W_lim, vmax=W_lim,
-               interpolation="none", cmap="RdGy")
-    plt.colorbar()
-
     plt.figure()
     R = true_model.compute_rate(true_model.data_list[0])
 
@@ -108,4 +114,4 @@ def generate_synthetic_data(seed=None):
         print "Saving output to ", out_path
         cPickle.dump((S_test, true_model.copy_sample()), f, protocol=-1)
 
-generate_synthetic_data()
+generate_synthetic_data(1964982120)
