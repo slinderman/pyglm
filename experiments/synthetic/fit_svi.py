@@ -103,9 +103,9 @@ def fit_with_svi(dataset, run, seed=None):
 
 
 args = sys.argv
-assert len(args) == 2
-dataset = args[0]
-run = int(args[1])
+assert len(args) == 3
+dataset = args[1]
+run = int(args[2])
 
 print "Dataset: ", dataset
 print "Run:     ", run
