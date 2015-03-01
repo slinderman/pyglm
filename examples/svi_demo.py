@@ -11,6 +11,7 @@ if not os.environ.has_key("DISPLAY"):
 import matplotlib.pyplot as plt
 
 from pyglm.models import Population, StandardBernoulliPopulation
+from pyglm.utils.experiment_helper import load_data, load_results
 
 def demo(seed=None):
     """
@@ -27,29 +28,22 @@ def demo(seed=None):
     # Load some example data.
     # See data/synthetic/generate.py to create more.
     ###########################################################
-    base_path = os.path.join("data", "synthetic", "synthetic_K20_C1_T10000")
-    data_path = base_path + ".pkl.gz"
-    init_path = base_path + ".standard_fit.pkl.gz"
-    with gzip.open(data_path, 'r') as f:
-        S, true_model = cPickle.load(f)
+    dataset = "synth_nb_eigen_K50_T10000"
+    run = 0.001
+    train, test, true_model = load_data(dataset)
+    res_dir = os.path.join("results", dataset, "run%03d" % run)
+    assert os.path.exists(res_dir), "Results directory does not exist: " + res_dir
+    standard_results = load_results(dataset, run=run,
+                                    algorithms=["bfgs"])
 
-    T      = S.shape[0]
+    T      = train.shape[0]
     N      = true_model.N
     B      = true_model.B
     dt     = true_model.dt
     dt_max = true_model.dt_max
 
-    ###########################################################
     # Create and fit a standard model for initialization
-    ###########################################################
-    if os.path.exists(init_path):
-        with gzip.open(init_path, 'r') as f:
-            init_model = cPickle.load(f)
-    else:
-        init_model = StandardBernoulliPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
-                                                 basis_hypers=true_model.basis_hypers)
-        init_model.add_data(S)
-        init_model.fit()
+    init_model = standard_results["bfgs"]
 
     ###########################################################
     # Create a test spike-and-slab model
