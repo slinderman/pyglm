@@ -6,7 +6,7 @@ for an HMM.
 import numpy as np
 
 from pyglm.models import Population
-from pyglm.deps.pybasicbayes.abstractions import GibbsSampling
+from pybasicbayes.abstractions import GibbsSampling
 
 class PopulationDistribution(Population, GibbsSampling):
     """

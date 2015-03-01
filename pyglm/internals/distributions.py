@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.special as special
-from pyglm.deps.pybasicbayes.abstractions import GibbsSampling, MeanField
-from pyglm.deps.pybasicbayes.util.stats import getdatasize
+from pybasicbayes.abstractions import GibbsSampling, MeanField
+from pybasicbayes.util.stats import getdatasize
 
 class InverseGamma(GibbsSampling, MeanField):
     """

@@ -10,7 +10,7 @@ import numpy as np
 from scipy.special import gammaln
 from scipy.optimize import minimize
 
-from pyglm.deps.pybasicbayes.abstractions import Model, ModelGibbsSampling, ModelMeanField
+from pybasicbayes.abstractions import Model, ModelGibbsSampling, ModelMeanField
 
 from pyglm.internals.observations import BernoulliObservations, NegativeBinomialObservations
 from pyglm.internals.activation import DeterministicActivation
