@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import sys
 import cPickle
 import gzip
 import time
@@ -95,6 +96,11 @@ def fit_with_gibbs(dataset, run, seed=None):
 
 
 
-dataset = "synth_nb_eigen_K50_T10000"
-run = 2
+args = sys.argv
+assert len(args) == 2
+dataset = args[0]
+run = int(args[1])
+
+print "Dataset: ", dataset
+print "Run:     ", run
 fit_with_gibbs(dataset, run, seed=11223344)
