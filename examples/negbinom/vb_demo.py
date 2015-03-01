@@ -66,7 +66,6 @@ def demo(seed=None):
     test_model.add_data(S)
 
     # Initialize with the standard model
-    import pdb; pdb.set_trace()
     test_model.initialize_with_standard_model(init_model)
     test_model.resample_from_mf()
 
@@ -97,6 +96,10 @@ def demo(seed=None):
 
         # Resample from MF
         test_model.resample_from_mf()
+        # DEBUG! Compute pred ll for variational mode (mean for Gaussian)
+        test_model.weight_model.mf_mode()
+        test_model.bias_model.mf_mode()
+
         plls.append(test_model.heldout_log_likelihood(S_test, F=F_test))
         samples.append(test_model.copy_sample())
         timestamps.append(time.clock()-start)

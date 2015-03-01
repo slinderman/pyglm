@@ -206,15 +206,21 @@ class DeterministicActivation(_ActivationBase):
             F_pre = F[:,n_pre,:]
             return (F_pre * E_omega[:,None]).T.dot(F_pre)
 
-    def mf_mean_dot_precision(self, augmented_data, bias=None, synapse=None):
+    def mf_mean_dot_precision(self, augmented_data,
+                              bias=None, synapse=None,
+                              E_psi_other=None):
         F = augmented_data["F"]
         obs = self.observation_model
-        residual = self.mf_expected_residual(augmented_data, bias, synapse)
+        # residual = self.mf_expected_residual(augmented_data, bias, synapse)
+
+        # If psi_other is not given, compute it.
+        if E_psi_other is None:
+            E_psi_other = self.mf_expected_residual(augmented_data, bias, synapse)
 
         n_pre, n_post = self._get_n(bias, synapse)
 
         trm1 = obs.kappa(augmented_data)[:,n_post] \
-               - residual * obs.mf_expected_omega(augmented_data)[:,n_post]
+               - E_psi_other * obs.mf_expected_omega(augmented_data)[:,n_post]
 
         if bias is not None:
             return trm1.sum()

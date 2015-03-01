@@ -6,51 +6,11 @@ import numpy as np
 from sklearn.metrics import roc_curve, precision_recall_curve
 
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 
 from hips.plotting.layout import create_figure
 from hips.plotting.colormaps import harvard_colors
 
-from pyglm.models import HomogeneousPoissonModel
-
-def load_data(dataset=""):
-    base_dir = os.path.join("data", dataset)
-    assert os.path.exists(base_dir), \
-        "Could not find data directory: " + base_dir
-
-    model_path = os.path.join(base_dir, "model.pkl.gz")
-    model = None
-    if os.path.exists(model_path):
-        with gzip.open(model_path, "r") as f:
-            model = cPickle.load(f)
-
-    train_path = os.path.join(base_dir, "train.pkl.gz")
-    with gzip.open(train_path, "r") as f:
-        train = cPickle.load(f)
-
-    test_path = os.path.join(base_dir, "test.pkl.gz")
-    with gzip.open(test_path, "r") as f:
-        test = cPickle.load(f)
-
-    return train, test, model
-
-def load_results(dataset="", run=0,
-                 algorithms=("bfgs", "gibbs","vb")):
-
-    base_dir = os.path.join("results", dataset, "run%03d" % run)
-    assert os.path.exists(base_dir), \
-        "Could not find results directory: " + base_dir
-
-    results = {}
-    for alg in algorithms:
-        res_path = os.path.join(base_dir, alg + ".pkl.gz")
-        if os.path.exists(res_path):
-            print "\tLoading ", alg, " results..."
-            with gzip.open(res_path, "r") as f:
-                results[alg] = cPickle.load(f)
-
-    return results
-
+from pyglm.utils.experiment_helper import load_data, load_results
 
 def compute_pred_lls(samples, test):
     F_test = samples[0].augment_data(test)["F"]
@@ -68,8 +28,6 @@ def run_link_prediction(dataset, run, algs):
     train, test, true_model = load_data(dataset)
     res_dir = os.path.join("results", dataset, "run%03d" % run)
     results = load_results(dataset, run, algs)
-
-    import pdb; pdb.set_trace()
 
     # Plot predictive likelihood vs wall clock time
     fig = create_figure((4,3))
