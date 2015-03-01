@@ -957,7 +957,7 @@ class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
 
     def resample_from_mf(self):
         # TODO: Support multiple datasets
-        assert len(self.data_list) == 1, "Can only compute VLBs with one dataset"
+        # assert len(self.data_list) == 1, "Can only compute VLBs with one dataset"
         data = self.data_list[0]
 
         self.observation_model.resample_from_mf(data)
@@ -984,7 +984,7 @@ class _SVIPopulation(_BayesianPopulationBase):
         self.bias_model.svi_step(mb, minibatchfrac=mbfrac, stepsize=stepsize)
 
         # Update the network given the weight model
-        # self.network.svi_step(self.weight_model, minibatchfrac=mbfrac, stepsize=stepsize)
+        self.network.svi_step(self.weight_model, minibatchfrac=mbfrac, stepsize=stepsize)
 
 
 class Population(_GibbsPopulation, _MeanFieldPopulation, _SVIPopulation):

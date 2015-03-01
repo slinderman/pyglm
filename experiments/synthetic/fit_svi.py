@@ -4,7 +4,7 @@ import cPickle
 import gzip
 import time
 
-from pyglm.models import NegativeBinomialEigenmodelPopulation
+from pyglm.models import NegativeBinomialEigenmodelPopulation, NegativeBinomialPopulation
 from pyglm.utils.experiment_helper import load_data, load_results
 
 def fit_with_svi(dataset, run, seed=None):
@@ -41,13 +41,14 @@ def fit_with_svi(dataset, run, seed=None):
     # Create a test spike-and-slab model
     ###########################################################
     # Copy the network hypers.
-    test_model = NegativeBinomialEigenmodelPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
+    test_model = NegativeBinomialPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
                             basis_hypers=true_model.basis_hypers,
                             observation_hypers=true_model.observation_hypers,
                             activation_hypers=true_model.activation_hypers,
                             weight_hypers=true_model.weight_hypers,
                             bias_hypers=true_model.bias_hypers,
-                            network_hypers=true_model.network_hypers)
+                            network_hypers={'p': 0.19})
+                            # network_hypers=true_model.network_hypers)
 
     # Add the data in minibatches of 1000 time bins
     minibatchsize = 1000
@@ -62,9 +63,9 @@ def fit_with_svi(dataset, run, seed=None):
     ###########################################################
     # Fit the test model with SVI
     ###########################################################
-    N_samples = 1000
+    N_samples = 50
     delay = 1.0
-    forgetting_rate = 0.25
+    forgetting_rate = 0.1
     stepsize = (np.arange(N_samples) + delay)**(-forgetting_rate)
 
 
@@ -75,8 +76,7 @@ def fit_with_svi(dataset, run, seed=None):
     timestamps = [0]
     start = time.clock()
     for itr in xrange(N_samples):
-        print ""
-        print "SVI iteration ", itr
+        print "SVI iteration ", itr, ".\tStep size: %.3f" % stepsize[itr]
         # print "VLB: ", vlbs[-1]
 
         test_model.svi_step(stepsize=stepsize[itr])
@@ -96,10 +96,11 @@ def fit_with_svi(dataset, run, seed=None):
     # Save the results
     ###########################################################
     results_path = os.path.join(res_dir, "svi.pkl.gz")
+    print "Saving results to: ", results_path
     with gzip.open(results_path, 'w') as f:
         cPickle.dump((samples, vlbs, plls, timestamps), f, protocol=-1)
 
 
 dataset = "synth_nb_eigen_K50_T10000"
-run = 2
+run = 1
 fit_with_svi(dataset, run, seed=11223344)

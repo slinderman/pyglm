@@ -172,4 +172,4 @@ def plot_pred_ll_vs_time(dataset, run, algs, Z=1.0, nbins=4):
     fig.savefig(fig_path)
 
 plot_pred_ll_vs_time("synth_nb_eigen_K50_T10000", run=1,
-                     algs=("bfgs", "gibbs", "vb"))
+                     algs=("bfgs", "gibbs", "vb", "svi"))

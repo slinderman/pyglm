@@ -299,7 +299,7 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         # self.mf_Sigma = np.tile(self.network.weight_dist.sigma_0 * np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
         self.mf_Sigma = np.tile(1e-6 * np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
 
-    def origingal_meanfieldupdate(self, augmented_data):
+    def old_meanfieldupdate(self, augmented_data):
 
         # Get network expectations
         E_ln_rho       = self.network.mf_expected_log_p()
@@ -546,17 +546,48 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
     ### SVI
     def svi_step(self, augmented_data, minibatchfrac, stepsize):
-        for n_pre in xrange(self.N):
-            for n_post in xrange(self.N):
-                stats = self._get_expected_sufficient_statistics(augmented_data, n_pre, n_post,
-                                                                 minibatchfrac=minibatchfrac)
+        # Get network expectations
+        E_ln_rho       = self.network.mf_expected_log_p()
+        E_ln_notrho    = self.network.mf_expected_log_notp()
+        E_mu           = self.network.mf_expected_mu()
+        E_Sigma_inv    = self.network.mf_expected_Sigma_inv()
+        E_logdet_Sigma = self.network.mf_expected_logdet_Sigma()
+
+        E_net = E_ln_rho, E_ln_notrho, E_mu, E_Sigma_inv, E_logdet_Sigma
+
+        # Precompute E[\psi]. We can update it as we add and remove edges
+        E_psi = self.activation.mf_expected_activation(augmented_data)
+
+        for n_post in xrange(self.N):
+            # Randomly permute the order in which we resample presynaptic weights
+            perm = np.random.permutation(self.N)
+            for n_pre in perm:
+                # Get the filtered spike trains associated with this synapse
+                F_pre = augmented_data["F"][:,n_pre,:]
+
+                # Compute the expected activation from other neurons
+                E_W = self.mf_p[n_pre, n_post] * self.mf_mu[n_pre, n_post,:]
+                E_psi[:,n_post] -= F_pre.dot(E_W)
+                E_psi_other = E_psi[:,n_post]
+
+                stats = self._get_expected_sufficient_statistics(
+                    augmented_data, E_net,
+                    n_pre, n_post,
+                    E_psi_other=E_psi_other,
+                    minibatchfrac=minibatchfrac)
 
                 # Mean field update the slab variable
-                self._meanfieldupdate_W(n_pre, n_post, stats, stepsize=stepsize)
+                self._meanfieldupdate_W(n_pre, n_post, stats,
+                                        stepsize=stepsize)
 
                 # Mean field update the spike variable
-                self._meanfieldupdate_A(n_pre, n_post, stats, stepsize=stepsize)
+                self._meanfieldupdate_A(n_pre, n_post, stats, E_net,
+                                        stepsize=stepsize)
 
+                # Update Psi to account for new weight
+                E_psi[:,n_post] = E_psi_other
+                E_psi[:,n_post] += F_pre.dot(self.mf_p[n_pre, n_post] *
+                                             self.mf_mu[n_pre, n_post,:])
 
 class SpikeAndSlabGaussianWeights(_GibbsSpikeAndSlabGaussianWeights,
                                   _MeanFieldSpikeAndSlabGaussianWeights):
