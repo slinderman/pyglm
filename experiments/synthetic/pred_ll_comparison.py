@@ -4,6 +4,10 @@ import cPickle
 import numpy as np
 from scipy.misc import logsumexp
 
+if "DISPLAY" not in os.environ:
+    import matplotlib
+    matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
@@ -75,7 +79,7 @@ def plot_pred_ll_vs_time(dataset, run, algs, Z=1.0, nbins=4):
 
     # # DEBUG
     # true_pll = true_model.heldout_log_likelihood(train)
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
 
     assert "bfgs" in results
     # t_bfgs = timestamps["bfgs"]

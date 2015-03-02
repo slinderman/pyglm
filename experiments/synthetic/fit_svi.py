@@ -64,9 +64,9 @@ def fit_with_svi(dataset, run, seed=None):
     ###########################################################
     # Fit the test model with SVI
     ###########################################################
-    N_samples = 50
+    N_samples = 1000
     delay = 1.0
-    forgetting_rate = 0.1
+    forgetting_rate = 0.25
     stepsize = (np.arange(N_samples) + delay)**(-forgetting_rate)
 
 
@@ -109,4 +109,4 @@ run = int(args[2])
 
 print "Dataset: ", dataset
 print "Run:     ", run
-fit_with_svi(dataset, run, seed=11223344)
+fit_with_svi(dataset, run, seed=12341234)

@@ -101,4 +101,4 @@ run = int(args[2])
 print "Dataset: ", dataset
 print "Run:     ", run
 
-fit_with_vb(dataset, run, seed=11223344)
+fit_with_vb(dataset, run, seed=12341234)
