@@ -76,6 +76,7 @@ def demo(dataset="rgc_nb_eigen_300T", run=1, seed=None):
         print ""
         print "VB iteration ", itr
         print "VLB: ", vlbs[-1]
+        print "PLL: ", plls[-1]
 
         test_model.meanfield_coordinate_descent_step()
         vlbs.append(test_model.get_vlb())

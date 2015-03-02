@@ -81,7 +81,8 @@ def demo(dataset="rgc_nb_eigen_300T", run=1, seed=None):
 
         print ""
         print "Gibbs iteration ", itr
-        print "LP: ", lps[-1]
+        print "LP:  ", lps[-1]
+        print "PLL: ", plls[-1]
 
         test_model.resample_model()
 
