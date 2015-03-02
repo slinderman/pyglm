@@ -118,7 +118,7 @@ class StandardBernoulliPopulation(Model):
         # We have a weight for the background
         self.b = 1e-2 * np.ones(self.N)
         # And a weight for each basis function of each presynaptic neuron.
-        self.weights = 1e-2 * np.ones((self.N, self.N*self.B))
+        self.weights = 1e-4 * np.ones((self.N, self.N*self.B))
         if not self.allow_self_connections:
             self._remove_self_weights()
 
@@ -369,6 +369,14 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
         # Set L1-regularization penalty
         self.lmbda = 0
 
+    @property
+    def T(self):
+        """
+        Total number of time bins
+        :return:
+        """
+        return float(np.sum([d["T"] for d in self.data_list]))
+
     def compute_activation(self, augmented_data, n=None):
         """
         Compute the rate of the augmented data
@@ -435,6 +443,12 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
 
         return ll
 
+    def log_probability(self):
+        lp = self.log_prior()
+        for data in self.data_list:
+            lp += self.log_likelihood(data)
+        return lp
+
     def _neg_log_posterior(self, x, n):
         """
         Helper function to compute the negative log likelihood
@@ -446,7 +460,7 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
         nlp =  -self.log_likelihood(n=n)
         nlp += -self.log_prior(n=n)
 
-        return nlp
+        return nlp / self.T
 
     def _grad_neg_log_posterior(self, x, n):
         """
@@ -481,6 +495,9 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
         d_lp_d_x[1:] += -self.lmbda * np.sign(self.weights[n,:])
 
         d_lpost_d_x = d_ll_d_x + d_lp_d_x
+
+        # Normalize by T
+        d_lpost_d_x /= self.T
 
         return -d_lpost_d_x
 

@@ -10,44 +10,8 @@ import matplotlib.pyplot as plt
 from hips.plotting.colormaps import harvard_colors, gradient_cmap
 from hips.plotting.layout import create_figure
 
+from pyglm.utils.experiment_helper import load_data, load_results
 
-def load_data(dataset=""):
-    base_dir = os.path.join("data", dataset)
-    assert os.path.exists(base_dir), \
-        "Could not find data directory: " + base_dir
-
-    model_path = os.path.join(base_dir, "model.pkl.gz")
-    model = None
-    if os.path.exists(model_path):
-        with gzip.open(model_path, "r") as f:
-            model = cPickle.load(f)
-
-    train_path = os.path.join(base_dir, "train.pkl.gz")
-    with gzip.open(train_path, "r") as f:
-        train = cPickle.load(f)
-
-    test_path = os.path.join(base_dir, "test.pkl.gz")
-    with gzip.open(test_path, "r") as f:
-        test = cPickle.load(f)
-
-    return train, test, model
-
-def load_results(dataset="", run=0,
-                 algorithms=("bfgs", "gibbs","vb")):
-
-    base_dir = os.path.join("results", dataset, "run%03d" % run)
-    assert os.path.exists(base_dir), \
-        "Could not find results directory: " + base_dir
-
-    results = {}
-    for alg in algorithms:
-        res_path = os.path.join(base_dir, alg + ".pkl.gz")
-        if os.path.exists(res_path):
-            print "\tLoading ", alg, " results..."
-            with gzip.open(res_path, "r") as f:
-                results[alg] = cPickle.load(f)
-
-    return results
 
 def plot_connectivity(dataset, run, algs,):
     # Load the data and results
@@ -60,12 +24,18 @@ def plot_connectivity(dataset, run, algs,):
     ###########################################################
     # Get the average connectivity
     ###########################################################
-    W_samples = [smpl.weight_model.W_effective
-                     for smpl in results["gibbs"][0]]
+    if "bfgs" in algs:
+        W_mean = results["bfgs"].W.sum(2)
+    elif "gibbs" in algs:
+        W_samples = [smpl.weight_model.W_effective
+                         for smpl in results["gibbs"][0]]
 
-    offset = len(W_samples) // 2
-    W_samples = np.array(W_samples[offset:])
-    W_mean = W_samples.mean(0).sum(2)
+        offset = len(W_samples) // 2
+        W_samples = np.array(W_samples[offset:])
+        W_mean = W_samples.mean(0).sum(2)
+    else:
+        raise Exception("Unsupported algorithm")
+
     W_lim = np.amax(abs(W_mean))
 
     ###########################################################
@@ -92,18 +62,16 @@ def plot_connectivity(dataset, run, algs,):
     ax.set_xlim([1,27])
     ax.set_ylim([27,1])
 
-    # fig.colorbar(im)
-    # cbar_ticks = np.array([-0.12, -0.06, 0.0, 0.06, 0.12])
-    cbar_ticks = np.array([-0.01, 0.0, 0.01])
+    # cbar_ticks = np.array([-0.01, 0.0, 0.01])
+    # cbar = fig.colorbar(im,
+    #                     values=np.linspace(-W_lim, W_lim, 500),
+    #                     boundaries=np.linspace(-W_lim, W_lim, 500),
+    #                     ticks=cbar_ticks)
+    # cbar.set_ticklabels(['-0.01', '0', '+0.01'])
+
     cbar = fig.colorbar(im,
                         values=np.linspace(-W_lim, W_lim, 500),
-                        boundaries=np.linspace(-W_lim, W_lim, 500),
-                        ticks=cbar_ticks)
-    # import pdb; pdb.set_trace()
-    # cbar.set_ticks(cbar_ticks)
-    # cbar.set_ticklabels(['-0.12', '-0.06', '0', '+0.06', '+0.12'])
-    # cbar.set_ticklabels(['0', '+0.12'])
-    cbar.set_ticklabels(['-0.01', '0', '+0.01'])
+                        boundaries=np.linspace(-W_lim, W_lim, 500))
 
     ax.set_xlabel("$n$")
     ax.set_ylabel("$n'$")
@@ -163,5 +131,9 @@ def approximate_rgc_locs():
     L = np.vstack((off_locs, on_locs))
     return L
 
-plot_connectivity("rgc_bern_eigen_60T", run=1,
-                  algs=("gibbs",))
+# plot_connectivity("rgc_bern_eigen_60T", run=1,
+#                   algs=("gibbs",))
+
+
+plot_connectivity("rgc_nb_eigen_300T", run=1,
+                  algs=("bfgs",))
