@@ -77,8 +77,10 @@ def fit_with_svi(dataset, run, seed=None):
     timestamps = [0]
     start = time.clock()
     for itr in xrange(N_samples):
+        print ""
         print "SVI iteration ", itr, ".\tStep size: %.3f" % stepsize[itr]
         # print "VLB: ", vlbs[-1]
+        print "Pred LL:      ", plls[-1]
 
         test_model.svi_step(stepsize=stepsize[itr])
         # vlbs.append(test_model.get_vlb())

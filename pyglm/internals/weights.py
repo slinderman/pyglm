@@ -294,10 +294,10 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         # Make sure it is the correct shape before copying
         assert W_std.shape == (self.N, self.N, self.B)
 
-        self.mf_p = 0.95 * np.ones((self.N, self.N))
+        self.mf_p = 0.9 * np.ones((self.N, self.N))
         self.mf_mu = W_std.copy()
         # self.mf_Sigma = np.tile(self.network.weight_dist.sigma_0 * np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
-        self.mf_Sigma = np.tile(1e-6 * np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
+        self.mf_Sigma = np.tile(1e-4 * np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
 
     def old_meanfieldupdate(self, augmented_data):
 
@@ -410,11 +410,6 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         mf_post_mu, mf_post_cov, mf_post_prec = stats
         E_ln_rho, E_ln_notrho, E_mu, E_Sigma_inv, E_logdet_Sigma = E_net
 
-        # E_ln_rho       = self.network.mf_expected_log_p()[n_pre, n_post]
-        # E_ln_notrho    = self.network.mf_expected_log_notp()[n_pre, n_post]
-        # E_mu           = self.network.mf_expected_mu()[n_pre, n_post, :]
-        # E_Sigma_inv    = self.network.mf_expected_Sigma_inv()[n_pre, n_post, :, :]
-        # E_logdet_Sigma = self.network.mf_expected_logdet_Sigma()[n_pre, n_post]
         E_ln_rho       = E_ln_rho[n_pre, n_post]
         E_ln_notrho    = E_ln_notrho[n_pre, n_post]
         E_mu           = E_mu[n_pre, n_post,:]
