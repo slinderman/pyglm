@@ -79,7 +79,6 @@ def plot_pred_ll_vs_time(dataset, run, algs, Z=1.0, nbins=4):
 
     # # DEBUG
     # true_pll = true_model.heldout_log_likelihood(train)
-    import pdb; pdb.set_trace()
 
     assert "bfgs" in results
     # t_bfgs = timestamps["bfgs"]
@@ -161,6 +160,7 @@ def plot_pred_ll_vs_time(dataset, run, algs, Z=1.0, nbins=4):
     # ax.yaxis.set_major_formatter(yticks)
     # ax.set_ylabel('Pred. LL ($ \\times 10^{%d}$)' % logyscale)
     ax.set_ylabel('Pred. LL (bps)')
+    ax.set_ylim([-0.0, 0.18])
 
     # ylim = ax.get_ylim()
     # ax.plot([t_bfgs, t_bfgs], ylim, '--k')

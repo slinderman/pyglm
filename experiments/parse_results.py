@@ -39,6 +39,7 @@ for res_file in res_files:
     timestamps.append(timestamp)
 
 print "Saving parsed results"
-with gzip.open("rgc_60T.eigen_fit.gibbs.pkl.gz", "w") as f:
+res_file = os.path.join(res_dir, alg + "-parsed.pkl.gz")
+with gzip.open(res_file, "w") as f:
     cPickle.dump((samples, lps, plls, timestamps), f, protocol=-1)
 
