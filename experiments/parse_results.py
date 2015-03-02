@@ -24,8 +24,9 @@ S_test = test.astype(np.int32)
 #     test_data = cPickle.load(f)
 #     S_test = test_data["S"].astype(np.int32)
 
-res_dir = os.path.join("results", dataset, "run%3d" % run)
-res_files = sorted(glob.glob(alg + ".itr*.pkl.gz"))
+res_dir = os.path.join("results", dataset, "run%03d" % run)
+res_files = sorted(glob.glob(os.path.join(res_dir, alg + ".itr*.pkl.gz")))
+print ""
 for res_file in res_files:
     print "Parsing result ", res_file
     with gzip.open(res_file, "r") as f:
