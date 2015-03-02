@@ -96,7 +96,7 @@ def demo(dataset="rgc_nb_eigen_300T", run=1, seed=None):
                 os.path.join(res_dir,
                              "vb.itr%04d.pkl.gz" % itr),
                 "w") as f:
-            cPickle.dump((test_model, timestamps[-1]), f, protocol=-1)
+            cPickle.dump((test_model.copy_sample(), timestamps[-1]), f, protocol=-1)
 
     ###########################################################
     # Save the results

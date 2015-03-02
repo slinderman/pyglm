@@ -48,7 +48,11 @@ def run_link_prediction(dataset, run, algs):
     A_true = true_model.weight_model.A.ravel()
 
     if 'svi' in results:
-        pass
+        svi_model = samples(results["svi"])[-1]
+        W_svi = svi_model.weight_model.mf_expected_W().sum(2)
+        score = abs(W_svi).ravel()
+        fpr, tpr, _ = roc_curve(A_true, score)
+        ax.plot(fpr, tpr, color=col[0], lw=1.5, label="SVI")
 
     if 'vb' in results:
         vb_model = samples(results["vb"])[-1]
@@ -92,7 +96,11 @@ def run_link_prediction(dataset, run, algs):
     ax = fig.add_subplot(111, aspect="equal")
 
     if 'svi' in results:
-        pass
+        svi_model = samples(results["svi"])[-1]
+        W_svi = svi_model.weight_model.mf_expected_W().sum(2)
+        score = abs(W_svi).ravel()
+        prec, recall, _ = precision_recall_curve(A_true, score)
+        ax.plot(recall, prec, color=col[0], lw=1.5, label="SVI")
 
     if 'vb' in results:
         vb_model = samples(results["vb"])[-1]
@@ -100,6 +108,7 @@ def run_link_prediction(dataset, run, algs):
         score = abs(W_vb).ravel()
         prec, recall, _ = precision_recall_curve(A_true, score)
         ax.plot(recall, prec, color=col[1], lw=1.5, label="VB")
+
     if 'gibbs' in results:
         W_samples = [smpl.weight_model.W_effective.sum(2)
                      for smpl in samples(results["gibbs"])]
@@ -129,4 +138,4 @@ def run_link_prediction(dataset, run, algs):
     fig.savefig(fig_path)
 
 run_link_prediction("synth_nb_eigen_K50_T10000", run=1,
-                     algs=("bfgs", "gibbs", "vb"))
+                     algs=("bfgs", "gibbs", "vb", "svi"))
