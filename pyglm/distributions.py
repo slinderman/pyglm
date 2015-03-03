@@ -90,7 +90,8 @@ class _PopulationDistributionBase(GibbsSampling):
         self.population_model.add_data(S, F=F)
 
         # Compute the log likelihood
-        lls = self.population_model.log_likelihood(self.data_list[-1]).sum(axis=1)
+        lls = self.population_model.log_likelihood(
+            self.population_model.data_list[-1]).sum(axis=1)
 
         # Remove the data from the datalist
         self.population_model.data_list.pop()
@@ -131,6 +132,7 @@ class _PopulationDistributionBase(GibbsSampling):
         :return:
         """
         assert len(self.population_model.data_list) == 0
+        assert len(data) == 1
         # Make sure packed_data is a list
         if not isinstance(data, list):
             data = [data]

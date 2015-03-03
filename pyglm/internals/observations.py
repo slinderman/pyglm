@@ -83,33 +83,34 @@ class _PolyaGammaAugmentedObservationsBase(Component):
     def expected_S(self, Psi):
         raise NotImplementedError()
 
-    def resample(self, augmented_data):
+    def resample(self, augmented_data_list):
         """
         Resample omega given xi and psi, then resample psi given omega, X, w, and sigma
         """
-        psi = self.activation.compute_psi(augmented_data)
+        for augmented_data in augmented_data_list:
+            psi = self.activation.compute_psi(augmented_data)
 
-        # Resample the auxiliary variables, omega, in Python
-        # self.omega = polya_gamma(self.conditional_b.reshape(self.T),
-        #                          self.psi.reshape(self.T),
-        #                          200).reshape((self.T,))
+            # Resample the auxiliary variables, omega, in Python
+            # self.omega = polya_gamma(self.conditional_b.reshape(self.T),
+            #                          self.psi.reshape(self.T),
+            #                          200).reshape((self.T,))
 
-        # Create a PyPolyaGamma object and resample with the C code
-        # seed = np.random.randint(2**16)
-        # ppg = PyPolyaGamma(seed, self.model.trunc)
-        # ppg.draw_vec(self.conditional_b, self.psi, self.omega)
+            # Create a PyPolyaGamma object and resample with the C code
+            # seed = np.random.randint(2**16)
+            # ppg = PyPolyaGamma(seed, self.model.trunc)
+            # ppg.draw_vec(self.conditional_b, self.psi, self.omega)
 
-        # Resample with Jesse Windle's ported code
-        b = self.b(augmented_data)
-        for n in xrange(self.N):
-            bn   = b[:,n].copy("C")
-            psin = psi[:,n].copy("C")
-            tmpn = np.empty(augmented_data["T"])
-            pgdrawv(bn,
-                    psin,
-                    tmpn,
-                    self.rng)
-            augmented_data["omega"][:,n] = tmpn
+            # Resample with Jesse Windle's ported code
+            b = self.b(augmented_data)
+            for n in xrange(self.N):
+                bn   = b[:,n].copy("C")
+                psin = psi[:,n].copy("C")
+                tmpn = np.empty(augmented_data["T"])
+                pgdrawv(bn,
+                        psin,
+                        tmpn,
+                        self.rng)
+                augmented_data["omega"][:,n] = tmpn
 
     ### Mean field
     def meanfieldupdate(self, augmented_data):

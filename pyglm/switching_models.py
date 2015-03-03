@@ -95,7 +95,7 @@ class _SwitchingPopulationMixin(object):
     def network_hypers(self):
         return self.populations[0].network_hypers
 
-    def add_data(self, data, stateseq=None, **kwargs):
+    def add_data(self, data, stateseq=None, packed_data=None, **kwargs):
         """
         Add a spike train to the model. We need to augment the spike train
         with its filtered version.
@@ -107,9 +107,15 @@ class _SwitchingPopulationMixin(object):
         """
         # Since all the population objects have the same basis, we can
         # filter the spike train with the first population
-        packed_data = self.population_dists[0].pack_spike_train(data)
+        if packed_data is None:
+            packed_data = self.population_dists[0].pack_spike_train(data)
 
         super(_SwitchingPopulationMixin, self).add_data(packed_data, stateseq=stateseq, **kwargs)
+
+        return packed_data
+
+    def pop_data(self):
+        return self.states_list.pop()
 
     def generate(self,T,keep=True, keep_stateseq=False):
         S, stateseq = super(_SwitchingPopulationMixin, self).generate(T=T, keep=False)
@@ -140,6 +146,14 @@ class _SwitchingPopulationMixin(object):
     def hidden_state_sequence(self):
         hidden_states = [s.stateseq for s in self.states_list]
         return hidden_states
+
+    def heldout_log_likelihood(self, data, packed_data=None):
+        """
+        Compute heldout log likelihood of a dataset
+        """
+        self.add_data(data, packed_data=packed_data)
+        s = self.states_list.pop()
+        return s.log_likelihood()
 
     # def plot(self, **kwargs):
     #     super(_SwitchingPopulationMixin, self).plot(**kwargs)

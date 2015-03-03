@@ -919,15 +919,15 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
             self.network.resample(self.weight_model)
 
     def resample_model(self):
-        # TODO: Support multile datasets
-        assert len(self.data_list) == 1, "Can only do Gibbs sampling with one dataset"
-        data = self.data_list[0]
+        # # TODO: Support multile datasets
+        # assert len(self.data_list) == 1, "Can only do Gibbs sampling with one dataset"
+        # data = self.data_list[0]
 
         # update model components one at a time
-        self.observation_model.resample(data)
-        self.activation_model.resample(data)
-        self.weight_model.resample(data)
-        self.bias_model.resample(data)
+        self.observation_model.resample(self.data_list)
+        self.activation_model.resample(self.data_list)
+        self.weight_model.resample(self.data_list)
+        self.bias_model.resample(self.data_list)
 
         # Resample the network given the weight model
         self.network.resample(self.weight_model)

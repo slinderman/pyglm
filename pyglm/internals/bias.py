@@ -41,25 +41,27 @@ class _GibbsGaussianBias(_GaussianBiasBase):
         super(_GibbsGaussianBias, self).__init__(population, mu_0=mu_0, sigma_0=sigma_0)
 
         # Initialize with a draw from the prior
-        self.resample(None)
+        self.resample()
 
-    def resample(self, augmented_data):
+    def resample(self, augmented_data=[]):
         """
         Resample the bias given the weights and psi
         :return:
         """
         self._resample_b(augmented_data)
 
-    def _resample_b(self, augmented_data):
+    def _resample_b(self, augmented_data_list):
+
+
         # TODO: Parallelize this
         for n in xrange(self.N):
             # Compute the posterior parameters
-            if augmented_data is not None:
-                lkhd_prec           = self.activation.precision(augmented_data, bias=n)
-                lkhd_mean_dot_prec  = self.activation.mean_dot_precision(augmented_data, bias=n)
-            else:
-                lkhd_prec           = 0
-                lkhd_mean_dot_prec  = 0
+            lkhd_prec           = 0
+            lkhd_mean_dot_prec  = 0
+
+            for augmented_data in augmented_data_list:
+                lkhd_prec           += self.activation.precision(augmented_data, bias=n)
+                lkhd_mean_dot_prec  += self.activation.mean_dot_precision(augmented_data, bias=n)
 
             prior_prec          = self.lambda_0
             prior_mean_dot_prec = self.lambda_0 * self.mu_0
