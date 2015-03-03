@@ -40,6 +40,9 @@ class _SwitchingPopulationMixin(object):
         """
         self.N = N
         self.M = M
+        self.B = B
+        self.dt = dt
+        self.dt_max = dt_max
 
         # Create observation models
         self.population_dists = \
@@ -62,6 +65,12 @@ class _SwitchingPopulationMixin(object):
         self.hdp_hmm_hypers.update(hdp_hmm_hypers)
         super(_SwitchingPopulationMixin, self).\
             __init__(obs_distns=self.population_dists, **self.hdp_hmm_hypers)
+
+    @property
+    def basis_hypers(self):
+        return self.populations[0].basis_hypers
+
+    # TODO: Expose properties for other population components
 
     def add_data(self, data, stateseq=None, **kwargs):
         """
