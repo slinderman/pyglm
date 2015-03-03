@@ -92,7 +92,7 @@ def fit_with_gibbs(dataset, run, seed=None):
         # Save intermediate sample
         with gzip.open(
                 os.path.join(res_dir,
-                             "gibbs.er.hdphsmm.itr%04d.pkl.gz" % itr),
+                             "gibbs.empty.hdphsmm.itr%04d.pkl.gz" % itr),
                 "w") as f:
             cPickle.dump((test_model.copy_sample(), timestamps[-1]), f, protocol=-1)
 
@@ -102,7 +102,7 @@ def fit_with_gibbs(dataset, run, seed=None):
     ###########################################################
     # Save the results
     ###########################################################
-    results_path = os.path.join(res_dir, "gibbs.er.hdphsmm.pkl.gz")
+    results_path = os.path.join(res_dir, "gibbs.empty.hdphsmm.pkl.gz")
     with gzip.open(results_path, 'w') as f:
         cPickle.dump((samples, lps, plls, timestamps), f, protocol=-1)
 
