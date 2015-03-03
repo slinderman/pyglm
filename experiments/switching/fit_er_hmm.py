@@ -48,6 +48,8 @@ def fit_with_gibbs(dataset, run, seed=None):
     # Create a test spike-and-slab model
     ###########################################################
     # Copy the network hypers.
+    hdp_hmm_hypers = true_model.hdp_hmm_hypers
+    del hdp_hmm_hypers["duration_hypers"]
     test_model = NegativeBinomialHDPHMM(N=N, M=M, dt=dt, dt_max=dt_max, B=B,
                             basis_hypers=true_model.basis_hypers,
                             observation_hypers=true_model.observation_hypers,
@@ -55,7 +57,7 @@ def fit_with_gibbs(dataset, run, seed=None):
                             weight_hypers=true_model.weight_hypers,
                             bias_hypers=true_model.bias_hypers,
                             network_hypers=true_model.network_hypers,
-                            hdp_hmm_hypers=true_model.hdp_hmm_hypers)
+                            hdp_hmm_hypers=hdp_hmm_hypers)
 
     test_model.add_data(train)
 
