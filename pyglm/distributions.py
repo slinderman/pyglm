@@ -7,13 +7,13 @@ import os
 import abc
 import numpy as np
 
-if "DISPLAY" not in os.environ:
-    import matplotlib
-    matplotlib.use("Agg")
+# if "DISPLAY" not in os.environ:
+#     import matplotlib
+#     matplotlib.use("Agg")
+#
+# import matplotlib.pyplot as plt
 
-import matplotlib.pyplot as plt
-
-from pyglm.models import Population, NegativeBinomialPopulation
+from pyglm.models import Population, NegativeBinomialPopulation, NegativeBinomialEmptyPopulation
 from pybasicbayes.abstractions import GibbsSampling
 
 class _PopulationDistributionBase(GibbsSampling):
@@ -182,3 +182,7 @@ class PopulationDistribution(_PopulationDistributionBase, Population):
 
 class NegativeBinomialPopulationDistribution(_PopulationDistributionBase):
     _population_class = NegativeBinomialPopulation
+
+
+class NegativeBinomialEmptyPopulationDistribution(_PopulationDistributionBase):
+    _population_class = NegativeBinomialEmptyPopulation

@@ -7,9 +7,11 @@ import copy
 
 from pyhsmm.models import WeakLimitHDPHMM, WeakLimitHDPHSMM
 from pyhsmm.basic.distributions import PoissonDuration
-from pyglm.distributions import PopulationDistribution, NegativeBinomialPopulationDistribution
+from pyglm.distributions import PopulationDistribution, \
+    NegativeBinomialPopulationDistribution, \
+    NegativeBinomialEmptyPopulationDistribution
 
-class _SwitchingPopulationMixin(object):
+class _HDPHMMPopulationMixin(object):
     """
     A switching population model with Markovian dynamics.
     """
@@ -63,7 +65,7 @@ class _SwitchingPopulationMixin(object):
         # Initialize the switching model with the populations
         self.hdp_hmm_hypers = copy.deepcopy(self._default_hdp_hmm_hypers)
         self.hdp_hmm_hypers.update(hdp_hmm_hypers)
-        super(_SwitchingPopulationMixin, self).\
+        super(_HDPHMMPopulationMixin, self).\
             __init__(obs_distns=self.population_dists, **self.hdp_hmm_hypers)
 
     # TODO: This is pretty hacky...
@@ -110,7 +112,7 @@ class _SwitchingPopulationMixin(object):
         if packed_data is None:
             packed_data = self.population_dists[0].pack_spike_train(data)
 
-        super(_SwitchingPopulationMixin, self).add_data(packed_data, stateseq=stateseq, **kwargs)
+        super(_HDPHMMPopulationMixin, self).add_data(packed_data, stateseq=stateseq, **kwargs)
 
         return packed_data
 
@@ -118,7 +120,7 @@ class _SwitchingPopulationMixin(object):
         return self.states_list.pop()
 
     def generate(self,T,keep=True, keep_stateseq=False):
-        S, stateseq = super(_SwitchingPopulationMixin, self).generate(T=T, keep=False)
+        S, stateseq = super(_HDPHMMPopulationMixin, self).generate(T=T, keep=False)
 
         if keep:
             if keep_stateseq:
@@ -205,21 +207,9 @@ class _SwitchingPopulationMixin(object):
         return None
 
 
-class NegativeBinomialHDPHMM(_SwitchingPopulationMixin, WeakLimitHDPHMM):
-    """
-    A switching population model with Markovian dynamics.
-    """
-    _population_class = NegativeBinomialPopulationDistribution
-
-
-class NegativeBinomialHDPHSMM(_SwitchingPopulationMixin, WeakLimitHDPHSMM):
-    """
-    A switching population model with Markovian dynamics.
-    """
+class _HDPHSMMPopulationMixin(_HDPHMMPopulationMixin):
     _duration_class = PoissonDuration
     _default_duration_hypers = {'alpha_0':2*30, 'beta_0':2}
-
-    _population_class = NegativeBinomialPopulationDistribution
 
     def __init__(self, N, M,
                  dt=1.0, dt_max=10.0, B=5,                  # Population parameters
@@ -252,7 +242,7 @@ class NegativeBinomialHDPHSMM(_SwitchingPopulationMixin, WeakLimitHDPHSMM):
 
         hdp_hmm_hypers["dur_distns"] = self.dur_distns
 
-        super(NegativeBinomialHDPHSMM, self).\
+        super(_HDPHSMMPopulationMixin, self).\
             __init__(N, M, dt=dt, dt_max=dt_max, B=B,
                      basis=basis, basis_hypers=basis_hypers,
                      observation=observation, observation_hypers=observation_hypers,
@@ -263,3 +253,71 @@ class NegativeBinomialHDPHSMM(_SwitchingPopulationMixin, WeakLimitHDPHSMM):
                      network=network, network_hypers=network_hypers,
                      n_iters_per_resample=n_iters_per_resample,
                      hdp_hmm_hypers=hdp_hmm_hypers)
+
+class NegativeBinomialHDPHMM(_HDPHMMPopulationMixin, WeakLimitHDPHMM):
+    """
+    A switching population model with Markovian dynamics.
+    """
+    _population_class = NegativeBinomialPopulationDistribution
+
+
+class NegativeBinomialHDPHSMM(_HDPHSMMPopulationMixin, WeakLimitHDPHSMM):
+    """
+    A switching population model with Markovian dynamics.
+    """
+
+    _population_class = NegativeBinomialPopulationDistribution
+
+
+class NegativeBinomialEmptyHDPHSMM(_HDPHSMMPopulationMixin, WeakLimitHDPHSMM):
+    """
+    A switching population model with Markovian dynamics.
+    """
+
+    _population_class = NegativeBinomialEmptyPopulationDistribution
+
+
+
+    #
+    # def __init__(self, N, M,
+    #              dt=1.0, dt_max=10.0, B=5,                  # Population parameters
+    #              basis=None, basis_hypers={},
+    #              observation=None, observation_hypers={},
+    #              activation=None, activation_hypers={},
+    #              bias=None, bias_hypers={},
+    #              background=None, background_hypers={},
+    #              weights=None, weight_hypers={},
+    #              network=None, network_hypers={},
+    #              n_iters_per_resample=10,
+    #              hdp_hmm_hypers={},                          # HDP-HMM hyperparameters
+    #              duration_hypers={}
+    #              ):
+    #     """
+    #     :param N:   The number of neurons
+    #     :param M:   The maximum number of latent states
+    #
+    #     The remainder of the parameters are specified in the Population
+    #     of HMM definitions.
+    #     :return:
+    #     """
+    #     self.N = N
+    #     self.M = M
+    #
+    #     # Initialize duration distributions
+    #     self.duration_hypers = copy.deepcopy(self._default_duration_hypers)
+    #     self.duration_hypers.update(duration_hypers)
+    #     self.dur_distns = [self._duration_class(**self.duration_hypers) for m in range(self.M)]
+    #
+    #     hdp_hmm_hypers["dur_distns"] = self.dur_distns
+    #
+    #     super(NegativeBinomialHDPHSMM, self).\
+    #         __init__(N, M, dt=dt, dt_max=dt_max, B=B,
+    #                  basis=basis, basis_hypers=basis_hypers,
+    #                  observation=observation, observation_hypers=observation_hypers,
+    #                  activation=activation, activation_hypers=activation_hypers,
+    #                  bias=bias, bias_hypers=bias_hypers,
+    #                  background=background, background_hypers=background_hypers,
+    #                  weights=weights, weight_hypers=weight_hypers,
+    #                  network=network, network_hypers=network_hypers,
+    #                  n_iters_per_resample=n_iters_per_resample,
+    #                  hdp_hmm_hypers=hdp_hmm_hypers)

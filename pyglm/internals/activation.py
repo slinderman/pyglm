@@ -63,10 +63,12 @@ class _ActivationBase(Component):
         if bias is None:
             psi += self.bias_model.b[None, n_post]
 
-        for nn in xrange(N):
-            if nn == n_pre:
-                continue
-            psi += np.dot(F[:,nn,:], W[nn, n_post, :])
+        # Only compute residual if W is nonzero
+        if not np.allclose(W[:,n_post], 0):
+            for nn in xrange(N):
+                if nn == n_pre:
+                    continue
+                psi += np.dot(F[:,nn,:], W[nn, n_post, :])
 
         return psi
 
@@ -88,7 +90,9 @@ class DeterministicActivation(_ActivationBase):
         # for n_post in xrange(N):
         #     psi[:,n_post] += np.tensordot(F, W[:,n_post,:], axes=((1,2), (0,1)))
 
-        psi = np.einsum("tmb,mnb->tn", F, W)
+        psi = np.zeros((T,N))
+        if not np.allclose(W, 0):
+            np.einsum("tmb,mnb->tn", F, W, out=psi)
         psi += self.bias_model.b[None, :]
         # assert np.allclose(psi, psi2)
 

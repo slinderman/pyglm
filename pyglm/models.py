@@ -16,7 +16,7 @@ from pyglm.internals.observations import BernoulliObservations, NegativeBinomial
 from pyglm.internals.activation import DeterministicActivation
 from pyglm.internals.bias import GaussianBias
 from pyglm.internals.background import NoBackground
-from pyglm.internals.weights import SpikeAndSlabGaussianWeights
+from pyglm.internals.weights import SpikeAndSlabGaussianWeights, NoWeights
 
 # Import network models
 from pyglm.deps.graphistician import GaussianErdosRenyiFixedSparsity, \
@@ -1023,6 +1023,13 @@ class NegativeBinomialPopulation(_GibbsPopulation, _MeanFieldPopulation, _SVIPop
     _observation_class          = NegativeBinomialObservations
     _default_observation_hypers = {"xi": 10.0}
 
+
+class NegativeBinomialEmptyPopulation(NegativeBinomialPopulation):
+    """
+    Population with negative binomial observations and Erdos-Renyi network
+    """
+    _weight_class               = NoWeights
+    _default_weight_hypers      = {}
 
 class BernoulliEigenmodelPopulation(Population):
     _network_class              = GaussianWeightedEigenmodel
