@@ -255,25 +255,18 @@ class _HDPHSMMPopulationMixin(_HDPHMMPopulationMixin):
                      hdp_hmm_hypers=hdp_hmm_hypers)
 
 class NegativeBinomialHDPHMM(_HDPHMMPopulationMixin, WeakLimitHDPHMM):
-    """
-    A switching population model with Markovian dynamics.
-    """
     _population_class = NegativeBinomialPopulationDistribution
 
 
 class NegativeBinomialHDPHSMM(_HDPHSMMPopulationMixin, WeakLimitHDPHSMM):
-    """
-    A switching population model with Markovian dynamics.
-    """
-
     _population_class = NegativeBinomialPopulationDistribution
 
 
-class NegativeBinomialEmptyHDPHSMM(_HDPHSMMPopulationMixin, WeakLimitHDPHSMM):
-    """
-    A switching population model with Markovian dynamics.
-    """
+class NegativeBinomialEmptyHDPHMM(_HDPHMMPopulationMixin, WeakLimitHDPHMM):
+    _population_class = NegativeBinomialEmptyPopulationDistribution
 
+
+class NegativeBinomialEmptyHDPHSMM(_HDPHSMMPopulationMixin, WeakLimitHDPHSMM):
     _population_class = NegativeBinomialEmptyPopulationDistribution
 
 
