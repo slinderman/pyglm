@@ -68,7 +68,7 @@ def generate_synthetic_data(seed=None):
     print "Number of generated spikes:\t", S.sum(0)
 
     # Sample test data
-    S_test = true_model.generate(T=T_test, keep=False)
+    S_test, _ = true_model.generate(T=T_test, keep=False)
 
     ###########################################################
     #  Plot the network, the spike train and mean rate
