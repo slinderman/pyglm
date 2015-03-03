@@ -66,11 +66,34 @@ class _SwitchingPopulationMixin(object):
         super(_SwitchingPopulationMixin, self).\
             __init__(obs_distns=self.population_dists, **self.hdp_hmm_hypers)
 
+    # TODO: This is pretty hacky...
     @property
     def basis_hypers(self):
         return self.populations[0].basis_hypers
 
-    # TODO: Expose properties for other population components
+    @property
+    def observation_hypers(self):
+        return self.populations[0].observation_hypers
+
+    @property
+    def activation_hypers(self):
+        return self.populations[0].activation_hypers
+
+    @property
+    def bias_hypers(self):
+        return self.populations[0].bias_hypers
+
+    @property
+    def background_hypers(self):
+        return self.populations[0].background_hypers
+
+    @property
+    def weight_hypers(self):
+        return self.populations[0].weight_hypers
+
+    @property
+    def network_hypers(self):
+        return self.populations[0].network_hypers
 
     def add_data(self, data, stateseq=None, **kwargs):
         """
