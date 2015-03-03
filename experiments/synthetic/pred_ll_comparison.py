@@ -2,7 +2,6 @@ import os
 import gzip
 import cPickle
 import numpy as np
-from scipy.misc import logsumexp
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -157,6 +156,7 @@ def plot_pred_ll_vs_time(dataset, run, algs, Z=1.0, nbins=4):
     # ax.yaxis.set_major_formatter(yticks)
     # ax.set_ylabel('Pred. LL ($ \\times 10^{%d}$)' % logyscale)
     ax.set_ylabel('Pred. LL (bps)')
+    ax.set_ylim(0, 0.18)
 
     # ylim = ax.get_ylim()
     # ax.plot([t_bfgs, t_bfgs], ylim, '--k')
