@@ -3,24 +3,44 @@ Wrap the population models in a PyBasicBayes distribution.
 This allows us to use the population as an observation model
 for an HMM.
 """
+import os
+import abc
 import numpy as np
 
-from pyglm.models import Population
+if "DISPLAY" not in os.environ:
+    import matplotlib
+    matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
+
+from pyglm.models import Population, NegativeBinomialPopulation
 from pybasicbayes.abstractions import GibbsSampling
 
-class PopulationDistribution(Population, GibbsSampling):
+class _PopulationDistributionBase(GibbsSampling):
     """
     A wrapper for a Population model that exposes an interface for
     inference in an enclosing HMM. The states of the HMM correspond
     to different population parameters, e.g. different background rates
     or different networks.
     """
+    __metaclass__ = abc.ABCMeta
+
+    _population_class = None
 
     def __init__(self, N, n_iters_per_resample=10, **kwargs):
-        super(PopulationDistribution, self).__init__(N, **kwargs)
+
+        self.population_model = self._population_class(N, **kwargs)
 
         # Set the number of iterations per resample
         self.n_iters_per_resample = n_iters_per_resample
+
+    @property
+    def N(self):
+        return self.population_model.N
+
+    @property
+    def B(self):
+        return self.population_model.B
 
     def pack_spike_train(self, S):
         """
@@ -29,7 +49,7 @@ class PopulationDistribution(Population, GibbsSampling):
         :param S: A TxN matrix of spike counts
         :return:
         """
-        augmented_data = self.augment_data(S)
+        augmented_data = self.population_model.augment_data(S)
         T = augmented_data["T"]
         F = augmented_data["F"]
 
@@ -55,7 +75,7 @@ class PopulationDistribution(Population, GibbsSampling):
         return S, F
 
     def rvs(self,size=[]):
-        S = self.generate(keep=False, T=size)
+        S = self.population_model.generate(keep=False, T=size)
         return S
 
     def log_likelihood(self, packed_data):
@@ -64,19 +84,42 @@ class PopulationDistribution(Population, GibbsSampling):
         density function) of x, which has the same type as the output of rvs()
         '''
         # Make sure packed_data is a list
-        assert len(self.data_list) == 0
+        assert len(self.population_model.data_list) == 0
         # Unpack the data and add it to the model data list
         S,F = self._unpack_data(packed_data)
-        self.add_data(S, F=F)
+        self.population_model.add_data(S, F=F)
 
         # Compute the log likelihood
-        lls = super(PopulationDistribution, self).log_likelihood(self.data_list[-1]).sum(axis=1)
+        lls = self.population_model.log_likelihood(self.data_list[-1]).sum(axis=1)
 
         # Remove the data from the datalist
-        self.data_list.pop()
+        self.population_model.data_list.pop()
 
-        assert len(self.data_list) == 0
+        assert len(self.population_model.data_list) == 0
         return lls
+
+    def compute_rate(self, packed_data):
+        """
+        Compute the rate for the given packed data
+        :param packed_data:
+        :return:
+        """
+        # Make sure packed_data is a list
+        assert len(self.population_model.data_list) == 0
+        # Unpack the data and add it to the model data list
+        S,F = self._unpack_data(packed_data)
+        self.population_model.add_data(S, F=F)
+
+        # Compute the log likelihood
+        rate = self.population_model.compute_rate(
+            self.population_model.data_list[-1])
+        # lls = self.population_model.log_likelihood(self.data_list[-1]).sum(axis=1)
+
+        # Remove the data from the datalist
+        self.population_model.data_list.pop()
+
+        assert len(self.population_model.data_list) == 0
+        return rate
 
     def resample(self, data=[]):
         """
@@ -87,7 +130,7 @@ class PopulationDistribution(Population, GibbsSampling):
         :param data:
         :return:
         """
-        assert len(self.data_list) == 0
+        assert len(self.population_model.data_list) == 0
         # Make sure packed_data is a list
         if not isinstance(data, list):
             data = [data]
@@ -96,15 +139,43 @@ class PopulationDistribution(Population, GibbsSampling):
         for pdata in data:
             if pdata.size > 0:
                 S,F = self._unpack_data(pdata)
-                self.add_data(S, F=F)
+                self.population_model.add_data(S, F=F)
 
         # Resample with the given data
         for itr in xrange(self.n_iters_per_resample):
-            self.resample_model()
+            self.population_model.resample_model()
 
         # Remove the data from the datalist
         for pdata in data:
             if pdata.size > 0:
-                self.data_list.pop()
+                self.population_model.data_list.pop()
 
-        assert len(self.data_list) == 0
+        assert len(self.population_model.data_list) == 0
+
+    def plot(self, indices, data, color='k', label=None, S_max=5.0):
+        # TODO: Handle plotting multiple data sets
+        assert len(indices) == len(data) == 1
+        indices = indices[0]
+        data = data[0]
+
+        # Unpack the data and add it to the model data list
+        S,_ = self._unpack_data(data)
+        T, N = S.shape
+        Sclip = np.clip(S, 0, S_max)
+
+        # Plot markers for each spike.
+        # The marker size denotes the number of spikes
+        for n in xrange(N):
+            t = np.where(Sclip[:,n])[0]
+            plt.scatter(indices[t], (N-n) * np.ones_like(t),
+                     color=color,
+                     marker='o',
+                     facecolors=color, edgecolor=color,
+                     s=3*Sclip[t,n])
+
+
+class PopulationDistribution(_PopulationDistributionBase, Population):
+    _population_class = Population
+
+class NegativeBinomialPopulationDistribution(_PopulationDistributionBase):
+    _population_class = NegativeBinomialPopulation

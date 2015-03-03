@@ -53,7 +53,9 @@ def demo(dataset="rgc_nb_eigen_300T", run=1, seed=None):
         observation_hypers=observation_hypers,
         bias_hypers=bias_hypers,
         network_hypers=network_hypers)
-    test_model.add_data(train)
+
+    # Add the data in minibatches
+    test_model.add_data(train, minibatchsize=1000)
 
     # Initialize the test model parameters with the
     # parameters of the L1-regularized model

@@ -149,6 +149,27 @@ class DeterministicActivation(_ActivationBase):
 
         return Psi
 
+    def mf_marginal_variance_activation(self, augmented_data):
+        F = augmented_data["F"]
+
+        # Add the variance of the bias
+        V_psi = np.zeros((augmented_data["T"], self.N))
+        V_psi += self.bias_model.mf_sigma_b[None,:]
+
+        # Add the variance of the weights
+        # for n_post in xrange(self.N):
+        #     Psi[:,n_post] += np.tensordot(F, W[:,n_post,:], axes=((1,2), (0,1)))
+        for n_pre in xrange(self.N):
+            F_pre = F[:,n_pre,:]
+            for n_post in xrange(self.N):
+                Sigma = self.weight_model.mf_Sigma[n_pre, n_post, :, :]
+
+                # Get the marginal variance from F Sigma F.T
+                # i.e., the diagonal of the TxT covariance matrix
+                V_psi[:,n_post] += (F_pre.dot(Sigma) * F_pre).sum(1)
+
+        return V_psi
+
     def mf_expected_residual(self, augmented_data, bias=None, synapse=None):
         """
         Compute the expected residual activation for either the bias or the specified synapse.
@@ -191,6 +212,20 @@ class DeterministicActivation(_ActivationBase):
             # Compute psi under this sample
             psis[smpl, :,:] = self.compute_psi(augmented_data)
 
+        return psis
+
+    def mf_sample_marginal_activation(self, augmented_data, N_samples=1):
+        """
+        Sample activations from their marginal distribution
+        :param Xs:
+        :return:
+        """
+        mu = self.mf_expected_activation(augmented_data)
+        var = self.mf_marginal_variance_activation(augmented_data)
+        std = np.sqrt(var)
+
+        shp = (N_samples, augmented_data["T"], self.N)
+        psis = mu[None, :,:] + std[None, :,:] * np.random.randn(*shp)
         return psis
 
     def mf_precision(self, augmented_data, bias=None, synapse=None):

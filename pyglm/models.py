@@ -578,12 +578,6 @@ class _BayesianPopulationBase(Model):
     _weight_class               = SpikeAndSlabGaussianWeights
     _default_weight_hypers      = {}
 
-    # _network_class              = StochasticBlockModel
-    # _default_network_hypers     = {"C": 1}
-
-    # _network_class              = GaussianWeightedEigenmodel
-    # _default_network_hypers     = {"D": 2, "p": 0.5, "lmbda": np.ones(2)}
-
     _network_class              = GaussianErdosRenyiFixedSparsity
     _default_network_hypers     = {"p": 0.25}
 
@@ -756,7 +750,7 @@ class _BayesianPopulationBase(Model):
         L = self.basis.L    # Length of the impulse responses
 
         # Initialize output matrix of spike counts
-        S = np.zeros((T,N), dtype=np.int32)
+        S = np.zeros((T,N))
         # Initialize the rate matrix
         Psi = np.zeros((T+L,N))
         # TODO: Come up with a better symbol for the activation
@@ -807,10 +801,17 @@ class _BayesianPopulationBase(Model):
             if np.any(S[t,:] >= max_spks_per_bin):
                 n_exceptions += 1
 
+
             # if np.any(S[t,:]>100):
             #     print "More than 10 spikes in a bin! " \
             #           "Decrease variance on impulse weights or decrease simulation bin width."
             #     import pdb; pdb.set_trace()
+
+        # Cast S to int32
+        assert np.all(np.isfinite(S[t,:]))
+        assert np.amin(S) >= 0
+        assert np.amax(S) <= 1000
+        S = S.astype(np.int32)
 
         if verbose:
             print "Number of exceptions arising from multiple spikes per bin: %d" % n_exceptions

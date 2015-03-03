@@ -118,7 +118,7 @@ class _PolyaGammaAugmentedObservationsBase(Component):
         This requires us to sample activations and perform a Monte Carlo
         integration.
         """
-        Psis = self.activation.mf_sample_activation(augmented_data, N_samples=10)
+        Psis = self.activation.mf_sample_marginal_activation(augmented_data, N_samples=20)
         augmented_data["E_omega"] = self.b(augmented_data) / 2.0 \
                                     * (np.tanh(Psis/2.0) / (Psis)).mean(axis=0)
 
@@ -137,7 +137,8 @@ class _PolyaGammaAugmentedObservationsBase(Component):
     def get_vlb(self, augmented_data):
         # 1. E[ \ln p(s | \psi) ]
         # Compute this with Monte Carlo integration over \psi
-        Psis = self.activation.mf_sample_activation(augmented_data, N_samples=1)
+        # Psis = self.activation.mf_sample_activation(augmented_data, N_samples=1)
+        Psis = self.activation.mf_sample_marginal_activation(augmented_data, N_samples=10)
         ps = logistic(Psis)
         E_lnp = np.log(ps).mean(axis=0)
         E_ln_notp = np.log(1-ps).mean(axis=0)

@@ -65,6 +65,8 @@ def plot_pred_ll_vs_time(dataset, run, algs, Z=1.0, nbins=4):
 
     # Load the data and results
     train, test, true_model = load_data(dataset)
+    train = train.astype(np.int32)
+    test  = test.astype(np.int32)
     res_dir = os.path.join("results", dataset, "run%03d" % run)
     results = load_results(dataset, run, algs)
 
@@ -119,7 +121,6 @@ def plot_pred_ll_vs_time(dataset, run, algs, Z=1.0, nbins=4):
                     color=col[1], label="VB", lw=1.5)
 
     if 'gibbs' in results:
-        import pdb; pdb.set_trace()
         t_gibbs = timestamps(results['gibbs'])
         t_gibbs = t_bfgs + t_gibbs
         t_stop = max(t_stop, t_gibbs[-1])
@@ -192,5 +193,8 @@ def plot_pred_ll_vs_time(dataset, run, algs, Z=1.0, nbins=4):
     fig_path = os.path.join(res_dir, "pred_ll_vs_time.pdf")
     fig.savefig(fig_path)
 
-plot_pred_ll_vs_time("rgc_bern_eigen_60T", run=1,
-                     algs=("bfgs", "gibbs",))
+# plot_pred_ll_vs_time("rgc_bern_eigen_60T", run=1,
+#                      algs=("bfgs", "gibbs",))
+
+plot_pred_ll_vs_time("rgc_nb_eigen_300T", run=1,
+                     algs=("bfgs", "gibbs", "vb", "svi"))
