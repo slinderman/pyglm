@@ -744,6 +744,9 @@ class _BayesianPopulationBase(Model):
         :param T:       Number of time bins to simulate
         :return:
         """
+        if T == 0:
+            return np.zeros((0,self.N))
+
         N = self.N
         assert isinstance(T, int), "Size must be an integer number of time bins"
         B = self.basis.B    # Number of features per spike train

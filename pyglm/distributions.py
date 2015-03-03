@@ -152,12 +152,8 @@ class _PopulationDistributionBase(GibbsSampling):
 
         assert len(self.population_model.data_list) == 0
 
-    def plot(self, indices, data, color='k', label=None, S_max=5.0):
+    def plot(self, indices=None, data=None, ax=None, color='k', S_max=1):
         # TODO: Handle plotting multiple data sets
-        assert len(indices) == len(data) == 1
-        indices = indices[0]
-        data = data[0]
-
         # Unpack the data and add it to the model data list
         S,_ = self._unpack_data(data)
         T, N = S.shape
@@ -165,13 +161,18 @@ class _PopulationDistributionBase(GibbsSampling):
 
         # Plot markers for each spike.
         # The marker size denotes the number of spikes
+        artists = []
         for n in xrange(N):
-            t = np.where(Sclip[:,n])[0]
-            plt.scatter(indices[t], (N-n) * np.ones_like(t),
+            t = np.where(Sclip[:,n] > 0)[0]
+            artist = ax.scatter(indices[t], (N-n) * np.ones_like(t),
                      color=color,
-                     marker='o',
+                     marker='s',
                      facecolors=color, edgecolor=color,
-                     s=3*Sclip[t,n])
+                     s=10)
+
+            artists.append(artist)
+
+        return artists
 
 
 class PopulationDistribution(_PopulationDistributionBase, Population):

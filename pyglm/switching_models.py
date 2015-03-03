@@ -6,7 +6,7 @@ import numpy as np
 import copy
 
 from pyhsmm.models import WeakLimitHDPHMM, WeakLimitHDPHSMM
-from pyhsmm.basic.distributions import PoissonDistribution
+from pyhsmm.basic.distributions import PoissonDuration
 from pyglm.distributions import PopulationDistribution, NegativeBinomialPopulationDistribution
 
 class _SwitchingPopulationMixin(object):
@@ -79,11 +79,15 @@ class _SwitchingPopulationMixin(object):
 
         super(_SwitchingPopulationMixin, self).add_data(packed_data, stateseq=stateseq, **kwargs)
 
-    def generate(self,T,keep=True):
+    def generate(self,T,keep=True, keep_stateseq=False):
         S, stateseq = super(_SwitchingPopulationMixin, self).generate(T=T, keep=False)
 
         if keep:
-            self.add_data(S)
+            if keep_stateseq:
+                self.add_data(S, stateseq=stateseq)
+            else:
+                self.add_data(S)
+
         return S, stateseq
 
     def compute_rate(self, data_index=0):
@@ -105,19 +109,54 @@ class _SwitchingPopulationMixin(object):
         hidden_states = [s.stateseq for s in self.states_list]
         return hidden_states
 
-    def plot(self, **kwargs):
-        super(_SwitchingPopulationMixin, self).plot(**kwargs)
+    # def plot(self, **kwargs):
+    #     super(_SwitchingPopulationMixin, self).plot(**kwargs)
+    #
+    #     import matplotlib.pyplot as plt
+    #     fig = plt.gcf()
+    #     ax = fig.add_subplot(211)
+    #     ax.set_xlim(0, self.states_list[0].T)
+    #     ax.set_ylim(0, self.N)
+    #
+    #     try:
+    #         plt.set_cmap("harvard")
+    #     except:
+    #         pass
 
+    def plot_observations(self,ax=None,color=None,plot_slice=slice(None),update=False):
         import matplotlib.pyplot as plt
-        fig = plt.gcf()
-        ax = fig.add_subplot(211)
-        ax.set_xlim(0, self.states_list[0].T)
-        ax.set_ylim(0, self.N)
+        keepaxis = ax is not None
+        ax = ax if ax else plt.gca()
+        axis = ax.axis()
+        #
+        # state_colors = super(_SwitchingPopulationMixin, self)._get_colors()
+        # usages = super(_SwitchingPopulationMixin, self).state_usages
+        # obs_distns = super(_SwitchingPopulationMixin, self).obs_distns
+        #
+        # artists = []
+        # for state, (o, w) in enumerate(zip(obs_distns,usages)):
+        #     artists.extend(
+        #         o.plot(
+        #             color=state_colors[state], label='%d' % state,
+        #             alpha=min(0.25,1.-(1.-w)**2)/0.25,
+        #             ax=ax, update=update,draw=False))
+        #
+        # if keepaxis: ax.axis(axis)
+        #
+        stateseq = self.states_list[0].stateseq[plot_slice]
+        t = np.arange(len(stateseq))[plot_slice]
+        data = self.states_list[0].data[plot_slice]
+        artists = self.population_dists[0].plot(indices=t, data=data, ax=ax)
 
-        try:
-            plt.set_cmap("harvard")
-        except:
-            pass
+        ax.set_xlim(0, len(stateseq))
+        ax.set_xticklabels([])
+        ax.set_ylim(0.5, self.N+.5)
+        ax.set_ylabel("Neuron")
+
+        return artists
+
+    def _plot_stateseq_data_values(self,s,ax,state_colors,plot_slice,update):
+        return None
 
 
 class NegativeBinomialHDPHMM(_SwitchingPopulationMixin, WeakLimitHDPHMM):
