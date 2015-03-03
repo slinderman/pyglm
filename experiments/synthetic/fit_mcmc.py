@@ -66,7 +66,7 @@ def fit_with_gibbs(dataset, run, seed=None):
     # Fit the test model with Gibbs sampling
     ###########################################################
     # raw_input("Press any key to continue...\n")
-    N_samples = 100
+    N_samples = 1000
     samples = [test_model.copy_sample()]
     lps = [test_model.log_probability()]
     plls = [test_model.heldout_log_likelihood(test, F=F_test)]
