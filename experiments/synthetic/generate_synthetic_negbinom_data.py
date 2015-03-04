@@ -2,7 +2,7 @@ import cPickle
 import os
 import gzip
 import numpy as np
-# np.seterr(all="raise")
+np.seterr(all="raise")
 
 if not os.environ.has_key("DISPLAY"):
     import matplotlib
@@ -28,9 +28,9 @@ def generate_synthetic_data(dataset, seed=None):
     # Create a population model
     ###########################################################
     N = 50                                                  # Number of neurons
-    T = 10000                                               # Number of time bins
+    T = 10000                                              # Number of time bins
     dt = 1.0                                                # Time bin width
-    dt_max = 100.0                                          # Max time of synaptic influence
+    dt_max = 10.0                                          # Max time of synaptic influence
     B = 1                                                   # Number of basis functions for the weights
 
     #   Bias hyperparameters
@@ -39,7 +39,7 @@ def generate_synthetic_data(dataset, seed=None):
     ###########################################################
     #   Network hyperparameters
     ###########################################################
-    network_hypers = {"p": 0.01, "mu_0": np.zeros(B), "Sigma_0": 3.0**2*np.eye(B),
+    network_hypers = {"p": 0.01, "mu_0": 0.*np.ones(B), "Sigma_0": 1**2*np.eye(B),
                       "sigma_F": 1.0}
 
     ###########################################################
@@ -53,8 +53,8 @@ def generate_synthetic_data(dataset, seed=None):
     #   Override the sample with some serious structure
     ###########################################################
     eigenmodel = true_model.network.adjacency_dist
-    M = 8
-    th = np.linspace(0,2*np.pi, M)
+    M = 4
+    th = np.linspace(0,2*np.pi, M, endpoint=False)
     centers = np.hstack((np.cos(th)[:,None], np.sin(th)[:,None]))
     # centers = [[1,1], [1,-1], [-1,-1], [-1,1]]
     for m, center in enumerate(centers):
@@ -64,9 +64,14 @@ def generate_synthetic_data(dataset, seed=None):
             center + 0.1 * np.random.randn(end-start,2)
 
     # Override the mean weight
-    true_model.network.weight_dist.mu = np.zeros(B)
+    true_model.network.weight_dist.mu = 0.25 * np.ones(B)
     true_model.network.weight_dist.sigma = 0.5**2 * np.eye(B)
     true_model.weight_model.resample()
+
+    # Force self inhibition
+    for n in xrange(N):
+        true_model.weight_model.W[n,n,:] = -1
+        true_model.weight_model.A[n,n] = 1
 
     plt.figure()
     W_lim = np.amax(abs(true_model.weight_model.W_effective.sum(2)))
@@ -124,4 +129,4 @@ def generate_synthetic_data(dataset, seed=None):
         cPickle.dump(S_test, f, protocol=-1)
 
 
-generate_synthetic_data("synth_nb_eigen_short", 2979744453)
+generate_synthetic_data("synth_nb_eigen_long", 2979744453)
