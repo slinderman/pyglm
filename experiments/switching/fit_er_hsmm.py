@@ -61,7 +61,7 @@ def fit_with_gibbs(dataset, run, seed=None):
     test_model.add_data(train)
 
     # Initialize with the standard model
-    # test_model.initialize_with_standard_model(init_model)
+    test_model.initialize_with_standard_model(init_model)
 
     # Convolve the test data for fast heldout likelihood calculations
     packed_test = test_model.add_data(test)
