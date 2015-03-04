@@ -56,17 +56,19 @@ def fit_with_gibbs(dataset, run, seed=None):
                             network_hypers=true_model.network_hypers)
     test_model.add_data(train)
 
-    # Initialize with the standard model
-    test_model.initialize_with_standard_model(init_model)
-
     # Convolve the test data for fast heldout likelihood calculations
     F_test = test_model.basis.convolve_with_basis(test)
+
+    # Initialize with the standard model
+    test_model.initialize_with_standard_model(init_model)
+    print "Init PLL: ", init_model.heldout_log_likelihood(test)
+
 
     ###########################################################
     # Fit the test model with Gibbs sampling
     ###########################################################
     # raw_input("Press any key to continue...\n")
-    N_samples = 1000
+    N_samples = 300
     samples = [test_model.copy_sample()]
     lps = [test_model.log_probability()]
     plls = [test_model.heldout_log_likelihood(test, F=F_test)]
@@ -80,10 +82,16 @@ def fit_with_gibbs(dataset, run, seed=None):
 
         print ""
         print "Gibbs iteration ", itr
-        print "LP: ", lps[-1]
+        print "LP:  ", lps[-1]
+        print "PLL: ", plls[-1]
 
         test_model.resample_model()
 
+        # Save intermediate sample
+        with gzip.open(
+                os.path.join(res_dir,
+                             "gibbs.itr%04d.pkl.gz" % itr), "w") as f:
+            cPickle.dump((test_model.copy_sample(), timestamps[-1]), f, protocol=-1)
 
     plt.ioff()
 

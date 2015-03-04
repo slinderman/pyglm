@@ -3,6 +3,7 @@ import sys
 import gzip
 import cPickle
 import numpy as np
+from scipy.misc import logsumexp
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -58,7 +59,7 @@ def plot_pred_ll_vs_time(dataset, run, algs, Z=1.0, nbins=4):
     results = load_results(dataset, run, algs)
 
     # Plot predictive likelihood vs wall clock time
-    fig = create_figure((5,3))
+    fig = create_figure((6.5,3))
     ax = fig.add_subplot(111)
     col = harvard_colors()
     plt.grid()
@@ -77,7 +78,7 @@ def plot_pred_ll_vs_time(dataset, run, algs, Z=1.0, nbins=4):
     # true_pll = true_model.heldout_log_likelihood(train)
     # import pdb; pdb.set_trace()
 
-    assert "bfgs" in results
+    # assert "bfgs" in results
     # t_bfgs = timestamps["bfgs"]
     t_bfgs = 1.0
     t_start = 1.0
@@ -90,53 +91,22 @@ def plot_pred_ll_vs_time(dataset, run, algs, Z=1.0, nbins=4):
     plls       = lambda x: np.array(x[2])
     timestamps = lambda x: np.array(x[3])
 
-    if 'svi' in results:
-        isreal = ~np.isnan(plls(results['svi']))
-        svis = plls(results['svi'])[isreal]
-        t_svi = timestamps(results['svi'])[isreal]
-        t_svi = t_bfgs + t_svi - t_svi[0]
-        t_stop = max(t_stop, t_svi[-1])
-        ax.semilogx(t_svi, (svis - homog_pll)/Z,
-                    color=col[0], label="SVI", lw=1.5)
+    for i, alg in enumerate(algs):
+        if alg == "bfgs": continue
+        if alg in results:
+            t_gibbs = timestamps(results[alg])
+            t_gibbs = t_bfgs + t_gibbs
+            t_stop = max(t_stop, t_gibbs[-1])
+            ax.semilogx(t_gibbs, (plls(results[alg]) - homog_pll)/Z,
+                        color=col[i], label=alg.upper(), lw=1.5)
 
-    if 'vb' in results:
-        t_vb = timestamps(results['vb'])
-        t_vb = t_bfgs + t_vb
-        t_stop = max(t_stop, t_vb[-1])
-        ax.semilogx(t_vb, (plls(results['vb']) - homog_pll)/Z,
-                    color=col[1], label="VB", lw=1.5)
-
-    if 'gibbs' in results:
-        t_gibbs = timestamps(results['gibbs'])
-        t_gibbs = t_bfgs + t_gibbs
-        t_stop = max(t_stop, t_gibbs[-1])
-        ax.semilogx(t_gibbs, (plls(results['gibbs']) - homog_pll)/Z,
-                    color=col[2], label="Gibbs", lw=1.5)
-
-
-    # Extend lines to t_st
-    # if 'svi' in plls and 'svi' in timestamps:
-    #     final_svi_pll = -np.log(4) + logsumexp(svis[-4:])
-    #     ax.semilogx([t_svi[-1], t_stop],
-    #                 [(final_svi_pll - plls['homog'])/Z,
-    #                  (final_svi_pll - plls['homog'])/Z],
-    #                 '--',
-    #                 color=col[0], lw=1.5)
-
-    # if 'vb' in plls and 'vb' in timestamps:
-    #     ax.semilogx([t_vb[-1], t_stop],
-    #                 [(plls['vb'][-1] - plls['homog'])/Z,
-    #                  (plls['vb'][-1] - plls['homog'])/Z],
-    #                 '--',
-    #                 color=col[1], lw=1.5)
-    #
     if "bfgs" in results:
         bfgs_model = results["bfgs"]
         bfgs_pll = bfgs_model.heldout_log_likelihood(test)
         ax.semilogx([t_start, t_stop],
                     [(bfgs_pll - homog_pll)/Z,
                      (bfgs_pll - homog_pll)/Z],
-                    color=col[3], lw=1.5, label="MAP" )
+                    color=col[len(algs)-1], lw=1.5, label="MAP" )
 
     if true_model is not None:
         true_ll = true_model.heldout_log_likelihood(test)
@@ -179,6 +149,80 @@ def plot_pred_ll_vs_time(dataset, run, algs, Z=1.0, nbins=4):
     fig_path = os.path.join(res_dir, "pred_ll_vs_time.pdf")
     fig.savefig(fig_path)
 
+
+
+def plot_pred_ll_bar(dataset, run, algs, Z=1.0, nbins=4):
+
+    # Load the data and results
+    train, test, true_model = load_data(dataset)
+    res_dir = os.path.join("results", dataset, "run%03d" % run)
+    results = load_results(dataset, run, algs)
+
+    # Plot predictive likelihood vs wall clock time
+    fig = create_figure((6.5,3))
+    ax = fig.add_subplot(111)
+    col = harvard_colors()
+    plt.grid()
+
+    # Compute the max and min time in seconds
+    N = train.shape[1]
+    homog_model = HomogeneousPoissonModel(N)
+    homog_model.add_data(train)
+    homog_model.fit()
+    homog_pll = homog_model.heldout_log_likelihood(test)
+
+    # Normalize PLL by number of time bins
+    Z = float(test.shape[0])
+
+
+    # Helpers to parse results tuple
+    samples    = lambda x: x[0]
+    vlbs       = lambda x: np.array(x[1])
+    lps        = lambda x: np.array(x[1])
+    plls       = lambda x: np.array(x[2])
+    timestamps = lambda x: np.array(x[3])
+
+    N_avg = 100
+
+    for i, alg in enumerate(algs):
+        if alg == "bfgs": continue
+        if alg in results:
+            alg_pll = plls(results[alg])
+            mean_pll = -np.log(N_avg) + logsumexp(alg_pll[-N_avg:])
+            ax.bar(i, (mean_pll - homog_pll)/Z,
+                        color=col[i], label=alg.upper(), lw=1.5)
+
+    if "bfgs" in results:
+        bfgs_model = results["bfgs"]
+        bfgs_pll = bfgs_model.heldout_log_likelihood(test)
+        ax.bar(len(algs)-1, (bfgs_pll - homog_pll)/Z,
+               color=col[len(algs)-1], label="MAP", lw=1.5)
+
+    if true_model is not None:
+        true_ll = true_model.heldout_log_likelihood(test)
+        ax.bar(len(algs), (true_ll - homog_pll) / Z,
+                    color='k', lw=1.5, label="True" )
+
+    # Put a legend above
+    plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
+               ncol=5, mode="expand", borderaxespad=0.,
+               prop={'size':9})
+
+
+    # Format the ticks
+    ax.set_ylabel('Pred. LL (bps)')
+    ax.set_ylim(0.4,0.8)
+
+    # plt.tight_layout()
+    plt.subplots_adjust(bottom=0.2, left=0.2)
+    # plt.title("Predictive Log Likelihood ($T=%d$)" % T_train)
+    plt.show()
+
+    # Save the figure
+    fig_path = os.path.join(res_dir, "pred_ll_bar.pdf")
+    fig.savefig(fig_path)
+
+
 args = sys.argv
 assert len(args) == 3
 dataset = args[1]
@@ -187,5 +231,20 @@ run = int(args[2])
 print "Dataset: ", dataset
 print "Run:     ", run
 
-plot_pred_ll_vs_time(dataset=dataset, run=1,
-                     algs=("bfgs", "gibbs", "vb", "svi"))
+
+# plot_pred_ll_vs_time(dataset=dataset, run=1,
+#                      algs=("empty-hsmm",
+#                            "er-hsmm",
+#                            "er-hmm",
+#                            "bfgs",
+#                             ))
+
+
+plot_pred_ll_bar(dataset=dataset, run=1,
+                     algs=("empty-hsmm",
+                           "er-hsmm",
+                           "er-hmm",
+                           "bfgs",
+                            ))
+
+

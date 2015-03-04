@@ -48,7 +48,10 @@ def fit_with_gibbs(dataset, run, seed=None):
     # Create a test spike-and-slab model
     ###########################################################
     hdp_hmm_hypers = true_model.hdp_hmm_hypers
-    del hdp_hmm_hypers["dur_distns"]
+
+    if "dur_distns" in hdp_hmm_hypers:
+        del hdp_hmm_hypers["dur_distns"]
+
     test_model = NegativeBinomialEmptyHDPHMM(N=N, M=M, dt=dt, dt_max=dt_max, B=B,
                             basis_hypers=true_model.basis_hypers,
                             observation_hypers=true_model.observation_hypers,
@@ -60,7 +63,7 @@ def fit_with_gibbs(dataset, run, seed=None):
     test_model.add_data(train)
 
     # Initialize with the standard model
-    # test_model.initialize_with_standard_model(init_model)
+    test_model.initialize_with_standard_model(init_model)
 
     # Convolve the test data for fast heldout likelihood calculations
     packed_test = test_model.add_data(test)

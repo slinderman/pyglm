@@ -60,7 +60,7 @@ def fit_with_vb(dataset, run, seed=None):
     ###########################################################
     # Fit the test model with Gibbs sampling
     ###########################################################
-    N_samples = 1000
+    N_samples = 300
     samples = [test_model.copy_sample()]
     vlbs = [test_model.get_vlb()]
     plls = [test_model.heldout_log_likelihood(test, F=F_test)]
@@ -70,6 +70,7 @@ def fit_with_vb(dataset, run, seed=None):
         print ""
         print "VB iteration ", itr
         print "VLB: ", vlbs[-1]
+        print "PLL: ", plls[-1]
 
         test_model.meanfield_coordinate_descent_step()
         vlbs.append(test_model.get_vlb())

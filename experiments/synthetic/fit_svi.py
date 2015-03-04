@@ -42,7 +42,7 @@ def fit_with_svi(dataset, run, seed=None):
     # Create a test spike-and-slab model
     ###########################################################
     # Copy the network hypers.
-    test_model = NegativeBinomialPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
+    test_model = NegativeBinomialEigenmodelPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
                             basis_hypers=true_model.basis_hypers,
                             observation_hypers=true_model.observation_hypers,
                             activation_hypers=true_model.activation_hypers,
@@ -57,6 +57,7 @@ def fit_with_svi(dataset, run, seed=None):
 
     # Initialize with the standard model
     test_model.initialize_with_standard_model(init_model)
+    test_model.resample_from_mf()
 
     # Convolve the test data for fast heldout likelihood calculations
     F_test = test_model.basis.convolve_with_basis(test)
@@ -70,6 +71,17 @@ def fit_with_svi(dataset, run, seed=None):
     stepsize = (np.arange(N_samples) + delay)**(-forgetting_rate)
 
 
+    # TODO: DEBUGGGGGG
+    # import  matplotlib.pyplot as plt
+    # plt.ion()
+    # fig = plt.figure(1)
+    # ax=fig.add_subplot(111)
+    # test_model.network.adjacency_dist.plot(test_model.weight_model.A, ax=ax)
+    # plt.pause(0.001)
+
+    # import pdb; pdb.set_trace()
+    # test_model.network.adjacency_dist.init_with_gibbs(true_model.network.adjacency_dist)
+
     samples = [test_model.copy_sample()]
     vlbs = []
     # vlbs = [test_model.get_vlb()]
@@ -78,9 +90,11 @@ def fit_with_svi(dataset, run, seed=None):
     start = time.clock()
     for itr in xrange(N_samples):
         print ""
-        print "SVI iteration ", itr, ".\tStep size: %.3f" % stepsize[itr]
+        print "SVI iteration ", itr
+        print "Step size: %.3f" % stepsize[itr]
+
         # print "VLB: ", vlbs[-1]
-        print "Pred LL:      ", plls[-1]
+        print "PLL: ", plls[-1]
 
         test_model.svi_step(stepsize=stepsize[itr])
         # vlbs.append(test_model.get_vlb())
@@ -94,6 +108,18 @@ def fit_with_svi(dataset, run, seed=None):
         plls.append(test_model.heldout_log_likelihood(test, F=F_test))
         samples.append(test_model.copy_sample())
         timestamps.append(time.clock()-start)
+
+        # Save intermediate sample
+        # with gzip.open(
+        #         os.path.join(res_dir,
+        #                      "svi.itr%04d.pkl.gz" % itr), "w") as f:
+        #     cPickle.dump((test_model.copy_sample(), timestamps[-1]), f, protocol=-1)
+
+        # if itr % 10 == 0:
+        #     ax.cla()
+        #     test_model.network.adjacency_dist.plot(test_model.weight_model.A, ax=ax)
+        #     plt.pause(0.001)
+
 
     ###########################################################
     # Save the results

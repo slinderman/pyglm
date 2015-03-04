@@ -45,7 +45,7 @@ def fit_with_bfgs(dataset, run, seed=None):
     ###########################################################
     # Fit the test model with L1-regularized logistic regression
     ###########################################################
-    test_model.fit()
+    test_model.fit(L1=True)
 
     ###########################################################
     # Save the fit model

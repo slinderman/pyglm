@@ -1,4 +1,5 @@
 import os
+import sys
 import gzip
 import cPickle
 import numpy as np
@@ -137,5 +138,13 @@ def run_link_prediction(dataset, run, algs):
     fig_path = os.path.join(res_dir, "precision_recall.pdf")
     fig.savefig(fig_path)
 
-run_link_prediction("synth_nb_eigen_K50_T10000", run=1,
+args = sys.argv
+assert len(args) == 3
+dataset = args[1]
+run = int(args[2])
+
+print "Dataset: ", dataset
+print "Run:     ", run
+
+run_link_prediction(dataset=dataset, run=1,
                      algs=("bfgs", "gibbs", "vb", "svi"))

@@ -97,6 +97,10 @@ class _HDPHMMPopulationMixin(object):
     def network_hypers(self):
         return self.populations[0].network_hypers
 
+    def initialize_with_standard_model(self, standard_model):
+        for population in self.populations:
+            population.initialize_with_standard_model(standard_model)
+
     def add_data(self, data, stateseq=None, packed_data=None, **kwargs):
         """
         Add a spike train to the model. We need to augment the spike train

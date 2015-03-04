@@ -18,6 +18,11 @@ class NoWeights(Component):
         self.A = np.zeros((self.N, self.N))
         self.W = np.zeros((self.N, self.N, self.B))
 
+        # TODO: Fix hack
+        self.E_A = self.A
+        self.E_W = self.W
+        self.E_WWT = np.zeros((self.N, self.N, self.B, self.B))
+
     @property
     def N(self):
         return self.population.N
@@ -29,6 +34,9 @@ class NoWeights(Component):
     @property
     def W_effective(self):
         return self.W
+
+    def initialize_with_standard_model(self, standard_model):
+        pass
 
     def resample(self, augmented_data):
         pass
@@ -281,7 +289,7 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
     def E_WWT(self):
         return self.mf_expected_wwT_given_A(1)
 
-    def initialize_with_standard_model(self, standard_model):
+    def initialize_with_standard_model(self, standard_model, threshold=98):
         """
         Initialize with the weights from a standard model
         :param standard_model:
@@ -294,10 +302,20 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         # Make sure it is the correct shape before copying
         assert W_std.shape == (self.N, self.N, self.B)
 
-        self.mf_p = 0.9 * np.ones((self.N, self.N))
+        # Keep all the connections
+        if threshold is None:
+            self.A = np.ones((self.N, self.N))
+        else:
+            # Only keep the weights that exceed the threshold
+            assert threshold >= 0 and threshold <= 100
+            W_cutoff = np.percentile(abs(self.W.sum(2)), threshold)
+            mf_A = abs(self.W.sum(2)) > W_cutoff
+            self.mf_p = 0.9 * mf_A + 0.1 * (1-mf_A)
+
+        # self.mf_p = 0.9 * np.ones((self.N, self.N))
         self.mf_mu = W_std.copy()
         # self.mf_Sigma = np.tile(self.network.weight_dist.sigma_0 * np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
-        self.mf_Sigma = np.tile(1e-4 * np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
+        self.mf_Sigma = np.tile(1e-5 * np.eye(self.B)[None, None, :, :], (self.N, self.N, 1, 1))
 
     def old_meanfieldupdate(self, augmented_data):
 
@@ -429,6 +447,10 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         # Mean field update the binary indicator of an edge
         self.mf_p[n_pre, n_post] = (1.0 - stepsize) * self.mf_p[n_pre, n_post] \
                                    + stepsize * rho_post
+
+        # logit_rho_post = (1-stepsize) * logit(self.mf_p[n_pre, n_post]) + \
+        #                  stepsize * logit_rho_post
+        # self.mf_p[n_pre, n_post] = logistic(logit_rho_post)
 
     def _meanfieldupdate_W(self, n_pre, n_post, stats, stepsize=1.0):
         """

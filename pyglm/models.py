@@ -532,9 +532,11 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
                 print "Iteration: %03d\t LP: %.1f" % (itr[0], self.log_probability())
             itr[0] = itr[0] + 1
 
-        # TODO: Use the L1 regularization!
+        # TODO: Cross validate the L1 regularization for each neuron!
         if L1:
-            self.lmbda = 1.0
+            self.lmbda = 15.0
+        else:
+            self.lmbda = 0
 
         # Fit neurons one at a time
         for n in xrange(self.N):
@@ -676,6 +678,15 @@ class _BayesianPopulationBase(Model):
         self.data_list = []
 
     def initialize_with_standard_model(self, standard_model):
+        """
+        Initialize the model parameters with a standard model.
+        :param standard_model:
+        :return:
+        """
+        self.weight_model.initialize_with_standard_model(standard_model)
+        self.bias_model.initialize_with_standard_model(standard_model)
+
+    def initialize_with_model(self, standard_model):
         """
         Initialize the model parameters with a standard model.
         :param standard_model:
@@ -942,8 +953,11 @@ class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
             initialize_with_standard_model(standard_model)
 
         # Update the network model a few times
+        print "Mean field initializing network:"
         N_network_updates = 10
         for itr in xrange(N_network_updates):
+            sys.stdout.write(".")
+            sys.stdout.flush()
             self.network.meanfieldupdate(self.weight_model)
 
     @line_profiled
