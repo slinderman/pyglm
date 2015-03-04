@@ -204,7 +204,9 @@ class _HDPHMMPopulationMixin(object):
         return artists
 
     def _plot_stateseq_data_values(self,s,ax,state_colors,plot_slice,update):
-        return None
+        if ax:
+            ax.set_xlabel("Time")
+            ax.set_ylabel("State")
 
 
 class _HDPHSMMPopulationMixin(_HDPHMMPopulationMixin):

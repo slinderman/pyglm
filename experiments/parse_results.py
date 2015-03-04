@@ -12,9 +12,9 @@ lps = []
 plls = []
 timestamps = []
 
-dataset = "rgc_nb_eigen_300T"
+dataset = "switching_N20_M10_T10000"
 run = 1
-alg = "gibbs"
+alg = "gibbs.er.hdphsmm"
 _, test, _ = load_data(dataset)
 S_test = test.astype(np.int32)
 
@@ -33,7 +33,8 @@ for res_file in res_files:
         test_model, timestamp = cPickle.load(f)
 
     # Compute the log prob and the predictive log likelihood
-    lps.append(test_model.log_probability())
+    # lps.append(test_model.log_probability())
+    lps.append(0)
     plls.append(test_model.heldout_log_likelihood(S_test))
     samples.append(test_model.copy_sample())
     timestamps.append(timestamp)
