@@ -20,7 +20,8 @@ from pyglm.internals.weights import SpikeAndSlabGaussianWeights, NoWeights
 
 # Import network models
 from pyglm.deps.graphistician import GaussianErdosRenyiFixedSparsity, \
-    GaussianWeightedEigenmodel, GaussianStochasticBlockModel
+    GaussianWeightedEigenmodel, GaussianStochasticBlockModel, \
+    GaussianDistanceModel
 
 from pyglm.utils.basis import CosineBasis
 from pyglm.utils.utils import logistic, dlogistic_dx, logit
@@ -1053,6 +1054,16 @@ class BernoulliEigenmodelPopulation(Population):
 class NegativeBinomialEigenmodelPopulation(NegativeBinomialPopulation):
     _network_class              = GaussianWeightedEigenmodel
     _default_network_hypers     = {"D": 2, "p": 0.01, "sigma_F": 2**2, "lmbda": 1*np.ones(2)}
+
+
+
+class BernoulliDistancePopulation(Population):
+    _network_class              = GaussianDistanceModel
+    _default_network_hypers     = {"D": 2}
+
+class NegativeBinomialDistancePopulation(NegativeBinomialPopulation):
+    _network_class              = GaussianDistanceModel
+    _default_network_hypers     = {"D": 2}
 
 
 class BernoulliSBMPopulation(Population):
