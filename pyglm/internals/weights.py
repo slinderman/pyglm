@@ -3,8 +3,9 @@ Weight models
 """
 import numpy as np
 
+from graphistician.abstractions import GaussianWeightedDirectedNetwork
+
 from pyglm.abstractions import Component
-from pyglm.deps.graphistician.abstractions import GaussianWeightedDirectedNetwork
 from pyglm.internals.distributions import Bernoulli, Gaussian
 from pyglm.utils.utils import logistic, logit
 

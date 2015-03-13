@@ -18,8 +18,8 @@ from pyglm.internals.bias import GaussianBias
 from pyglm.internals.background import NoBackground
 from pyglm.internals.weights import SpikeAndSlabGaussianWeights, NoWeights
 
-# Import network models
-from pyglm.deps.graphistician import GaussianErdosRenyiFixedSparsity, \
+# Import network models from graphistician
+from graphistician import GaussianErdosRenyiFixedSparsity, \
     GaussianWeightedEigenmodel, GaussianStochasticBlockModel, \
     GaussianDistanceModel
 
