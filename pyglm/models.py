@@ -448,6 +448,14 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
             lp += self.log_likelihood(data)
         return lp
 
+    def heldout_log_likelihood(self, S=None, augmented_data=None):
+        if S is not None and augmented_data is None:
+            augmented_data = self.augment_data(S)
+        elif S is None and augmented_data is None:
+            raise Exception("Either S or augmented data must be given")
+
+        return self.log_likelihood(augmented_data)
+
     def _neg_log_posterior(self, x, n):
         """
         Helper function to compute the negative log likelihood
@@ -523,34 +531,97 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
         """
         Fit the negative binomial model using maximum likelihood
         """
-        self._initialize_bias_to_mean()
 
+        # Print progress
         itr = [0]
         def callback(x):
             if itr[0] % 10 == 0:
                 print "Iteration: %03d\t LP: %.1f" % (itr[0], self.log_probability())
             itr[0] = itr[0] + 1
 
-        # TODO: Cross validate the L1 regularization for each neuron!
+
         if L1:
-            self.lmbda = 15.0
+            temp_data_list = copy.copy(self.data_list)
+
+            # Concatenate all the data
+            F = np.vstack([d["F"] for d in self.data_list])
+            S = np.vstack([d["S"] for d in self.data_list])
+
+            # Hold out some data for cross validation
+            offset = int(0.75 * S.shape[0])
+            T_xv = S.shape[0] - offset
+            F_xv = F[offset:, ...]
+            S_xv = S[offset:, ...]
+            augmented_xv_data = {"T": T_xv, "S": S_xv, "F": F_xv}
+
+            # Train on the first part of the data
+            F    = F[:offset, ...]
+            S    = S[:offset, ...]
+
+            self.data_list = []
+            self.add_data(S, F)
+
+            # Select the L1 regularization parameter using cross validation
+            lmbdas = np.logspace(-1,2,10)
+
+            # Initialize to the mean
+            self._initialize_bias_to_mean()
+
+            # Fit neurons one at a time
+            for n in xrange(self.N):
+                print "Optimizing process ", n
+                bs      = []
+                weights    = []
+                xv_scores = []
+
+                for lmbda in lmbdas:
+                    print "Lambda: ", lmbda
+                    self.lmbda = lmbda
+                    itr[0] = 0
+                    x0 = np.concatenate(([self.b[n]], self.weights[n,:]))
+                    res = minimize(self._neg_log_posterior,
+                                   x0,
+                                   jac=self._grad_neg_log_posterior,
+                                   args=(n,),
+                                   callback=callback)
+
+                    xf = res.x
+                    bs.append(xf[0])
+                    weights.append(xf[1:])
+                    xv_scores.append(self.log_likelihood(augmented_xv_data, n=n))
+
+                # Choose the regularization penalty with cross validation
+                print "XV Scores: "
+                for lmbda,score  in zip(lmbdas, xv_scores):
+                    print "\tlmbda: %.5f\tscore: %.1f" % (lmbda,score)
+                best = np.argmax(xv_scores)
+                print "Best lmbda: ", lmbdas[best]
+
+                self.b[n]         = bs[best]
+                self.weights[n,:] = weights[best]
+
+            # Restore the data list
+            self.data_list = temp_data_list
+
         else:
-            self.lmbda = 0
+            # Fit without any regularization
+            self._initialize_bias_to_mean()
 
-        # Fit neurons one at a time
-        for n in xrange(self.N):
-            print "Optimizing process ", n
-            itr[0] = 0
-            x0 = np.concatenate(([self.b[n]], self.weights[n,:]))
-            res = minimize(self._neg_log_posterior,
-                           x0,
-                           jac=self._grad_neg_log_posterior,
-                           args=(n,),
-                           callback=callback)
+            # Fit neurons one at a time
+            for n in xrange(self.N):
+                print "Optimizing process ", n
+                self.lmbda = 0
+                itr[0] = 0
+                x0 = np.concatenate(([self.b[n]], self.weights[n,:]))
+                res = minimize(self._neg_log_posterior,
+                               x0,
+                               jac=self._grad_neg_log_posterior,
+                               args=(n,),
+                               callback=callback)
 
-            xf = res.x
-            self.b[n]         = xf[0]
-            self.weights[n,:] = xf[1:]
+                xf = res.x
+                self.b[n]         = xf[0]
+                self.weights[n,:] = xf[1:]
 
 
 class _BayesianPopulationBase(Model):
