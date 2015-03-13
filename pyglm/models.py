@@ -12,21 +12,19 @@ from scipy.optimize import minimize
 
 from pybasicbayes.abstractions import Model, ModelGibbsSampling, ModelMeanField
 
+# Import network models from graphistician
+from graphistician import GaussianErdosRenyiFixedSparsity, \
+    GaussianWeightedEigenmodel, GaussianStochasticBlockModel, \
+    GaussianDistanceModel
+
 from pyglm.internals.observations import BernoulliObservations, NegativeBinomialObservations
 from pyglm.internals.activation import DeterministicActivation
 from pyglm.internals.bias import GaussianBias
 from pyglm.internals.background import NoBackground
 from pyglm.internals.weights import SpikeAndSlabGaussianWeights, NoWeights
 
-# Import network models from graphistician
-from graphistician import GaussianErdosRenyiFixedSparsity, \
-    GaussianWeightedEigenmodel, GaussianStochasticBlockModel, \
-    GaussianDistanceModel
-
 from pyglm.utils.basis import CosineBasis
 from pyglm.utils.utils import logistic, dlogistic_dx, logit
-
-
 from pyglm.utils.profiling import line_profiled
 
 
@@ -1057,14 +1055,17 @@ class NegativeBinomialEigenmodelPopulation(NegativeBinomialPopulation):
 
 
 
-class BernoulliDistancePopulation(Population):
+class BernoulliDistancePopulation(_GibbsPopulation):
     _network_class              = GaussianDistanceModel
     _default_network_hypers     = {"D": 2}
 
-class NegativeBinomialDistancePopulation(NegativeBinomialPopulation):
+
+class NegativeBinomialDistancePopulation(_GibbsPopulation):
     _network_class              = GaussianDistanceModel
     _default_network_hypers     = {"D": 2}
 
+    _observation_class          = NegativeBinomialObservations
+    _default_observation_hypers = {"xi": 10.0}
 
 class BernoulliSBMPopulation(Population):
     _network_class              = GaussianStochasticBlockModel
