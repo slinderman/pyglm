@@ -2,12 +2,11 @@
 Weight models
 """
 import numpy as np
-
 from graphistician.abstractions import GaussianWeightedDirectedNetwork
 
 from pyglm.abstractions import Component
-from pyglm.internals.distributions import Bernoulli, Gaussian
-from pyglm.utils.utils import logistic, logit
+from pyglm.internals.distributions import Bernoulli, Gaussian, TruncatedScalarGaussian
+from pyglm.utils.utils import logistic, logit, normal_cdf, sample_truncnorm
 
 from pyglm.utils.profiling import line_profiled
 
@@ -610,3 +609,225 @@ class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 class SpikeAndSlabGaussianWeights(_GibbsSpikeAndSlabGaussianWeights,
                                   _MeanFieldSpikeAndSlabGaussianWeights):
     pass
+
+
+class SpikeAndSlabTruncatedGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
+    """
+    Base class for truncated spike and slab Gaussian weights
+    """
+    def __init__(self, population, lb=-np.Inf, ub=np.Inf):
+        self.lb = lb
+        self.ub = ub
+
+        super(SpikeAndSlabTruncatedGaussianWeights, self).\
+            __init__(population)
+
+        self.resample()
+
+
+    def initialize_with_standard_model(self, standard_model, threshold=75):
+        """
+        Initialize with the weights from a standard model
+        :param standard_model:
+        :param threshold:      percentile [0,100] of minimum weight
+        :return:
+        """
+        W_std = standard_model.W
+
+        # Make sure it is the correct shape before copying
+        assert W_std.shape == (self.N, self.N, self.B)
+
+        # Clip the standard weights to the truncated range
+        self.W = np.clip(W_std.copy(), self.lb, self.ub)
+
+        # Keep all the connections
+        if threshold is None:
+            self.A = np.ones((self.N, self.N))
+        else:
+            # Only keep the weights that exceed the threshold
+            assert threshold >= 0 and threshold <= 100
+            W_cutoff = np.percentile(abs(self.W.sum(2)), threshold)
+            self.A = abs(self.W.sum(2)) > W_cutoff
+
+    def log_prior(self):
+        lprior = 0
+        P = self.network.P
+        Mu = self.network.Mu
+        Sigma = self.network.Sigma
+
+        # Log prob of connections
+        lprior += Bernoulli(P).log_probability(self.A).sum()
+
+        # Log prob of weights
+        for n_pre in xrange(self.N):
+            for n_post in xrange(self.N):
+                for b in xrange(self.B):
+                    lprior += self.A[n_pre,n_post] * \
+                              (TruncatedScalarGaussian(Mu[n_pre,n_post,b],
+                                                       Sigma[n_pre,n_post,b,b],
+                                                       self.lb, self.ub)
+                               .log_probability(self.W[n_pre,n_post,b]))
+
+                    if not np.isfinite(lprior):
+                        import pdb; pdb.set_trace()
+
+        return lprior
+
+
+    @line_profiled
+    def resample(self, augmented_data=[]):
+        # Handle lists of data
+        if not isinstance(augmented_data, list):
+            augmented_data = [augmented_data]
+
+        # Precompute Psi. We can update it as we add and remove edges
+        Psis = [self.activation.compute_psi(data) for data in augmented_data]
+
+        #  TODO: We can parallelize over n_post
+        for n_post in xrange(self.N):
+
+            # Randomly permute the order in which we resample presynaptic weights
+            perm = np.random.permutation(self.N)
+            for n_pre in perm:
+                # Get the filtered spike trains associated with this synapse
+                F_pres = [data["F"][:,n_pre,:] for data in augmented_data]
+
+                # Compute the activation from other neurons
+                if self.A[n_pre, n_post]:
+                    for Psi, F_pre in zip(Psis, F_pres):
+                        Psi[:,n_post] -= F_pre.dot(self.W[n_pre, n_post,:])
+
+                psi_others = [Psi[:,n_post] for Psi in Psis]
+
+
+                # Compute the sufficient statistics for this synapse
+                suff_stats = self._get_sufficient_statistics(augmented_data,
+                                                             n_pre, n_post,
+                                                             psi_others)
+                post_stats = self._posterior_statistics(n_pre, n_post,
+                                                        suff_stats)
+
+
+                # Sample the spike variable
+                self._resample_A(n_pre, n_post, post_stats)
+
+                # Sample the slab variable
+                if self.A[n_pre, n_post]:
+                    self._resample_W(n_pre, n_post, post_stats)
+                else:
+                    self.W[n_pre, n_post,:] = 0.0
+
+                # Update Psi to account for new weight
+                for F_pre, Psi, psi_other in zip(F_pres, Psis, psi_others):
+                    Psi[:,n_post] = psi_other
+                    if self.A[n_pre, n_post]:
+                        Psi[:,n_post] += F_pre.dot(self.W[n_pre, n_post,:])
+
+    @line_profiled
+    def _get_sufficient_statistics(self, augmented_data, n_pre, n_post, psi_others):
+        """
+        Get the sufficient statistics for this synapse.
+        """
+        lkhd_prec           = 0
+        lkhd_mean_dot_prec  = 0
+
+        # Compute the sufficient statistics of the likelihood
+        for data, psi_other in zip(augmented_data, psi_others):
+            lkhd_prec           += self.activation.precision(data, synapse=(n_pre,n_post))
+            lkhd_mean_dot_prec  += self.activation.mean_dot_precision(data,
+                                                                      synapse=(n_pre,n_post),
+                                                                      psi_other=psi_other)
+
+        return lkhd_prec, lkhd_mean_dot_prec
+
+    def _posterior_statistics(self, n_pre, n_post, stats):
+        lkhd_prec, lkhd_mean_dot_prec = stats
+
+        mu_w                = self.network.Mu[n_pre, n_post, :]
+        Sigma_w             = self.network.Sigma[n_pre, n_post, :, :]
+
+        prior_prec          = np.linalg.inv(Sigma_w)
+        prior_mean_dot_prec = mu_w.dot(prior_prec)
+
+        post_prec           = prior_prec + lkhd_prec
+        post_cov            = np.linalg.inv(post_prec)
+
+        # TODO: Verify that this is correct.
+        # Under an independent, truncated Normal prior for each entry in W,
+        # the posterior covariance is simply the diagonal of what it would
+        # be under a correlated, multivariate Normal prior
+        post_cov = np.diag(np.diag(post_cov))
+        post_prec = np.diag(np.diag(post_prec))
+
+        post_mu             = (prior_mean_dot_prec + lkhd_mean_dot_prec).dot(post_cov)
+        post_mu             = post_mu.ravel()
+
+        return post_mu, post_cov, post_prec
+
+    @line_profiled
+    def _resample_A(self, n_pre, n_post, stats):
+        """
+        Resample the presence or absence of a connection (synapse)
+        :param n_pre:
+        :param n_post:
+        :param stats:
+        :return:
+        """
+        prior_mu                         = self.network.Mu[n_pre, n_post, :]
+        prior_cov                       = self.network.Sigma[n_pre, n_post, :, :]
+        prior_sigmasq = np.diag(prior_cov)
+
+        post_mu, post_cov, post_prec = stats
+        post_sigmasq = np.diag(post_cov)
+        rho                          = self.network.P[n_pre, n_post]
+
+        # Compute the log odds ratio
+        logdet_prior_cov = 0.5*np.log(prior_sigmasq).sum()
+        logdet_post_cov  = 0.5*np.log(post_sigmasq).sum()
+        logit_rho_post   = logit(rho) \
+                           + 0.5 * (logdet_post_cov - logdet_prior_cov) \
+                           + 0.5 * post_mu.dot(post_prec).dot(post_mu) \
+                           - 0.5 * prior_mu.dot(np.linalg.solve(prior_cov, prior_mu))
+
+        # The truncated normal prior introduces another term,
+        # the ratio of the normalizers of the truncated distributions
+        logit_rho_post += np.log(normal_cdf((self.ub-post_mu) / np.sqrt(post_sigmasq)) -
+                                 normal_cdf((self.lb-post_mu) / np.sqrt(post_sigmasq))).sum()
+
+        logit_rho_post -= np.log(normal_cdf((self.ub-prior_mu) / np.sqrt(prior_sigmasq)) -
+                                 normal_cdf((self.lb-prior_mu) / np.sqrt(prior_sigmasq))).sum()
+
+        rho_post = logistic(logit_rho_post)
+
+        # Sample the binary indicator of an edge
+        self.A[n_pre, n_post] = np.random.rand() < rho_post
+
+    def _resample_W(self, n_pre, n_post, stats):
+        """
+        Resample the weight of a connection (synapse)
+        :param n_pre:
+        :param n_post:
+        :param stats:
+        :return:
+        """
+        post_mu, post_cov, post_prec = stats
+        post_sigma = np.sqrt(np.diag(post_cov))
+
+        for b in xrange(self.B):
+            self.W[n_pre, n_post, b] = sample_truncnorm(post_mu[b], post_sigma[b],
+                                                        self.lb, self.ub)
+
+            if not np.isfinite(self.W[n_pre, n_post, b]):
+                import pdb; pdb.set_trace()
+
+            if self.W[n_pre, n_post, b] < self.lb or self.W[n_pre, n_post, b] > self.ub:
+                import pdb; pdb.set_trace()
+
+    # TODO: Implement mean field
+    def E_A(self): raise NotImplementedError()
+    def E_W(self): raise NotImplementedError()
+    def E_WWT(self): raise NotImplementedError()
+    def get_vlb(self, augmented_data): raise NotImplementedError()
+    def meanfieldupdate(self, augmented_data): raise NotImplementedError()
+    def resample_from_mf(self, augmented_data): raise NotImplementedError()
+    def svi_step(self, augmented_data, minibatchfrac, stepsize): raise NotImplementedError()

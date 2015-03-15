@@ -15,13 +15,13 @@ from pybasicbayes.abstractions import Model, ModelGibbsSampling, ModelMeanField
 # Import network models from graphistician
 from graphistician import GaussianErdosRenyiFixedSparsity, \
     GaussianWeightedEigenmodel, GaussianStochasticBlockModel, \
-    GaussianDistanceModel
+    GaussianDistanceModel, FixedGaussianDistanceModel
 
 from pyglm.internals.observations import BernoulliObservations, NegativeBinomialObservations
 from pyglm.internals.activation import DeterministicActivation
 from pyglm.internals.bias import GaussianBias
 from pyglm.internals.background import NoBackground
-from pyglm.internals.weights import SpikeAndSlabGaussianWeights, NoWeights
+from pyglm.internals.weights import NoWeights, SpikeAndSlabGaussianWeights, SpikeAndSlabTruncatedGaussianWeights
 
 from pyglm.utils.basis import CosineBasis
 from pyglm.utils.utils import logistic, dlogistic_dx, logit
@@ -562,23 +562,24 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
             self.add_data(S, F)
 
             # Select the L1 regularization parameter using cross validation
-            lmbdas = np.logspace(-1,2,10)
+            lmbdas = np.logspace(-1,3,30)
 
             # Initialize to the mean
             self._initialize_bias_to_mean()
 
             # Fit neurons one at a time
             for n in xrange(self.N):
-                print "Optimizing process ", n
+                print "Optimizing neuron ", n
                 bs      = []
                 weights    = []
                 xv_scores = []
+
+                x0 = np.concatenate(([self.b[n]], self.weights[n,:]))
 
                 for lmbda in lmbdas:
                     print "Lambda: ", lmbda
                     self.lmbda = lmbda
                     itr[0] = 0
-                    x0 = np.concatenate(([self.b[n]], self.weights[n,:]))
                     res = minimize(self._neg_log_posterior,
                                    x0,
                                    jac=self._grad_neg_log_posterior,
@@ -593,7 +594,7 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
                 # Choose the regularization penalty with cross validation
                 print "XV Scores: "
                 for lmbda,score  in zip(lmbdas, xv_scores):
-                    print "\tlmbda: %.5f\tscore: %.1f" % (lmbda,score)
+                    print "\tlmbda: %.3f\tscore: %.1f" % (lmbda,score)
                 best = np.argmax(xv_scores)
                 print "Best lmbda: ", lmbdas[best]
 
@@ -1115,6 +1116,7 @@ class NegativeBinomialEmptyPopulation(NegativeBinomialPopulation):
     _weight_class               = NoWeights
     _default_weight_hypers      = {}
 
+
 class BernoulliEigenmodelPopulation(Population):
     _network_class              = GaussianWeightedEigenmodel
     _default_network_hypers     = {"D": 2, "p": 0.05, "sigma_F": 10, "lmbda": 1*np.ones(2)}
@@ -1123,7 +1125,6 @@ class BernoulliEigenmodelPopulation(Population):
 class NegativeBinomialEigenmodelPopulation(NegativeBinomialPopulation):
     _network_class              = GaussianWeightedEigenmodel
     _default_network_hypers     = {"D": 2, "p": 0.01, "sigma_F": 2**2, "lmbda": 1*np.ones(2)}
-
 
 
 class BernoulliDistancePopulation(_GibbsPopulation):
@@ -1138,9 +1139,23 @@ class NegativeBinomialDistancePopulation(_GibbsPopulation):
     _observation_class          = NegativeBinomialObservations
     _default_observation_hypers = {"xi": 10.0}
 
+
+class ExcitatoryNegativeBinomialDistancePopulation(NegativeBinomialDistancePopulation):
+    # Weight and network class must be specified by subclasses
+    _weight_class               = SpikeAndSlabTruncatedGaussianWeights
+    _default_weight_hypers      = {"lb": 0, "ub": np.inf}
+
+    _network_class              = FixedGaussianDistanceModel
+    _default_network_hypers     = {"D": 2}
+
+    _observation_class          = NegativeBinomialObservations
+    _default_observation_hypers = {"xi": 10.0}
+
+
 class BernoulliSBMPopulation(Population):
     _network_class              = GaussianStochasticBlockModel
     _default_network_hypers     = {"C": 2, "p": 0.25}
+
 
 class NegativeBinomialSBMPopulation(NegativeBinomialPopulation):
     _network_class              = GaussianStochasticBlockModel

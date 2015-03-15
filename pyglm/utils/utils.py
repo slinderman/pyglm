@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.linalg import solve, det, inv
+from scipy.special import erfc, erfcinv
 from numpy import prod, diag, log, einsum, diag_indices, exp
 from numpy.linalg import slogdet
 
@@ -11,6 +12,14 @@ def dlogistic_dx(x):
 
 def logit(p):
     return log(p/(1-p))
+
+def normal_pdf(x, mu=0.0, sigma=1.0):
+    z = (x-mu) / sigma
+    return 1.0 / np.sqrt(2*np.pi) / sigma * np.exp(-0.5 * z**2)
+
+def normal_cdf(x, mu=0.0, sigma=1.0):
+    z = (x-mu)/sigma
+    return 0.5 * erfc(-z/ np.sqrt(2))
 
 def invert_low_rank(Ainv, U, C, V, diag=False):
     """
@@ -163,3 +172,27 @@ def logdet_low_rank2(Ainv, U, C, V, diag=False):
     temp.flat[::temp.shape[0]+1] += 1
     return slogdet(temp)[1] - log(Ainv).sum()
 
+def sample_truncnorm(mu=0, sigma=1, lb=-np.Inf, ub=np.Inf):
+    """ Sample a truncated normal with the specified params
+    """
+    # Broadcast arrays to be of the same shape
+    mu, sigma, lb, ub = np.broadcast_arrays(mu, sigma, lb, ub)
+    shp = mu.shape
+    if np.allclose(sigma, 0.0):
+        return mu
+
+    cdflb = normal_cdf(lb, mu, sigma)
+    cdfub = normal_cdf(ub, mu, sigma)
+
+    # Sample uniformly from the CDF
+    cdfsamples = cdflb + np.random.rand(*shp)*(cdfub-cdflb)
+
+    # Clip the CDF samples so that we can invert them
+    cdfsamples = np.clip(cdfsamples, 1e-15, 1-1e-15)
+
+    zs = -np.sqrt(2) * erfcinv(2*cdfsamples)
+
+    assert np.all(np.isfinite(zs))
+
+    smpls = sigma * zs + mu
+    return np.clip(smpls, np.nan_to_num(lb+1e-15), np.nan_to_num(ub-1e-15))
