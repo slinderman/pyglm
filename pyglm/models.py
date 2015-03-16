@@ -20,7 +20,7 @@ from graphistician import GaussianErdosRenyiFixedSparsity, \
 from pyglm.internals.observations import BernoulliObservations, NegativeBinomialObservations
 from pyglm.internals.activation import DeterministicActivation
 from pyglm.internals.bias import GaussianBias
-from pyglm.internals.background import NoBackground
+from pyglm.internals.background import NoBackground, LinearDynamicalSystemBackground
 from pyglm.internals.weights import NoWeights, SpikeAndSlabGaussianWeights, SpikeAndSlabTruncatedGaussianWeights
 
 from pyglm.utils.basis import CosineBasis
@@ -818,7 +818,7 @@ class _BayesianPopulationBase(Model):
             # Add to the data list
             self.data_list.append(augmented_data)
 
-    def generate(self, keep=True, T=100, X_bkgd=None, return_Psi=False, verbose=True):
+    def generate(self, keep=True, T=100, return_Psi=False, verbose=True):
         """
         Generate data from the model.
 
@@ -852,12 +852,8 @@ class _BayesianPopulationBase(Model):
         # Add the bias
         X += self.bias_model.b[None,:]
 
-        # If we have some background features to start with, add them now
-        if X_bkgd is not None:
-            T_bkgd = min(T+L, X_bkgd.shape[0])
-            for n in range(N):
-                assert X_bkgd[n].shape[1] == B
-                X[:T_bkgd, n, :] += X_bkgd[n]
+        # Simulate the background
+        X += self.background_model.generate(T+L)
 
         # Cap the number of spikes in a time bin
         max_spks_per_bin = 10
@@ -885,7 +881,6 @@ class _BayesianPopulationBase(Model):
             # Check Spike limit
             if np.any(S[t,:] >= max_spks_per_bin):
                 n_exceptions += 1
-
 
             # if np.any(S[t,:]>100):
             #     print "More than 10 spikes in a bin! " \
@@ -1010,6 +1005,7 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         self.activation_model.resample(self.data_list)
         self.weight_model.resample(self.data_list)
         self.bias_model.resample(self.data_list)
+        self.background_model.resample(self.data_list)
 
         # Resample the network given the weight model
         self.network.resample(self.weight_model)
@@ -1147,6 +1143,18 @@ class ExcitatoryNegativeBinomialDistancePopulation(NegativeBinomialDistancePopul
 
     _network_class              = FixedGaussianDistanceModel
     _default_network_hypers     = {"D": 2}
+
+    _observation_class          = NegativeBinomialObservations
+    _default_observation_hypers = {"xi": 10.0}
+
+
+class NegativeBinomialLDSPopulation(NegativeBinomialPopulation):
+    # Weight and network class must be specified by subclasses
+    _weight_class               = NoWeights
+    _default_weight_hypers      = {}
+
+    _background_class           = LinearDynamicalSystemBackground
+    _default_background_hypers  = {"D": 2}
 
     _observation_class          = NegativeBinomialObservations
     _default_observation_hypers = {"xi": 10.0}

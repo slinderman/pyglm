@@ -29,6 +29,10 @@ class _ActivationBase(Component):
         return self.population.bias_model
 
     @property
+    def background_model(self):
+        return self.population.background_model
+
+    @property
     def weight_model(self):
         return self.population.weight_model
 
@@ -45,7 +49,7 @@ class _ActivationBase(Component):
         return n_pre, n_post
 
     @line_profiled
-    def compute_residual(self, augmented_data, bias=None, synapse=None):
+    def compute_residual(self, augmented_data, bias=None, synapse=None, bkgd=None):
         """
         Compute the residual activation for either the bias or the specified synapse.
         """
@@ -69,6 +73,9 @@ class _ActivationBase(Component):
                 if nn == n_pre:
                     continue
                 psi += np.dot(F[:,nn,:], W[nn, n_post, :])
+
+        if bkgd is None:
+            psi += self.background_model.mean_background_activation(augmented_data)[:,n_post]
 
         return psi
 
@@ -96,6 +103,8 @@ class DeterministicActivation(_ActivationBase):
         psi += self.bias_model.b[None, :]
         # assert np.allclose(psi, psi2)
 
+        psi += self.background_model.mean_background_activation(augmented_data)
+
         return psi
 
     def rvs(self, X):
@@ -117,6 +126,10 @@ class DeterministicActivation(_ActivationBase):
             F_pre = F[:,n_pre,:]
             return (F_pre * omega[:,None]).T.dot(F_pre)
 
+    def new_precision(self, augmented_data):
+        obs = self.observation_model
+        return obs.omega(augmented_data)
+
     @line_profiled
     def mean_dot_precision(self, augmented_data, bias=None, synapse=None, psi_other=None):
         F = augmented_data["F"]
@@ -134,6 +147,10 @@ class DeterministicActivation(_ActivationBase):
             return trm1.sum()
         else:
             return trm1.dot(F[:,n_pre,:])
+
+    def new_mean(self, augmented_data):
+        obs = self.observation_model
+        return obs.kappa(augmented_data) / obs.omega(augmented_data)
 
     ### Mean Field
     def meanfieldupdate(self, augmented_data):

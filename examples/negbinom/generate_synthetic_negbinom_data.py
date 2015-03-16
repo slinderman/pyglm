@@ -10,7 +10,7 @@ if not os.environ.has_key("DISPLAY"):
 
 import matplotlib.pyplot as plt
 
-from pyglm.models import NegativeBinomialEigenmodelPopulation
+from pyglm.models import NegativeBinomialEigenmodelPopulation, NegativeBinomialLDSPopulation
 
 def generate_synthetic_data(seed=None):
     """
@@ -25,10 +25,10 @@ def generate_synthetic_data(seed=None):
     ###########################################################
     # Create a population model
     ###########################################################
-    N = 50                                                  # Number of neurons
-    T = 100000                                               # Number of time bins
+    N = 10                                                  # Number of neurons
+    T = 1000                                                # Number of time bins
     dt = 1.0                                                # Time bin width
-    dt_max = 100.0                                          # Max time of synaptic influence
+    dt_max = 10.0                                           # Max time of synaptic influence
     B = 1                                                   # Number of basis functions for the weights
 
     #   Bias hyperparameters
@@ -37,30 +37,44 @@ def generate_synthetic_data(seed=None):
     ###########################################################
     #   Network hyperparameters
     ###########################################################
-    network_hypers = {"p": 0.05, "mu_0": np.zeros(B), "Sigma_0": 1.0**2*np.eye(B),
-                      "sigma_F": 1.0}
+    # network_hypers = {"p": 0.05, "mu_0": np.zeros(B), "Sigma_0": 1.0**2*np.eye(B),
+    #                   "sigma_F": 1.0}
+    network_hypers = {}
+
+    ###########################################################
+    #   LDS background hyperparameters
+    ###########################################################
+    bkgd_hypers = {"A": 0.99*np.array([[np.cos(np.pi/24), -np.sin(np.pi/24)],
+                                          [np.sin(np.pi/24),  np.cos(np.pi/24)]]),
+                   "C": np.hstack((np.ones((N,1)), np.zeros((N,1))))
+                  }
 
     ###########################################################
     # Create the model with these parameters
     ###########################################################
-    true_model = NegativeBinomialEigenmodelPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
-                                            bias_hypers=bias_hypers,
-                                            network_hypers=network_hypers)
+    # true_model = NegativeBinomialEigenmodelPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
+    #                                         bias_hypers=bias_hypers,
+    #                                         network_hypers=network_hypers)
 
-    # Override the mean weight
-    true_model.network.weight_dist.mu = np.zeros(B)
-    true_model.network.weight_dist.sigma = 0.5**2 * np.eye(B)
-    true_model.weight_model.resample()
+    true_model = NegativeBinomialLDSPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
+                                               bias_hypers=bias_hypers,
+                                               background_hypers=bkgd_hypers,
+                                               network_hypers=network_hypers)
 
-    plt.figure()
-    W_lim = np.amax(abs(true_model.weight_model.W_effective.sum(2)))
-    plt.imshow(true_model.weight_model.W_effective.sum(2),
-               vmin=-W_lim, vmax=W_lim,
-               interpolation="none", cmap="RdGy")
-    plt.colorbar()
-    plt.show()
-
-    true_model.network.plot(true_model.weight_model.A)
+    # # Override the mean weight
+    # true_model.network.weight_dist.mu = np.zeros(B)
+    # true_model.network.weight_dist.sigma = 0.5**2 * np.eye(B)
+    # true_model.weight_model.resample()
+    #
+    # plt.figure()
+    # W_lim = np.amax(abs(true_model.weight_model.W_effective.sum(2)))
+    # plt.imshow(true_model.weight_model.W_effective.sum(2),
+    #            vmin=-W_lim, vmax=W_lim,
+    #            interpolation="none", cmap="RdGy")
+    # plt.colorbar()
+    # plt.show()
+    #
+    # true_model.network.plot(true_model.weight_model.A)
 
     ###########################################################
     # Sample from the true model
