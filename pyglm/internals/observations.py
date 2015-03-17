@@ -116,6 +116,7 @@ class _PolyaGammaAugmentedObservationsBase(Component):
                         self.rng)
                 augmented_data["omega"][:,n] = tmpn
 
+
     ### Mean field
     def meanfieldupdate(self, augmented_data):
         """
@@ -265,7 +266,6 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
     # Override the Gibbs sampler to also sample xi
     def resample(self, augmented_data_list):
         if self.do_resample_xi:
-            pass
             self._resample_xi_discrete(augmented_data_list)
             # self._resample_xi_slicesample(augmented_data_list)
 

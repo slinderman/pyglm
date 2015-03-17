@@ -101,8 +101,8 @@ class DeterministicActivation(_ActivationBase):
         if not np.allclose(W, 0):
             np.einsum("tmb,mnb->tn", F, W, out=psi)
         psi += self.bias_model.b[None, :]
-        # assert np.allclose(psi, psi2)
 
+        # Add background activations
         psi += self.background_model.mean_background_activation(augmented_data)
 
         return psi

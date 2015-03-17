@@ -16,6 +16,9 @@ class NoBackground(Component):
         self.population = population
         self.N = self.population.N
 
+    def generate(self, T):
+        return np.zeros((T,self.N))
+
     def mean_background_activation(self, augmented_data):
         return np.zeros(self.N)
 
@@ -53,9 +56,9 @@ class LinearDynamicalSystemBackground(Component):
         self.D = D
 
         from pybasicbayes.distributions import Gaussian
-        self.init_dynamics_distn = Gaussian(mu_0=np.zeros(D),
+        self.init_dynamics_distn = Gaussian(mu_0=np.ones(D),
                                             kappa_0=1.0,
-                                            sigma_0=np.eye(D),
+                                            sigma_0=0.000001 * np.eye(D),
                                             nu_0=3.0)
 
         from autoregressive.distributions import AutoRegression
@@ -75,7 +78,6 @@ class LinearDynamicalSystemBackground(Component):
     def augment_data(self, augmented_data):
         # Add a latent state sequence
         augmented_data["states"] = self.generate_states(augmented_data["T"])
-        # augmented_data["states"] = np.zeros((augmented_data["T"], self.D))
 
     def log_likelihood(self, augmented_data):
         raise NotImplementedError
@@ -87,9 +89,14 @@ class LinearDynamicalSystemBackground(Component):
     def generate_states(self, T):
         stateseq = np.empty((T,self.D))
         stateseq[0] = self.init_dynamics_distn.rvs()
+
+        chol = np.linalg.cholesky(self.dynamics_distn.sigma)
+        randseq = np.random.randn(T-1,self.D)
+
         for t in xrange(1,T):
-            stateseq[t] = np.random.multivariate_normal(self.dynamics_distn.A.dot(stateseq[t-1]),
-                                                        self.dynamics_distn.sigma)
+            stateseq[t] = \
+                self.dynamics_distn.A.dot(stateseq[t-1]) \
+                + chol.dot(randseq[t-1])
 
         return stateseq
 
@@ -97,7 +104,6 @@ class LinearDynamicalSystemBackground(Component):
         return augmented_data["states"].dot(self.C.T)
 
     def resample(self, augmented_data_list):
-        # import pdb; pdb.set_trace()
         self.resample_states(augmented_data_list)
         self.resample_parameters(augmented_data_list)
 
@@ -113,15 +119,14 @@ class LinearDynamicalSystemBackground(Component):
             mu_obs = self.activation.new_mean(data)
             prec_obs = self.activation.new_precision(data)
 
-            # Subtract off the residual
+            # Subtract off the activation from other components
             mu_obs -= psi_residual
 
             # Convert prec_obs into an array of diagonal covariance matrices
-            sigma_obs = np.empty((data["T"], self.N, self.N))
+            sigma_obs = np.empty((data["T"], self.N, self.N), order="C")
             for t in xrange(data["T"]):
                 sigma_obs[t,:,:] = np.diag(1./prec_obs[t,:])
 
-            # Update the state sequence
             data["states"] = filter_and_sample(
                 self.init_dynamics_distn.mu,
                 self.init_dynamics_distn.sigma,
@@ -131,15 +136,13 @@ class LinearDynamicalSystemBackground(Component):
                 sigma_obs,
                 mu_obs)
 
-            assert np.all(np.isfinite(data["states"]))
-
     def resample_parameters(self, augmented_data_list):
         self.resample_init_dynamics_distn(augmented_data_list)
         self.resample_dynamics_distn(augmented_data_list)
         self.resample_emission_distn(augmented_data_list)
 
     def resample_init_dynamics_distn(self, augmented_data_list):
-        states_list = [ad["states"] for ad in augmented_data_list]
+        states_list = [ad["states"][0] for ad in augmented_data_list]
         self.init_dynamics_distn.resample(states_list)
 
     def resample_dynamics_distn(self, augmented_data_list):
@@ -179,8 +182,7 @@ class LinearDynamicalSystemBackground(Component):
             for n in xrange(self.N):
                 lkhd_precision[n,:,:] += (data["states"] * prec_obs[:,n][:,None]).T.dot(data["states"])
                 lkhd_mean_dot_precision[n,:] += \
-                    ((mu_obs[:,n] - psi_residual[:,n]) * prec_obs[:,n]).T\
-                        .dot(data["states"])
+                    (mu_obs[:,n] * prec_obs[:,n]).T.dot(data["states"])
 
         # Sample each column of C
         for n in xrange(self.N):

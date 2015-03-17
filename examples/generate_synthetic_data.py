@@ -24,7 +24,7 @@ def generate_synthetic_data(seed=None):
     ###########################################################
     # Create a population model
     ###########################################################
-    N = 5                                                  # Number of neurons
+    N = 20                                                  # Number of neurons
     # C = 1                                                   # Number of clusters
     T = 10000                                               # Number of time bins
     dt = 1.0                                                # Time bin width

@@ -890,7 +890,7 @@ class _BayesianPopulationBase(Model):
         # Cast S to int32
         assert np.all(np.isfinite(S[t,:]))
         assert np.amin(S) >= 0
-        assert np.amax(S) <= 1000
+        assert np.amax(S) <= 1e5
         S = S.astype(np.int32)
 
         if verbose:
@@ -1159,6 +1159,26 @@ class NegativeBinomialLDSPopulation(NegativeBinomialPopulation):
     _observation_class          = NegativeBinomialObservations
     _default_observation_hypers = {"xi": 10.0}
 
+    def heldout_log_likelihood(self, S, F=None, n_resamples=100):
+        """
+        Compute the heldout log likelihood on a spike train, S.
+        """
+        self.add_data(S, F=F)
+        data = self.data_list[-1]
+        # We need to integrate out the latent states of the LDS
+        hll_smpls = np.zeros(n_resamples)
+        for itr in xrange(n_resamples):
+            data["states"] = self.background_model.generate_states(data["T"])
+            hll_smpls[itr] = self.log_likelihood(data).sum()
+
+        # Compute the expectation in log space
+        from scipy.misc import logsumexp
+        hll = -np.log(n_resamples) + logsumexp(hll_smpls)
+
+        # Remove the data
+        self.data_list.pop()
+
+        return hll
 
 class BernoulliSBMPopulation(Population):
     _network_class              = GaussianStochasticBlockModel
