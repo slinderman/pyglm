@@ -1187,4 +1187,4 @@ class BernoulliSBMPopulation(Population):
 
 class NegativeBinomialSBMPopulation(NegativeBinomialPopulation):
     _network_class              = GaussianStochasticBlockModel
-    _default_network_hypers     = {"C": 2, "p": 0.25}
+    _default_network_hypers     = {"C": 2}
