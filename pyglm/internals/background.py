@@ -20,7 +20,7 @@ class NoBackground(Component):
         return np.zeros((T,self.N))
 
     def mean_background_activation(self, augmented_data):
-        return np.zeros(self.N)
+        return np.zeros((1,self.N))
 
     def resample(self, augmented_data):
         pass

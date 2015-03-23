@@ -389,10 +389,18 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
         if n is None:
             X = np.zeros((augmented_data["T"], self.N))
             for n in xrange(self.N):
-                X[:,n] = F.dot(self.weights[n,:])
+                w = self.weights[n,:]
+                if not self.allow_self_connections:
+                    offset = 1 + n * self.B
+                    w[offset:offset+self.B] = 0
+                X[:,n] = F.dot(w)
                 X[:,n] += self.bias[n]
         else:
-            X = F.dot(self.weights[n,:])
+            w = self.weights[n,:]
+            if not self.allow_self_connections:
+                offset = 1 + n * self.B
+                w[offset:offset+self.B] = 0
+            X = F.dot(w)
             X += self.bias[n]
 
         return X
@@ -416,10 +424,23 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
         return gammaln(S+self.xi) - gammaln(self.xi) - gammaln(S+1)
 
     def log_prior(self, n=None):
+        lp = 0
         if n is None:
-            return -self.lmbda * np.abs(self.weights).sum()
+            for n in xrange(self.N):
+                w = self.weights[n,:]
+                if not self.allow_self_connections:
+                    offset = 1 + n * self.B
+                    w[offset:offset+self.B] = 0
+
+            lp += -self.lmbda * np.abs(w).sum()
         else:
-            return -self.lmbda * np.abs(self.weights[n,:]).sum()
+            w = self.weights[n,:]
+            if not self.allow_self_connections:
+                offset = 1 + n * self.B
+                w[offset:offset+self.B] = 0
+            lp += -self.lmbda * np.abs(w).sum()
+
+        return lp
 
     def log_likelihood(self, augmented_data=None, n=None):
         """
@@ -506,6 +527,11 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
         # Normalize by T
         d_lpost_d_x /= self.T
 
+        # If self connections are disallowed, remove their gradient
+        if not self.allow_self_connections:
+            offset = 1 + n * self.B
+            d_lpost_d_x[offset:offset+self.B] = 0
+
         return -d_lpost_d_x
 
     def _initialize_bias_to_mean(self):
@@ -523,9 +549,15 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
             T_tot += data["T"]
             N_tot += data["S"].sum(0)
 
+        # Compute the mean of p
         pmean = N_tot / (self.xi * T_tot + N_tot)
+        pmean = np.clip(pmean, 1e-8, 1-1e-8)
+
         self.b = logit(pmean)
         self.weights.fill(1e-3)
+
+        if not self.allow_self_connections:
+            self._remove_self_weights()
 
     def fit(self, L1=True):
         """
@@ -562,7 +594,7 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
             self.add_data(S, F)
 
             # Select the L1 regularization parameter using cross validation
-            lmbdas = np.logspace(-1,3,30)
+            lmbdas = np.logspace(-1,3,10)
 
             # Initialize to the mean
             self._initialize_bias_to_mean()
@@ -1001,6 +1033,7 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         # data = self.data_list[0]
 
         # update model components one at a time
+        import pdb; pdb.set_trace()
         self.observation_model.resample(self.data_list)
         self.activation_model.resample(self.data_list)
         self.weight_model.resample(self.data_list)

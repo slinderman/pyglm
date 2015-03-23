@@ -141,7 +141,8 @@ class DeterministicActivation(_ActivationBase):
 
         n_pre, n_post = self._get_n(bias, synapse)
 
-        trm1 = obs.kappa(augmented_data)[:,n_post] - psi_other * obs.omega(augmented_data)[:,n_post]
+        trm1 = obs.kappa(augmented_data)[:,n_post] \
+               - psi_other * obs.omega(augmented_data)[:,n_post]
 
         if bias is not None:
             return trm1.sum()

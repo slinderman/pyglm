@@ -256,7 +256,11 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
         # if "_b" in augmented_data:
         #     return augmented_data["_b"]
         # else:
-        return (augmented_data["S"] + self.xi).astype(np.int32)
+        assert augmented_data["S"].dtype == np.int32
+        xi = self.xi.astype(np.int32)
+        res = augmented_data["S"] + xi
+        assert res.dtype == np.int32
+        return res
 
     def rvs(self, Psi):
         p = logistic(Psi)
@@ -326,7 +330,7 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
             lp_xi += (xis[None,:] * np.log(1-pn)[:,None]).sum(0)
             self.xi[0,n] = xis[log_sum_exp_sample(lp_xi)]
 
-        print self.xi
+        print "Xi: ", self.xi
 
     def expected_S(self, Psi):
         p = logistic(Psi)

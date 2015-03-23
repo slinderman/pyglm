@@ -147,6 +147,7 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
     @line_profiled
     def resample(self, augmented_data=[]):
+        import sys
 
         # TODO: Handle lists of data
         if not isinstance(augmented_data, list):
@@ -157,10 +158,12 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
         #  TODO: We can parallelize over n_post
         for n_post in xrange(self.N):
-
+            sys.stdout.write("\n")
             # Randomly permute the order in which we resample presynaptic weights
             perm = np.random.permutation(self.N)
             for n_pre in perm:
+                sys.stdout.write(".")
+                sys.stdout.flush()
                 # Get the filtered spike trains associated with this synapse
                 F_pres = [data["F"][:,n_pre,:] for data in augmented_data]
 
