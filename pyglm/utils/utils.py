@@ -170,7 +170,7 @@ def logdet_low_rank2(Ainv, U, C, V, diag=False):
         ldA = -slogdet(Ainv)[1]
         temp = C.dot(V).dot(Ainv).dot(U)
     temp.flat[::temp.shape[0]+1] += 1
-    return slogdet(temp)[1] - log(Ainv).sum()
+    return slogdet(temp)[1] + ldA
 
 def sample_truncnorm(mu=0, sigma=1, lb=-np.Inf, ub=np.Inf):
     """ Sample a truncated normal with the specified params
