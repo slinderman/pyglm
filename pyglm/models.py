@@ -559,7 +559,7 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
         if not self.allow_self_connections:
             self._remove_self_weights()
 
-    def fit(self, L1=True):
+    def fit(self, L1=True, lmbdas=None):
         """
         Fit the negative binomial model using maximum likelihood
         """
@@ -594,7 +594,8 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
             self.add_data(S, F)
 
             # Select the L1 regularization parameter using cross validation
-            lmbdas = np.logspace(-1,3,10)
+            if lmbdas is None:
+                lmbdas = np.logspace(-1,3,10)
 
             # Initialize to the mean
             self._initialize_bias_to_mean()
@@ -1033,7 +1034,6 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         # data = self.data_list[0]
 
         # update model components one at a time
-        import pdb; pdb.set_trace()
         self.observation_model.resample(self.data_list)
         self.activation_model.resample(self.data_list)
         self.weight_model.resample(self.data_list)
@@ -1042,6 +1042,7 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
 
         # Resample the network given the weight model
         self.network.resample(self.weight_model)
+
 
 
 class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):

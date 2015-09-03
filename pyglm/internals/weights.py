@@ -271,6 +271,172 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         self.W[n_pre, n_post, :] = np.random.multivariate_normal(post_mu, post_cov)
 
 
+class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
+    def __init__(self, population):
+        super(_CollapsedGibbsSpikeAndSlabGaussianWeights, self).__init__(population)
+
+        self.resample()
+
+    @line_profiled
+    def collapsed_resample(self, augmented_data=[]):
+        import sys
+
+        if not isinstance(augmented_data, list):
+            augmented_data = [augmented_data]
+
+
+        #  TODO: We can parallelize over n_post
+        for n_post in xrange(self.N):
+            sys.stdout.write("\n")
+            # Randomly permute the order in which we resample presynaptic weights
+            perm = np.random.permutation(self.N)
+
+            # Precompute F.T * Omega * F
+            F = np.vstack([data["F"].reshape((data["T"], self.N * self.B)) for data in augmented_data])
+            F = np.hstack([np.ones((F.shape[0],1)), F])
+            O = np.vstack([data["omega"][:,n_post].reshape((data["T"], 1)) for data in augmented_data])
+            FOF = (F * O).T.dot(F)
+
+
+            # Iterate over presynaptic connections
+            for n_pre in perm:
+                sys.stdout.write(".")
+                sys.stdout.flush()
+
+                # Compute the effective binary mask for a given column of A
+                def _A_mask(An):
+                    return np.concatenate(([1], np.repeat(An, self.B)))
+
+                # Compute the effective weight prior
+                mu    = self.network.Mu[:, n_post, :].reshape((self.N * self.B))
+                Sigma = np.blkdiag(self.network.Sigma[:, n_post, :, :])
+
+                # Compute the parameters of the conditional distribution over
+                # weights (and the bias) incident to this neuron
+
+
+                post_stats = self._posterior_statistics(n_pre, n_post,
+                                                        suff_stats)
+
+
+                # Sample the spike variable
+                self._resample_A(n_pre, n_post, post_stats)
+
+                # Sample the slab variable
+                if self.A[n_pre, n_post]:
+                    self._resample_W(n_pre, n_post, post_stats)
+                else:
+                    self.W[n_pre, n_post,:] = 0.0
+
+                # Update Psi to account for new weight
+                for F_pre, Psi, psi_other in zip(F_pres, Psis, psi_others):
+                    Psi[:,n_post] = psi_other
+                    if self.A[n_pre, n_post]:
+                        Psi[:,n_post] += F_pre.dot(self.W[n_pre, n_post,:])
+
+
+            ### TODO: NEW
+            # Compute the marginal prob with and without A[m,n]
+            lps = np.zeros(2)
+            for v in [0,1]:
+                A[m,n] = v
+                Aeff = np.concatenate(([1], A[:,n])).astype(np.bool)
+
+                # Get effective params for nonzero A's
+                F_eff = F_full[:, Aeff]
+                mu_eff = mu_full[Aeff]
+                Sigma_eff = Sigma_full[np.ix_(Aeff, Aeff)]
+
+                # Compute the posterior parameters of W
+                Lambda_post = np.linalg.inv(Sigma_eff) + (F_eff * omega[:,n][:,None]).T.dot(F_eff)
+                Sigma_post = np.linalg.inv(Lambda_post)
+                mu_post = Sigma_post.dot(np.linalg.solve(Sigma_eff, mu_eff) + kappa[:,n].dot(F_eff))
+
+                # Compute the marginal probability
+                lps[v] += np.linalg.slogdet(Sigma_post)[1]
+                lps[v] -= np.linalg.slogdet(Sigma_eff)[1]
+                lps[v] += mu_post.T.dot(np.linalg.solve(Sigma_post, mu_post))
+                lps[v] -= mu_eff.T.dot(np.linalg.solve(Sigma_eff, mu_eff))
+                lps[v] += v * np.log(rho) + (1-v) * np.log(1-rho)
+
+            # Sample from the marginal probability
+            ps = np.exp(lps - logsumexp(lps))
+            assert np.allclose(ps.sum(), 1.0)
+            A[m,n] = np.random.rand() < ps[1]
+
+    @line_profiled
+    def _get_sufficient_statistics(self, augmented_data, n_pre, n_post, psi_others):
+        """
+        Get the sufficient statistics for this synapse.
+        """
+        lkhd_prec           = 0
+        lkhd_mean_dot_prec  = 0
+
+        # Compute the sufficient statistics of the likelihood
+        for data, psi_other in zip(augmented_data, psi_others):
+            lkhd_prec           += self.activation.precision(data, synapse=(n_pre,n_post))
+            lkhd_mean_dot_prec  += self.activation.mean_dot_precision(data,
+                                                                      synapse=(n_pre,n_post),
+                                                                      psi_other=psi_other)
+
+        return lkhd_prec, lkhd_mean_dot_prec
+
+    def _posterior_statistics(self, n_pre, n_post, stats):
+        lkhd_prec, lkhd_mean_dot_prec = stats
+
+        mu_w                = self.network.Mu[n_pre, n_post, :]
+        Sigma_w             = self.network.Sigma[n_pre, n_post, :, :]
+
+        prior_prec          = np.linalg.inv(Sigma_w)
+        prior_mean_dot_prec = mu_w.dot(prior_prec)
+
+        post_prec           = prior_prec + lkhd_prec
+        post_cov            = np.linalg.inv(post_prec)
+        post_mu             = (prior_mean_dot_prec + lkhd_mean_dot_prec).dot(post_cov)
+        post_mu             = post_mu.ravel()
+
+        return post_mu, post_cov, post_prec
+
+    @line_profiled
+    def _resample_A(self, n_pre, n_post, stats):
+        """
+        Resample the presence or absence of a connection (synapse)
+        :param n_pre:
+        :param n_post:
+        :param stats:
+        :return:
+        """
+        mu_w                         = self.network.Mu[n_pre, n_post, :]
+        Sigma_w                      = self.network.Sigma[n_pre, n_post, :, :]
+        post_mu, post_cov, post_prec = stats
+        rho                          = self.network.P[n_pre, n_post]
+
+        # Compute the log odds ratio
+        logdet_prior_cov = np.linalg.slogdet(Sigma_w)[1]
+        logdet_post_cov  = np.linalg.slogdet(post_cov)[1]
+        logit_rho_post   = logit(rho) \
+                           + 0.5 * (logdet_post_cov - logdet_prior_cov) \
+                           + 0.5 * post_mu.dot(post_prec).dot(post_mu) \
+                           - 0.5 * mu_w.dot(np.linalg.solve(Sigma_w, mu_w))
+
+        rho_post = logistic(logit_rho_post)
+
+        # Sample the binary indicator of an edge
+        self.A[n_pre, n_post] = np.random.rand() < rho_post
+
+    def _resample_W(self, n_pre, n_post, stats):
+        """
+        Resample the weight of a connection (synapse)
+        :param n_pre:
+        :param n_post:
+        :param stats:
+        :return:
+        """
+        post_mu, post_cov, post_prec = stats
+
+        self.W[n_pre, n_post, :] = np.random.multivariate_normal(post_mu, post_cov)
+
+
 class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
     def __init__(self, population):
         super(_MeanFieldSpikeAndSlabGaussianWeights, self).__init__(population)
