@@ -3,7 +3,7 @@ import numpy as np
 from scipy.special import gammaln
 
 # from hips.distributions.polya_gamma import polya_gamma
-from pypolyagamma import pgdrawv, PyRNG
+import pypolyagamma as ppg
 
 from hips.inference.slicesample import slicesample
 
@@ -19,7 +19,9 @@ class _PolyaGammaAugmentedObservationsBase(Component):
 
     def __init__(self, population):
         self.population = population
-        self.rng = PyRNG()
+        num_threads = ppg.get_omp_num_threads()
+        seeds = np.random.randint(2**16, size=num_threads)
+        self.ppgs = [ppg.PyPolyaGamma(seed) for seed in seeds]
         self.N = self.population.N
 
     @property
@@ -38,12 +40,8 @@ class _PolyaGammaAugmentedObservationsBase(Component):
 
         # Initialize auxiliary variables
         augmented_data["omega"] = np.empty((T, self.N))
-        for n in xrange(self.N):
-            tmp = np.empty(T)
-            pgdrawv(np.ones(T, dtype=np.int32),
-                    np.zeros(T),
-                    tmp, self.rng)
-            augmented_data["omega"][:,n] = tmp
+        ppg.pgdrawvpar(self.ppgs, np.ones(T*self.N), np.zeros(T*self.N),
+                       augmented_data["omega"].ravel())
 
         # Precompute kappa (assuming that it is constant given data)
         # That is, we can only do this if xi is not resampled
@@ -106,16 +104,8 @@ class _PolyaGammaAugmentedObservationsBase(Component):
 
             # Resample with Jesse Windle's ported code
             b = self.b(augmented_data)
-            for n in xrange(self.N):
-                bn   = b[:,n].copy("C")
-                psin = psi[:,n].copy("C")
-                tmpn = np.empty(augmented_data["T"])
-                pgdrawv(bn,
-                        psin,
-                        tmpn,
-                        self.rng)
-                augmented_data["omega"][:,n] = tmpn
-
+            ppg.pgdrawvpar(self.ppgs, b.ravel(), psi.ravel(),
+                           augmented_data["omega"].ravel())
 
     ### Mean field
     def meanfieldupdate(self, augmented_data):
