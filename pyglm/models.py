@@ -1043,7 +1043,17 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         # Resample the network given the weight model
         self.network.resample(self.weight_model)
 
+    def collapsed_resample_model(self):
 
+        # update model components one at a time
+        self.observation_model.resample(self.data_list)
+        self.activation_model.resample(self.data_list)
+        self.weight_model.collapsed_resample(self.data_list)
+        self.bias_model.collapsed_resample(self.data_list)
+        self.background_model.resample(self.data_list)
+
+        # Resample the network given the weight model
+        self.network.resample(self.weight_model)
 
 class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
     """

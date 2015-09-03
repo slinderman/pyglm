@@ -71,6 +71,10 @@ class _GibbsGaussianBias(_GaussianBiasBase):
 
             self.b[n] = post_mu + np.sqrt(1.0/post_prec) * np.random.randn()
 
+    def collapsed_resample(self, augmented_data=[]):
+        # Collapsed resampling is taken care of by the weights
+        pass
+
 
 class _MeanFieldGaussianBias(_GaussianBiasBase):
     def __init__(self, population, mu_0=0.0, sigma_0=1.0):
