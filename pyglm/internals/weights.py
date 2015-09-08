@@ -4,7 +4,7 @@ Weight models
 import numpy as np
 from scipy.misc import logsumexp
 
-from graphistician.abstractions import GaussianWeightedDirectedNetwork
+from graphistician.old_abstractions import GaussianWeightedDirectedNetwork
 
 from pyglm.abstractions import Component
 from pyglm.internals.distributions import Bernoulli, Gaussian, TruncatedScalarGaussian
