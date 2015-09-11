@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 
 from scipy.stats import norm, probplot, invgamma
 
+from pybasicbayes.util.text import progprint_xrange
 
 from pyglm.models import Population
 
@@ -21,7 +22,6 @@ def demo(seed=None):
     # Create a test spike-and-slab model
     ###########################################################
     N = 2                                                   # Number of neurons
-    C = 1                                                   # Number of clusters
     T = 100                                                 # Number of time bins
     dt = 1.0                                                # Time bin width
     dt_max = 10.0                                           # Max time of synaptic influence
@@ -30,15 +30,14 @@ def demo(seed=None):
     #   Bias hyperparameters
     bias_hypers = {"mu_0": -1.0, "sigma_0": 0.25}
 
-    c = np.arange(C).repeat((N // C))                               # Neuron to cluster assignments
-    p = 0.5 * np.ones((C,C))                                        # Probability of connection for each pair of clusters
-    mu = np.zeros((C,C,B))                                          # Mean weight for each pair of clusters
-    Sigma = np.tile( 1.0 * np.eye(B)[None,None,:,:], (C,C,1,1))    # Covariance of weight for each pair of clusters
+    p = 0.5                 # Probability of connection for each pair of clusters
+    mu = np.zeros((B,))     # Mean weight for each pair of clusters
+    sigma = 1.0 * np.eye(B) # Covariance of weight for each pair of clusters
 
     ###########################################################
     # Create the model with these parameters
     ###########################################################
-    network_hypers = {'C': C, 'c': c, 'p': p, 'mu': mu, 'Sigma': Sigma}
+    network_hypers = {'p': p, 'mu': mu, 'sigma': sigma}
     # Copy the network hypers.
     test_model = Population(N=N, dt=dt, dt_max=dt_max, B=B,
                             bias_hypers=bias_hypers,
@@ -53,9 +52,7 @@ def demo(seed=None):
     N_samples = 10000
     samples = []
     lps = []
-    for itr in xrange(N_samples):
-        if itr % 100 == 0:
-            print "Geweke iteration ", itr
+    for itr in progprint_xrange(N_samples):
         lps.append(test_model.log_probability())
         samples.append(test_model.copy_sample())
 
@@ -107,9 +104,9 @@ def check_bias_samples(test_model, samples):
     plt.show()
 
 def check_weight_samples(test_model, samples):
-    mu_w = test_model.network.Mu
-    Sigma_w = test_model.network.Sigma
-    rho = test_model.network.P
+    mu_w = test_model.network.weights.Mu
+    Sigma_w = test_model.network.weights.Sigma
+    rho = test_model.network.adjacency.P
 
     A_samples = np.array([s.weight_model.A for s in samples])
     W_samples = np.array([s.weight_model.W for s in samples])

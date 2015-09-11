@@ -4,7 +4,7 @@ Weight models
 import numpy as np
 from scipy.misc import logsumexp
 
-from graphistician.old_abstractions import GaussianWeightedDirectedNetwork
+from graphistician.abstractions import NetworkDistribution
 
 from pyglm.abstractions import Component
 from pyglm.internals.distributions import Bernoulli, Gaussian, TruncatedScalarGaussian
@@ -56,7 +56,7 @@ class NoWeights(Component):
         pass
 
 
-class _SpikeAndSlabGaussianWeightsBase(Component, GaussianWeightedDirectedNetwork):
+class _SpikeAndSlabGaussianWeightsBase(Component):
     def __init__(self, population):
         self.population = population
 
@@ -124,9 +124,9 @@ class _SpikeAndSlabGaussianWeightsBase(Component, GaussianWeightedDirectedNetwor
 
     def log_prior(self):
         lprior = 0
-        P = self.network.P
-        Mu = self.network.Mu
-        Sigma = self.network.Sigma
+        P = self.network.adjacency.P
+        Mu = self.network.weights.Mu
+        Sigma = self.network.weights.Sigma
 
         # Log prob of connections
         lprior += Bernoulli(P).log_probability(self.A).sum()
@@ -149,7 +149,6 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
     @line_profiled
     def resample(self, augmented_data=[]):
-        import sys
 
         # TODO: Handle lists of data
         if not isinstance(augmented_data, list):
@@ -160,12 +159,9 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
         #  TODO: We can parallelize over n_post
         for n_post in xrange(self.N):
-            sys.stdout.write("\n")
             # Randomly permute the order in which we resample presynaptic weights
             perm = np.random.permutation(self.N)
             for n_pre in perm:
-                sys.stdout.write(".")
-                sys.stdout.flush()
                 # Get the filtered spike trains associated with this synapse
                 F_pres = [data["F"][:,n_pre,:] for data in augmented_data]
 
@@ -220,8 +216,8 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
     def _posterior_statistics(self, n_pre, n_post, stats):
         lkhd_prec, lkhd_mean_dot_prec = stats
 
-        mu_w                = self.network.Mu[n_pre, n_post, :]
-        Sigma_w             = self.network.Sigma[n_pre, n_post, :, :]
+        mu_w                = self.network.weights.Mu[n_pre, n_post, :]
+        Sigma_w             = self.network.weights.Sigma[n_pre, n_post, :, :]
 
         prior_prec          = np.linalg.inv(Sigma_w)
         prior_mean_dot_prec = mu_w.dot(prior_prec)
@@ -242,10 +238,10 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         :param stats:
         :return:
         """
-        mu_w                         = self.network.Mu[n_pre, n_post, :]
-        Sigma_w                      = self.network.Sigma[n_pre, n_post, :, :]
+        mu_w                         = self.network.weights.Mu[n_pre, n_post, :]
+        Sigma_w                      = self.network.weights.Sigma[n_pre, n_post, :, :]
         post_mu, post_cov, post_prec = stats
-        rho                          = self.network.P[n_pre, n_post]
+        rho                          = self.network.adjacency.P[n_pre, n_post]
 
         # Compute the log odds ratio
         logdet_prior_cov = np.linalg.slogdet(Sigma_w)[1]
@@ -285,26 +281,22 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
 
     @line_profiled
     def collapsed_resample(self, augmented_data=[]):
-        import sys
-
         if not isinstance(augmented_data, list):
             augmented_data = [augmented_data]
 
         #  TODO: We can parallelize over n_post
-        P = self.network.P
+        P = self.network.adjacency.P
         for n in xrange(self.N):
-            sys.stdout.write("\n")
-
             mu_full, Sigma_full = self._compute_full_prior(n)
-            self._resample_A(n, augmented_data, P, mu_full, Sigma_full)
-            self._resample_W_b(n, augmented_data, mu_full, Sigma_full)
+            self._collapsed_resample_A(n, augmented_data, P, mu_full, Sigma_full)
+            self._collapsed_resample_W_b(n, augmented_data, mu_full, Sigma_full)
 
     def _compute_full_prior(self, n):
-        mu_b    = self.bias_model.mu
-        sigma_b = self.bias_model.sigma
+        mu_b    = self.bias_model.mu_0
+        sigma_b = self.bias_model.sigma_0
 
-        mu_w    = self.network.Mu[:, n, :]
-        Sigma_w = self.network.Sigma[:, n, :, :]
+        mu_w    = self.network.weights.Mu[:, n, :]
+        Sigma_w = self.network.weights.Sigma[:, n, :, :]
 
         # Create a vector mean and a block diagonal covariance matrix
         from scipy.linalg import block_diag
@@ -318,7 +310,7 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
 
         return mu_full, Sigma_full
 
-    def _posterior_statistics(self, n, augmented_data, mu_full, Sigma_full):
+    def _collapsed_posterior_statistics(self, n, augmented_data, mu_full, Sigma_full):
         # Get a binary mask to extract the mu and Sigma
         # entries corresponding to connections
         Aeff = np.concatenate(([1], np.repeat(self.A[:,n], self.B))).astype(np.bool)
@@ -333,11 +325,12 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
         # Compute the sufficient statistics of the likelihood
         lkhd_prec = 0
         lkhd_mean_dot_prec = 0
-        for data in zip(augmented_data):
+        for data in augmented_data:
             T = data["T"]
             omega = data["omega"]
-            kappa = data["kappa"]   # TODO: Check this!
-            F_full = np.concatenate((np.ones((T,1)), data["F"]), axis=1)
+            kappa = data["kappa"]
+            F_flat = data["F"].reshape((T,self.N*self.B))
+            F_full = np.concatenate((np.ones((T,1)), F_flat), axis=1)
             F_eff = F_full[:, Aeff]
 
             lkhd_prec += (F_eff * omega[:,n][:,None]).T.dot(F_eff)
@@ -351,7 +344,7 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
         return mu_eff, Sigma_eff, mu_post, Sigma_post
 
     @line_profiled
-    def _resample_A(self, n, augmented_data, P, mu_full, Sigma_full):
+    def _collapsed_resample_A(self, n, augmented_data, P, mu_full, Sigma_full):
         """
         Resample the presence or absence of a connection (synapse)
         :param n_pre:
@@ -371,7 +364,7 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
                 self.A[m,n] = v
 
                 mu_eff, Sigma_eff, mu_post, Sigma_post = \
-                    self._posterior_statistics(n, augmented_data, mu_full, Sigma_full)
+                    self._collapsed_posterior_statistics(n, augmented_data, mu_full, Sigma_full)
 
                 # Compute the marginal probability
                 lps[v] += np.linalg.slogdet(Sigma_post)[1]
@@ -385,7 +378,7 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
             assert np.allclose(ps.sum(), 1.0)
             self.A[m,n] = np.random.rand() < ps[1]
 
-    def _resample_W_b(self, n, augmented_data, mu_full, Sigma_full):
+    def _collapsed_resample_W_b(self, n, augmented_data, mu_full, Sigma_full):
         """
         Resample the weight of a connection (synapse)
         :param n_pre:
@@ -395,14 +388,14 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
         """
         # Once we've resampled A[:,n] we can resample b[n] and W[:,n]
         mu_eff, Sigma_eff, mu_post, Sigma_post = \
-            self._posterior_statistics(n, augmented_data, mu_full, Sigma_full)
+            self._collapsed_posterior_statistics(n, augmented_data, mu_full, Sigma_full)
 
         Wbn = np.random.multivariate_normal(mu_post, Sigma_post)
 
         # Set bias and weights
         self.bias_model.b[n] = Wbn[0]
         self.W[:,n,:] = 0
-        self.W[self.A[:,n],n,:] = Wbn[1:].reshape((-1,self.B))
+        self.W[self.A[:,n].astype(np.bool),n,:] = Wbn[1:].reshape((-1,self.B))
 
 
 class _MeanFieldSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
@@ -789,9 +782,9 @@ class SpikeAndSlabTruncatedGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
     def log_prior(self):
         lprior = 0
-        P = self.network.P
-        Mu = self.network.Mu
-        Sigma = self.network.Sigma
+        P = self.network.adjacency.P
+        Mu = self.network.weights.Mu
+        Sigma = self.network.weights.Sigma
 
         # Log prob of connections
         lprior += Bernoulli(P).log_probability(self.A).sum()
@@ -881,8 +874,8 @@ class SpikeAndSlabTruncatedGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
     def _posterior_statistics(self, n_pre, n_post, stats):
         lkhd_prec, lkhd_mean_dot_prec = stats
 
-        mu_w                = self.network.Mu[n_pre, n_post, :]
-        Sigma_w             = self.network.Sigma[n_pre, n_post, :, :]
+        mu_w                = self.network.weights.Mu[n_pre, n_post, :]
+        Sigma_w             = self.network.weights.Sigma[n_pre, n_post, :, :]
 
         prior_prec          = np.linalg.inv(Sigma_w)
         prior_mean_dot_prec = mu_w.dot(prior_prec)
@@ -911,13 +904,13 @@ class SpikeAndSlabTruncatedGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         :param stats:
         :return:
         """
-        prior_mu                         = self.network.Mu[n_pre, n_post, :]
-        prior_cov                       = self.network.Sigma[n_pre, n_post, :, :]
+        prior_mu                         = self.network.weights.Mu[n_pre, n_post, :]
+        prior_cov                       = self.network.weights.Sigma[n_pre, n_post, :, :]
         prior_sigmasq = np.diag(prior_cov)
 
         post_mu, post_cov, post_prec = stats
         post_sigmasq = np.diag(post_cov)
-        rho                          = self.network.P[n_pre, n_post]
+        rho                          = self.network.adjacency.P[n_pre, n_post]
 
         # Compute the log odds ratio
         logdet_prior_cov = 0.5*np.log(prior_sigmasq).sum()

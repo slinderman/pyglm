@@ -174,7 +174,7 @@ class BernoulliObservations(_PolyaGammaAugmentedObservationsBase):
         The first parameter of the conditional Polya-gamma distribution
         p(\omega | \psi, s) = PG(b, \psi)
         """
-        return np.ones_like(augmented_data["S"])
+        return np.ones_like(augmented_data["S"]).astype(np.float64)
 
     def rvs(self, Psi):
         p = logistic(Psi)
@@ -246,11 +246,10 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
         # if "_b" in augmented_data:
         #     return augmented_data["_b"]
         # else:
-        assert augmented_data["S"].dtype == np.int32
-        xi = self.xi.astype(np.int32)
+        # assert augmented_data["S"].dtype == np.int
+        xi = self.xi
         res = augmented_data["S"] + xi
-        assert res.dtype == np.int32
-        return res
+        return res.astype(np.float64)
 
     def rvs(self, Psi):
         p = logistic(Psi)

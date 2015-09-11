@@ -13,9 +13,10 @@ from scipy.optimize import minimize
 from pybasicbayes.abstractions import Model, ModelGibbsSampling, ModelMeanField
 
 # Import network models from graphistician
-from graphistician import GaussianErdosRenyiFixedSparsity, \
-    GaussianWeightedEigenmodel, GaussianStochasticBlockModel, \
-    GaussianDistanceModel, FixedGaussianDistanceModel
+# from graphistician import GaussianErdosRenyiFixedSparsity, \
+#     GaussianWeightedEigenmodel, GaussianStochasticBlockModel, \
+#     GaussianDistanceModel, FixedGaussianDistanceModel
+from graphistician.networks import GaussianBernoulliNetwork
 
 from pyglm.internals.observations import BernoulliObservations, NegativeBinomialObservations
 from pyglm.internals.activation import DeterministicActivation
@@ -684,8 +685,8 @@ class _BayesianPopulationBase(Model):
     _weight_class               = SpikeAndSlabGaussianWeights
     _default_weight_hypers      = {}
 
-    _network_class              = GaussianErdosRenyiFixedSparsity
-    _default_network_hypers     = {"p": 0.25}
+    _network_class              = GaussianBernoulliNetwork
+    _default_network_hypers     = {}
 
 
     def __init__(self, N, dt=1.0, dt_max=10.0, B=5,
@@ -1041,7 +1042,7 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         self.background_model.resample(self.data_list)
 
         # Resample the network given the weight model
-        self.network.resample(self.weight_model)
+        self.network.resample((self.weight_model.A, self.weight_model.W))
 
     def collapsed_resample_model(self):
 
@@ -1053,7 +1054,7 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         self.background_model.resample(self.data_list)
 
         # Resample the network given the weight model
-        self.network.resample(self.weight_model)
+        self.network.resample((self.weight_model.A, self.weight_model.W))
 
 class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
     """
@@ -1157,78 +1158,78 @@ class NegativeBinomialEmptyPopulation(NegativeBinomialPopulation):
     _default_weight_hypers      = {}
 
 
-class BernoulliEigenmodelPopulation(Population):
-    _network_class              = GaussianWeightedEigenmodel
-    _default_network_hypers     = {"D": 2, "p": 0.05, "sigma_F": 10, "lmbda": 1*np.ones(2)}
+# class BernoulliEigenmodelPopulation(Population):
+#     _network_class              = GaussianWeightedEigenmodel
+#     _default_network_hypers     = {"D": 2, "p": 0.05, "sigma_F": 10, "lmbda": 1*np.ones(2)}
+#
+#
+# class NegativeBinomialEigenmodelPopulation(NegativeBinomialPopulation):
+#     _network_class              = GaussianWeightedEigenmodel
+#     _default_network_hypers     = {"D": 2, "p": 0.01, "sigma_F": 2**2, "lmbda": 1*np.ones(2)}
+#
+#
+# class BernoulliDistancePopulation(_GibbsPopulation):
+#     _network_class              = GaussianDistanceModel
+#     _default_network_hypers     = {"D": 2}
+#
+#
+# class NegativeBinomialDistancePopulation(_GibbsPopulation):
+#     _network_class              = GaussianDistanceModel
+#     _default_network_hypers     = {"D": 2}
+#
+#     _observation_class          = NegativeBinomialObservations
+#     _default_observation_hypers = {"xi": 10.0}
 
 
-class NegativeBinomialEigenmodelPopulation(NegativeBinomialPopulation):
-    _network_class              = GaussianWeightedEigenmodel
-    _default_network_hypers     = {"D": 2, "p": 0.01, "sigma_F": 2**2, "lmbda": 1*np.ones(2)}
+# class ExcitatoryNegativeBinomialDistancePopulation(NegativeBinomialDistancePopulation):
+#     # Weight and network class must be specified by subclasses
+#     _weight_class               = SpikeAndSlabTruncatedGaussianWeights
+#     _default_weight_hypers      = {"lb": 0, "ub": np.inf}
+#
+#     _network_class              = FixedGaussianDistanceModel
+#     _default_network_hypers     = {"D": 2}
+#
+#     _observation_class          = NegativeBinomialObservations
+#     _default_observation_hypers = {"xi": 10.0}
+#
+#
+# class NegativeBinomialLDSPopulation(NegativeBinomialPopulation):
+#     # Weight and network class must be specified by subclasses
+#     _weight_class               = NoWeights
+#     _default_weight_hypers      = {}
+#
+#     _background_class           = LinearDynamicalSystemBackground
+#     _default_background_hypers  = {"D": 2}
+#
+#     _observation_class          = NegativeBinomialObservations
+#     _default_observation_hypers = {"xi": 10.0}
+#
+#     def heldout_log_likelihood(self, S, F=None, n_resamples=100):
+#         """
+#         Compute the heldout log likelihood on a spike train, S.
+#         """
+#         self.add_data(S, F=F)
+#         data = self.data_list[-1]
+#         # We need to integrate out the latent states of the LDS
+#         hll_smpls = np.zeros(n_resamples)
+#         for itr in xrange(n_resamples):
+#             data["states"] = self.background_model.generate_states(data["T"])
+#             hll_smpls[itr] = self.log_likelihood(data).sum()
+#
+#         # Compute the expectation in log space
+#         from scipy.misc import logsumexp
+#         hll = -np.log(n_resamples) + logsumexp(hll_smpls)
+#
+#         # Remove the data
+#         self.data_list.pop()
+#
+#         return hll
 
-
-class BernoulliDistancePopulation(_GibbsPopulation):
-    _network_class              = GaussianDistanceModel
-    _default_network_hypers     = {"D": 2}
-
-
-class NegativeBinomialDistancePopulation(_GibbsPopulation):
-    _network_class              = GaussianDistanceModel
-    _default_network_hypers     = {"D": 2}
-
-    _observation_class          = NegativeBinomialObservations
-    _default_observation_hypers = {"xi": 10.0}
-
-
-class ExcitatoryNegativeBinomialDistancePopulation(NegativeBinomialDistancePopulation):
-    # Weight and network class must be specified by subclasses
-    _weight_class               = SpikeAndSlabTruncatedGaussianWeights
-    _default_weight_hypers      = {"lb": 0, "ub": np.inf}
-
-    _network_class              = FixedGaussianDistanceModel
-    _default_network_hypers     = {"D": 2}
-
-    _observation_class          = NegativeBinomialObservations
-    _default_observation_hypers = {"xi": 10.0}
-
-
-class NegativeBinomialLDSPopulation(NegativeBinomialPopulation):
-    # Weight and network class must be specified by subclasses
-    _weight_class               = NoWeights
-    _default_weight_hypers      = {}
-
-    _background_class           = LinearDynamicalSystemBackground
-    _default_background_hypers  = {"D": 2}
-
-    _observation_class          = NegativeBinomialObservations
-    _default_observation_hypers = {"xi": 10.0}
-
-    def heldout_log_likelihood(self, S, F=None, n_resamples=100):
-        """
-        Compute the heldout log likelihood on a spike train, S.
-        """
-        self.add_data(S, F=F)
-        data = self.data_list[-1]
-        # We need to integrate out the latent states of the LDS
-        hll_smpls = np.zeros(n_resamples)
-        for itr in xrange(n_resamples):
-            data["states"] = self.background_model.generate_states(data["T"])
-            hll_smpls[itr] = self.log_likelihood(data).sum()
-
-        # Compute the expectation in log space
-        from scipy.misc import logsumexp
-        hll = -np.log(n_resamples) + logsumexp(hll_smpls)
-
-        # Remove the data
-        self.data_list.pop()
-
-        return hll
-
-class BernoulliSBMPopulation(Population):
-    _network_class              = GaussianStochasticBlockModel
-    _default_network_hypers     = {"C": 2, "p": 0.25}
-
-
-class NegativeBinomialSBMPopulation(NegativeBinomialPopulation):
-    _network_class              = GaussianStochasticBlockModel
-    _default_network_hypers     = {"C": 2}
+# class BernoulliSBMPopulation(Population):
+#     _network_class              = GaussianStochasticBlockModel
+#     _default_network_hypers     = {"C": 2, "p": 0.25}
+#
+#
+# class NegativeBinomialSBMPopulation(NegativeBinomialPopulation):
+#     _network_class              = GaussianStochasticBlockModel
+#     _default_network_hypers     = {"C": 2}
