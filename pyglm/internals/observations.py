@@ -2,7 +2,6 @@ import abc
 import numpy as np
 from scipy.special import gammaln
 
-# from hips.distributions.polya_gamma import polya_gamma
 import pypolyagamma as ppg
 
 from hips.inference.slicesample import slicesample
@@ -85,6 +84,10 @@ class _PolyaGammaAugmentedObservationsBase(Component):
     def expected_S(self, Psi):
         raise NotImplementedError()
 
+    @abc.abstractmethod
+    def _log_likelihood_given_activation(self, S, psi):
+        raise NotImplementedError()
+
     def resample(self, augmented_data_list):
         """
         Resample omega given xi and psi, then resample psi given omega, X, w, and sigma
@@ -160,7 +163,10 @@ class BernoulliObservations(_PolyaGammaAugmentedObservationsBase):
     def log_likelihood(self, augmented_data):
         S   = augmented_data["S"]
         Psi = self.activation.compute_psi(augmented_data)
-        p   = logistic(Psi)
+        return self._log_likelihood_given_activation(S, Psi)
+
+    def _log_likelihood_given_activation(self, S, psi):
+        p   = logistic(psi)
         p   = np.clip(p, 1e-32, 1-1e-32)
 
         ll = (S * np.log(p) + (1-S) * np.log(1-p))
@@ -220,20 +226,23 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
         if alpha_xi is None and beta_xi is None and xi is None:
             raise Exception("Either alpha_xi or beta_xi must be specified")
 
-    # @property
-    # def N(self):
-    #     return self.population.N
-
     def log_likelihood(self, augmented_data):
         S = augmented_data["S"]
         Psi = self.activation.compute_psi(augmented_data)
-        p   = logistic(Psi)
+        return self._log_likelihood_given_activation(S, Psi, self.xi)
+
+
+    def _log_likelihood_given_activation(self, S, psi):
+        p   = logistic(psi)
         p   = np.clip(p, 1e-32, 1-1e-32)
 
-        return self.log_normalizer(S) + S * np.log(p) + self.xi * np.log(1-p)
+        return self.log_normalizer(S, self.xi) \
+               + S * np.log(p) \
+               + self.xi * np.log(1-p)
 
-    def log_normalizer(self, S):
-        return gammaln(S+self.xi) - gammaln(self.xi) - gammaln(S+1)
+    @staticmethod
+    def log_normalizer(S, xi):
+        return gammaln(S+xi) - gammaln(xi) - gammaln(S+1)
 
     def a(self, augmented_data):
         return augmented_data["S"]
@@ -332,4 +341,4 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
         """
         S = augmented_data["S"]
         E_ln_p, E_ln_notp = expected_suff_stats
-        return self.log_normalizer(S) + S * E_ln_p + self.xi * E_ln_notp
+        return self.log_normalizer(S, self.xi) + S * E_ln_p + self.xi * E_ln_notp

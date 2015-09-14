@@ -35,6 +35,13 @@ class _GaussianBiasBase(Component):
     def log_prior(self):
         return ScalarGaussian(self.mu_0, self.sigma_0).log_probability(self.b).sum()
 
+    def sample_predictive_distribution(self):
+        """
+        Sample a new bias from the prior
+        :return:
+        """
+        return self.mu_0 + np.sqrt(self.sigma_0) * np.random.randn()
+
 
 class _GibbsGaussianBias(_GaussianBiasBase):
     def __init__(self, population, mu_0=0.0, sigma_0=1.0):

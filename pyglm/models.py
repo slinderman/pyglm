@@ -9,6 +9,7 @@ import sys
 import numpy as np
 from scipy.special import gammaln
 from scipy.optimize import minimize
+from scipy.misc import logsumexp
 
 from pybasicbayes.abstractions import Model, ModelGibbsSampling, ModelMeanField
 
@@ -971,7 +972,7 @@ class _BayesianPopulationBase(Model):
     
     def log_likelihood(self, augmented_data):
         ll = 0
-        ll += self.observation_model.log_likelihood(augmented_data)
+        ll += self.observation_model.log_likelihood(augmented_data).sum()
         ll += self.activation_model.log_likelihood(augmented_data)
         ll += self.weight_model.log_likelihood(augmented_data)
         return ll
@@ -994,6 +995,50 @@ class _BayesianPopulationBase(Model):
         hll = self.log_likelihood(self.data_list[-1]).sum()
         self.data_list.pop()
         return hll
+
+    def heldout_neuron_log_likelihood(self, Strain, Stest, M=100):
+        """
+        Approximate the log likelihood of a heldout spike train, Stest,
+        given the activity of neurons that were observed during training,
+        Strain. We assume that the weights from the test
+        neuron to the training neuron are all zero such that the test
+        neuron does not affect our estimates of the weights of the training
+        neurons. To estimate the pred ll, we sample latent variables associated
+        with the new neuron and use those to fill in a new column of the weight
+        matrix, then we use the updated weight matrix to compute the activation
+        for the new neuron. Finally, we use the observation model to compute
+        the likelihood of Stest.
+        """
+        assert Strain.ndim == 2 and Strain.shape[1] == self.N
+        T = Strain.shape[0]
+        assert Stest.shape == (T,)
+
+        # Compute the filtered spike train
+        Sfull = np.hstack((Strain, Stest[:,None]))
+        Ffull = self.basis.convolve_with_basis(Sfull)
+
+        plls = []
+        for m in xrange(M):
+            # Sample a new column of the weight matrix for the new neuron
+            Arow, Acol, Wrow, Wcol = self.network.sample_predictive_distribution()
+            Wnew = Wcol * Acol[:,None]
+
+            # Sample a new bias for the new neuron
+            bnew = self.bias_model.sample_predictive_distribution()
+
+            # Compute the new activation
+            psi = np.zeros((T,))
+            if not np.allclose(Wnew,0):
+                np.einsum("tmb,mb->t", Ffull, Wnew, out=psi)
+            psi += bnew
+
+            # Use the observation model to compute the held out likelihood
+            pll = self.observation_model.\
+                _log_likelihood_given_activation(Stest, psi).sum()
+            plls.append(pll)
+
+        # Take the average of the predictive log likelihoods
+        return -np.log(M) + logsumexp(plls)
 
     def compute_rate(self, augmented_data):
         # Compute the activation

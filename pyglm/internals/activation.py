@@ -107,6 +107,24 @@ class DeterministicActivation(_ActivationBase):
 
         return psi
 
+    def compute_psi_single_neuron(self, augmented_data, n):
+        N = self.N
+        T = augmented_data["T"]
+        F = augmented_data["F"]
+        W = self.weight_model.W_effective[:,n,:]
+
+
+        psi = np.zeros((T,))
+        if not np.allclose(W,0):
+            np.einsum("tmb,mb->t", F, W, out=psi)
+
+        psi += self.bias_model.b[n]
+
+        # Add background activations
+        # psi += self.background_model.mean_background_activation(augmented_data)
+
+        return psi
+
     def rvs(self, X):
         return X
 
