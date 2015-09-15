@@ -58,7 +58,7 @@ weight_models = [
 
 # Iterate over network models
 results = []
-N_samples = 10
+N_samples = 100
 for adj_model, weight_model in itertools.product(adj_models, weight_models):
     # Create a GLM with the specified network model
     test_net_model = FactorizedNetworkDistribution(N, adj_model, {}, weight_model, {})
