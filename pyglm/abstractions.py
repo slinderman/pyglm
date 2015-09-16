@@ -39,7 +39,7 @@ class _GibbsComponent(_ComponentBase):
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
-    def resample(self, augmented_data):
+    def resample(self, augmented_data, temperature=1.0):
         """
         Resample the component parameters with the given augmented data
         """

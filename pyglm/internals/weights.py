@@ -10,9 +10,6 @@ from pyglm.abstractions import Component
 from pyglm.internals.distributions import Bernoulli, Gaussian, TruncatedScalarGaussian
 from pyglm.utils.utils import logistic, logit, normal_cdf, sample_truncnorm
 
-from pyglm.utils.profiling import line_profiled
-PROFILING = True
-
 class NoWeights(Component):
     def __init__(self, population):
         self.population = population
@@ -280,6 +277,10 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
     def bias_model(self):
         return self.population.bias_model
 
+    @property
+    def obs_model(self):
+        return self.population.observation_model
+
     @line_profiled
     def collapsed_resample(self, augmented_data=[]):
         if not isinstance(augmented_data, list):
@@ -427,7 +428,6 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
 
         return mu_eff, Sigma_eff, mu_post, Sigma_post
 
-    @line_profiled
     def _collapsed_resample_A_base(self, n, augmented_data, P, mu_full, Sigma_full):
         """
         Resample the presence or absence of a connection (synapse)
@@ -942,7 +942,6 @@ class SpikeAndSlabTruncatedGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
         return lprior
 
 
-    @line_profiled
     def resample(self, augmented_data=[]):
         # Handle lists of data
         if not isinstance(augmented_data, list):
@@ -991,7 +990,6 @@ class SpikeAndSlabTruncatedGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
                     if self.A[n_pre, n_post]:
                         Psi[:,n_post] += F_pre.dot(self.W[n_pre, n_post,:])
 
-    @line_profiled
     def _get_sufficient_statistics(self, augmented_data, n_pre, n_post, psi_others):
         """
         Get the sufficient statistics for this synapse.
@@ -1032,7 +1030,6 @@ class SpikeAndSlabTruncatedGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
         return post_mu, post_cov, post_prec
 
-    @line_profiled
     def _resample_A(self, n_pre, n_post, stats):
         """
         Resample the presence or absence of a connection (synapse)

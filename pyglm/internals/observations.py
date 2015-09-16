@@ -67,11 +67,13 @@ class _PolyaGammaAugmentedObservationsBase(Component):
 
     def kappa(self, augmented_data):
         """
-        Compute kappa = b-a/2
+        Compute kappa = a-b/2
         :return:
         """
-        return self.a(augmented_data) - self.b(augmented_data)/2.0
-        # return augmented_data["kappa"]
+        print "Check that kappa is correct!"
+        # return self.a(augmented_data) \
+        #        - self.b(augmented_data)/2.0
+        return augmented_data["kappa"]
 
     def omega(self, augmented_data):
         return augmented_data["omega"]
@@ -88,27 +90,21 @@ class _PolyaGammaAugmentedObservationsBase(Component):
     def _log_likelihood_given_activation(self, S, psi):
         raise NotImplementedError()
 
-    def resample(self, augmented_data_list):
+    def resample(self, augmented_data_list, temperature=1.0):
         """
         Resample omega given xi and psi, then resample psi given omega, X, w, and sigma
         """
         for augmented_data in augmented_data_list:
             psi = self.activation.compute_psi(augmented_data)
 
-            # Resample the auxiliary variables, omega, in Python
-            # self.omega = polya_gamma(self.conditional_b.reshape(self.T),
-            #                          self.psi.reshape(self.T),
-            #                          200).reshape((self.T,))
-
-            # Create a PyPolyaGamma object and resample with the C code
-            # seed = np.random.randint(2**16)
-            # ppg = PyPolyaGamma(seed, self.model.trunc)
-            # ppg.draw_vec(self.conditional_b, self.psi, self.omega)
-
             # Resample with Jesse Windle's ported code
-            b = self.b(augmented_data)
+            b = self.b(augmented_data) * temperature
             ppg.pgdrawvpar(self.ppgs, b.ravel(), psi.ravel(),
                            augmented_data["omega"].ravel())
+
+            # Update kappa for the new temperature
+            a = self.a(augmented_data) * temperature
+            augmented_data["kappa"] = a - b/2.0
 
     ### Mean field
     def meanfieldupdate(self, augmented_data):
@@ -182,8 +178,8 @@ class BernoulliObservations(_PolyaGammaAugmentedObservationsBase):
         """
         return np.ones_like(augmented_data["S"]).astype(np.float64)
 
-    def rvs(self, Psi):
-        p = logistic(Psi)
+    def rvs(self, Psi, temperature=1.0):
+        p = logistic(Psi * temperature)
         return np.random.rand(*p.shape) < p
 
     def expected_S(self, Psi):
@@ -260,8 +256,9 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
         res = augmented_data["S"] + xi
         return res.astype(np.float64)
 
-    def rvs(self, Psi):
-        p = logistic(Psi)
+    def rvs(self, Psi, temperature=1.0):
+        # TODO: Check this!
+        p = logistic(Psi * temperature)
         p = np.clip(p, 1e-32, 1-1e-32)
         return np.random.negative_binomial(self.xi, 1-p)
 

@@ -856,7 +856,7 @@ class _BayesianPopulationBase(Model):
             # Add to the data list
             self.data_list.append(augmented_data)
 
-    def generate(self, keep=True, T=100, return_Psi=False, verbose=True):
+    def generate(self, keep=True, T=100, return_Psi=False, verbose=True, temperature=1.0):
         """
         Generate data from the model.
 
@@ -866,6 +866,8 @@ class _BayesianPopulationBase(Model):
         """
         if T == 0:
             return np.zeros((0,self.N))
+
+        assert temperature >= 0.0 and temperature <= 1.0
 
         N = self.N
         assert isinstance(T, int), "Size must be an integer number of time bins"
@@ -910,7 +912,7 @@ class _BayesianPopulationBase(Model):
             Psi[t,:] = self.activation_model.rvs(X[t,:])
 
             # Sample spike counts
-            S[t,:] = self.observation_model.rvs(Psi[t,:])
+            S[t,:] = self.observation_model.rvs(Psi[t,:], temperature=temperature)
 
             # Compute change in activation via tensor product
             dX = np.tensordot( H, S[t,:], axes=([2, 0]))
@@ -977,16 +979,18 @@ class _BayesianPopulationBase(Model):
         ll = 0
         ll += self.observation_model.log_likelihood(augmented_data).sum()
         ll += self.activation_model.log_likelihood(augmented_data)
-        ll += self.weight_model.log_likelihood(augmented_data)
+        # ll += self.weight_model.log_likelihood(augmented_data)
         return ll
         
-    def log_probability(self):
+    def log_probability(self, temperature=1.0):
         """
         Compute the log probability of the datasets
         """
+        assert temperature >= 0.0 and temperature <= 1.0
+
         lp = self.log_prior()
         for augmented_data in self.data_list:
-            lp += self.log_likelihood(augmented_data).sum()
+            lp += self.log_likelihood(augmented_data).sum() * temperature
 
         return lp
 
@@ -1077,13 +1081,14 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         for itr in xrange(N_network_updates):
             self.network.resample((self.weight_model.A, self.weight_model.W))
 
-    def resample_model(self):
+    def resample_model(self, temperature=1.0):
         # # TODO: Support multile datasets
         # assert len(self.data_list) == 1, "Can only do Gibbs sampling with one dataset"
         # data = self.data_list[0]
+        assert temperature >= 0.0 and temperature <= 1.0
 
         # update model components one at a time
-        self.observation_model.resample(self.data_list)
+        self.observation_model.resample(self.data_list, temperature=temperature)
         self.activation_model.resample(self.data_list)
         self.weight_model.resample(self.data_list)
         self.bias_model.resample(self.data_list)
@@ -1092,10 +1097,11 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         # Resample the network given the weight model
         self.network.resample((self.weight_model.A, self.weight_model.W))
 
-    def collapsed_resample_model(self):
+    def collapsed_resample_model(self, temperature=1.0):
+        assert temperature >= 0.0 and temperature <= 1.0
 
         # update model components one at a time
-        self.observation_model.resample(self.data_list)
+        self.observation_model.resample(self.data_list, temperature=temperature)
         self.activation_model.resample(self.data_list)
         self.weight_model.collapsed_resample(self.data_list)
         self.bias_model.collapsed_resample(self.data_list)
