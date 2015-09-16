@@ -60,7 +60,7 @@ def demo(seed=None):
         print "Gibbs iteration ", itr
         print "LP: ", lps[-1]
 
-        test_model.resample_model()
+        test_model.collapsed_resample_model()
 
     with open("gibbs_profile.txt", "w") as f:
         show_line_stats(f)

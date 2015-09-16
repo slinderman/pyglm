@@ -26,7 +26,7 @@ seed = 1234
 # seed = np.random.randint(2**32)
 
 # Create an latent distance model with N nodes and D-dimensional locations
-N = 10      # Number of training neurons
+N = 30      # Number of training neurons
 T = 10000   # Number of training time bins
 B = 1       # Dimensionality of the weights
 D = 2       # Dimensionality of the feature space

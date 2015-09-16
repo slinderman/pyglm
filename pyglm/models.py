@@ -808,8 +808,11 @@ class _BayesianPopulationBase(Model):
         if F is None:
             F = self.basis.convolve_with_basis(S)
 
+        # TODO: Remove or commit to using this
+        Ftrans = np.transpose(F, [1,0,2]).copy("C")
+
         # Augment the data with extra local variables and regressors
-        augmented_data = {"T": T, "S": S, "F": F}
+        augmented_data = {"T": T, "S": S, "F": F, "Ftrans": Ftrans}
 
         # The model components may require local variables for each data point
         self.observation_model.augment_data(augmented_data)
@@ -1072,7 +1075,7 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         # Update the network model a few times
         N_network_updates = 10
         for itr in xrange(N_network_updates):
-            self.network.resample(self.weight_model)
+            self.network.resample((self.weight_model.A, self.weight_model.W))
 
     def resample_model(self):
         # # TODO: Support multile datasets
