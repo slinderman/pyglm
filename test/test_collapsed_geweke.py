@@ -47,12 +47,12 @@ def demo(seed=None):
                             network_hypers=network_hypers)
 
     # Sample some initial data
-    test_model.generate(T=T, keep=True, verbose=False, temperature=temperature)
+    test_model.generate(T=T, keep=True, verbose=False)
 
     ###########################################################
     # Run the Geweke test
     ###########################################################
-    N_samples = 1000
+    N_samples = 10000
     samples = []
     lps = []
     import ipdb; ipdb.set_trace()
@@ -61,11 +61,11 @@ def demo(seed=None):
         samples.append(test_model.copy_sample())
 
         # Resample the model given the data
-        test_model.collapsed_resample_model(temperature=temperature)
+        test_model.collapsed_resample_model()
 
         # Remove the old data and sample new
         test_model.data_list.pop()
-        test_model.generate(T=T, keep=True, verbose=False, temperature=temperature)
+        test_model.generate(T=T, keep=True, verbose=False)
 
         # Resample the observation model to ensure the auxiliary
         # variables are in sync with the new spike counts.

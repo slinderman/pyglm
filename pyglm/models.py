@@ -12,6 +12,7 @@ from scipy.optimize import minimize
 from scipy.misc import logsumexp
 
 from pybasicbayes.abstractions import Model, ModelGibbsSampling, ModelMeanField
+from pybasicbayes.util.text import progprint_xrange
 
 # Import network models from graphistician
 # from graphistician import GaussianErdosRenyiFixedSparsity, \
@@ -856,7 +857,7 @@ class _BayesianPopulationBase(Model):
             # Add to the data list
             self.data_list.append(augmented_data)
 
-    def generate(self, keep=True, T=100, return_Psi=False, verbose=True, temperature=1.0):
+    def generate(self, keep=True, T=100, return_Psi=False, verbose=True):
         """
         Generate data from the model.
 
@@ -866,8 +867,6 @@ class _BayesianPopulationBase(Model):
         """
         if T == 0:
             return np.zeros((0,self.N))
-
-        assert temperature >= 0.0 and temperature <= 1.0
 
         N = self.N
         assert isinstance(T, int), "Size must be an integer number of time bins"
@@ -912,7 +911,7 @@ class _BayesianPopulationBase(Model):
             Psi[t,:] = self.activation_model.rvs(X[t,:])
 
             # Sample spike counts
-            S[t,:] = self.observation_model.rvs(Psi[t,:], temperature=temperature)
+            S[t,:] = self.observation_model.rvs(Psi[t,:])
 
             # Compute change in activation via tensor product
             dX = np.tensordot( H, S[t,:], axes=([2, 0]))
@@ -1109,6 +1108,62 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
 
         # Resample the network given the weight model
         self.network.resample((self.weight_model.A, self.weight_model.W))
+
+    def ais(self, N_samples=100, B=1000, steps_per_B=1, verbose=True, full_output=False):
+        """
+        Since Gibbs sampling as a function of temperature is implemented,
+        we can use AIS to approximate the marginal likelihood of the model.
+        """
+        # We use a linear schedule by default
+        betas = np.linspace(0, 1, B)
+
+        print "Estimating marginal likelihood with AIS"
+        lw = np.zeros(N_samples)
+        for m in progprint_xrange(N_samples):
+            # Initialize the model with a draw from the prior
+            # This is equivalent to sampling with temperature=0
+            self.collapsed_resample_model(temperature=0.0)
+
+            # Keep track of the log of the m-th weight
+            # It starts at zero because the prior is assumed to be normalized
+            lw[m] = 0.0
+
+            # Sample the intermediate distributions
+            for b in xrange(1,B):
+                if verbose:
+                    sys.stdout.write("M: %d\tBeta: %.3f \r" % (m,betas[b]))
+                    sys.stdout.flush()
+
+                # Compute the ratio of this sample under this distribution
+                # and the previous distribution. The difference is added
+                # to the log weight
+                curr_lp = self.log_probability(temperature=betas[b])
+                prev_lp = self.log_probability(temperature=betas[b-1])
+                lw[m] += curr_lp - prev_lp
+
+                # Sample the model at temperature betas[b]
+                # Take some number of steps per beta in hopes that
+                # the Markov chain will reach equilibrium.
+                for s in range(steps_per_B):
+                    self.collapsed_resample_model(temperature=betas[b])
+
+            if verbose:
+                print ""
+                print "W: %f" % lw[m]
+
+        # Compute the mean of the weights to get an estimate of the normalization constant
+        log_Z = -np.log(N_samples) + logsumexp(lw)
+
+        # Use bootstrap to compute standard error
+        subsamples = np.random.choice(lw, size=(100, N_samples), replace=True)
+        log_Z_subsamples = logsumexp(subsamples, axis=1) - np.log(N_samples)
+        std_log_Z = log_Z_subsamples.std()
+
+        if full_output:
+            return log_Z, std_log_Z, lw
+        else:
+            return log_Z, std_log_Z
+
 
 class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
     """

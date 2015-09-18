@@ -178,8 +178,8 @@ class BernoulliObservations(_PolyaGammaAugmentedObservationsBase):
         """
         return np.ones_like(augmented_data["S"]).astype(np.float64)
 
-    def rvs(self, Psi, temperature=1.0):
-        p = logistic(Psi * temperature)
+    def rvs(self, Psi):
+        p = logistic(Psi)
         return np.random.rand(*p.shape) < p
 
     def expected_S(self, Psi):
@@ -256,9 +256,8 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
         res = augmented_data["S"] + xi
         return res.astype(np.float64)
 
-    def rvs(self, Psi, temperature=1.0):
-        # TODO: Check this!
-        p = logistic(Psi * temperature)
+    def rvs(self, Psi):
+        p = logistic(Psi)
         p = np.clip(p, 1e-32, 1-1e-32)
         return np.random.negative_binomial(self.xi, 1-p)
 

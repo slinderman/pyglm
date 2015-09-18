@@ -145,7 +145,6 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
         self.resample()
 
-    @line_profiled
     def resample(self, augmented_data=[]):
 
         # TODO: Handle lists of data
@@ -194,7 +193,6 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
                     if self.A[n_pre, n_post]:
                         Psi[:,n_post] += F_pre.dot(self.W[n_pre, n_post,:])
 
-    @line_profiled
     def _get_sufficient_statistics(self, augmented_data, n_pre, n_post, psi_others):
         """
         Get the sufficient statistics for this synapse.
@@ -227,7 +225,6 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 
         return post_mu, post_cov, post_prec
 
-    @line_profiled
     def _resample_A(self, n_pre, n_post, stats):
         """
         Resample the presence or absence of a connection (synapse)
@@ -281,7 +278,6 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
     def obs_model(self):
         return self.population.observation_model
 
-    @line_profiled
     def collapsed_resample(self, augmented_data=[]):
         if not isinstance(augmented_data, list):
             augmented_data = [augmented_data]
@@ -312,7 +308,6 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
 
         return mu_full, Sigma_full
 
-    @line_profiled
     def _collapsed_posterior_statistics(self, n, augmented_data, mu_full, Sigma_full):
         # Get a binary mask to extract the mu and Sigma
         # entries corresponding to connections
@@ -350,8 +345,6 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
         return mu_eff, Sigma_eff, mu_post, Sigma_post
 
 
-
-    @line_profiled
     def _collapsed_posterior_statistics_fail(self, n, augmented_data, mu_full, Sigma_full):
         # Now do it without memory copying
         # Get a binary mask to extract the mu and Sigma

@@ -14,7 +14,7 @@ from scipy.stats import norm, probplot
 # x ~ [Bern(x | \sigma(z))]^{1/T} = Bern(x | \sigma(z / T))
 # Where T is the temperature of the tempered distribution in [1, \inf)
 # When T=1 we target the posterior. When T=\inf we target the prior
-T = 0.25
+T = 2.0
 mu_z = 0.0
 sigma_z = 1.0
 
