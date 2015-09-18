@@ -1174,11 +1174,11 @@ class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
             initialize_with_standard_model(standard_model)
 
         # Update the network model a few times
-        print "Mean field initializing network:"
+        # print "Mean field initializing network:"
         N_network_updates = 10
         for itr in xrange(N_network_updates):
-            sys.stdout.write(".")
-            sys.stdout.flush()
+            # sys.stdout.write(".")
+            # sys.stdout.flush()
             self.network.meanfieldupdate(self.weight_model)
 
     @line_profiled

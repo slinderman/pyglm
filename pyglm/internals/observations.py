@@ -70,7 +70,6 @@ class _PolyaGammaAugmentedObservationsBase(Component):
         Compute kappa = a-b/2
         :return:
         """
-        print "Check that kappa is correct!"
         # return self.a(augmented_data) \
         #        - self.b(augmented_data)/2.0
         return augmented_data["kappa"]
@@ -225,7 +224,7 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
     def log_likelihood(self, augmented_data):
         S = augmented_data["S"]
         Psi = self.activation.compute_psi(augmented_data)
-        return self._log_likelihood_given_activation(S, Psi, self.xi)
+        return self._log_likelihood_given_activation(S, Psi)
 
 
     def _log_likelihood_given_activation(self, S, psi):
@@ -262,12 +261,13 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
         return np.random.negative_binomial(self.xi, 1-p)
 
     # Override the Gibbs sampler to also sample xi
-    def resample(self, augmented_data_list):
+    def resample(self, augmented_data_list, temperature=1.0):
         if self.do_resample_xi:
             self._resample_xi_discrete(augmented_data_list)
             # self._resample_xi_slicesample(augmented_data_list)
 
-        super(NegativeBinomialObservations, self).resample(augmented_data_list)
+        super(NegativeBinomialObservations, self).\
+            resample(augmented_data_list, temperature=temperature)
 
         # Save b
         # for data in augmented_data_list:
@@ -302,8 +302,8 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
             # Slice sample \xi_n
             self.xi[0,n], _ = slicesample(self.xi[0,n], _log_prob_xin, lb=1+1e-5, ub=100)
 
-        print "Xi:"
-        print self.xi
+        # print "Xi:"
+        # print self.xi
 
     def _resample_xi_discrete(self, augmented_data_list, xi_max=100):
         # Compute the activations
@@ -318,13 +318,13 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
             pn   = logistic(psin)
             pn   = np.clip(pn, 1e-32, 1-1e-32)
 
-            from hips.inference.log_sum_exp import log_sum_exp_sample
+            from pybasicbayes.util.stats import sample_discrete_from_log
             xis = np.arange(1, xi_max)
             lp_xi = (gammaln(Sn[:,None]+xis[None,:]) - gammaln(xis[None,:])).sum(0)
             lp_xi += (xis[None,:] * np.log(1-pn)[:,None]).sum(0)
-            self.xi[0,n] = xis[log_sum_exp_sample(lp_xi)]
+            self.xi[0,n] = xis[sample_discrete_from_log(lp_xi)]
 
-        print "Xi: ", self.xi
+        # print "Xi: ", self.xi
 
     def expected_S(self, Psi):
         p = logistic(Psi)
