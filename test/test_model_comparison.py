@@ -26,8 +26,8 @@ seed = 1234
 # seed = np.random.randint(2**32)
 
 # Create an latent distance model with N nodes and D-dimensional locations
-N = 30      # Number of training neurons
-T = 10000   # Number of training time bins
+N = 20      # Number of training neurons
+T = 1000    # Number of training time bins
 B = 1       # Dimensionality of the weights
 D = 2       # Dimensionality of the feature space
 
@@ -81,12 +81,15 @@ for adj_model, weight_model in itertools.product(adj_models, weight_models):
         lps.append(test_model.log_probability())
         plls.append(test_model.heldout_neuron_log_likelihood(Strain, Stest))
 
-    results.append((adj_model.__name__ + "-" + weight_model.__name__, lps, plls))
+    # Estimate the marginal likelihood with AIS
+    ml, ml_std  = test_model.ais()
+
+    results.append((adj_model.__name__ + "-" + weight_model.__name__, lps, plls, ml, ml_std))
 
 
 colors = ['b', 'r', 'g', 'y', 'm', 'k']
 plt.figure()
-for col, (cls, lps, plls) in zip(colors, results):
+for col, (cls, lps, plls, _, _) in zip(colors, results):
     plt.subplot(121)
     plt.plot(lps, color=col)
     plt.xlabel("Iteration")
@@ -97,5 +100,9 @@ for col, (cls, lps, plls) in zip(colors, results):
     plt.xlabel("Iteration")
     plt.ylabel("PLL")
 
+plt.figure()
+mls = [res[3] for res in results]
+ml_stds = [res[4] for res in results]
+plt.plot(mls, 'o', yerr=ml_stds, linestyle="")
 plt.show()
 
