@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.linalg import solve, det, inv
+from scipy.linalg import solve, det, inv, solve_triangular
 from scipy.special import erfc, erfcinv
 from numpy import prod, diag, log, einsum, diag_indices, exp
 from numpy.linalg import slogdet
@@ -196,3 +196,18 @@ def sample_truncnorm(mu=0, sigma=1, lb=-np.Inf, ub=np.Inf):
 
     smpls = sigma * zs + mu
     return np.clip(smpls, np.nan_to_num(lb+1e-15), np.nan_to_num(ub-1e-15))
+
+# From PyBasicBayes
+def sample_gaussian(mu=None,Sigma=None,J=None,h=None):
+    mean_params = mu is not None and Sigma is not None
+    info_params = J is not None and h is not None
+    assert mean_params or info_params
+
+    if mu is not None and Sigma is not None:
+        return np.random.multivariate_normal(mu,Sigma)
+    else:
+        from scipy.linalg.lapack import dpotrs
+        L = np.linalg.cholesky(J)
+        x = np.random.randn(h.shape[0])
+        return solve_triangular(L,x,lower=True,trans='T') \
+            + dpotrs(L,h,lower=True)[0]

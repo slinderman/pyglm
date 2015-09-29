@@ -1,7 +1,9 @@
 import numpy as np
-import os
-import cPickle
-import gzip
+
+from graphistician.adjacency import BernoulliAdjacencyDistribution
+from graphistician.weights import FixedGaussianWeightDistribution
+from graphistician.networks import FactorizedNetworkDistribution
+
 
 # Turn on line profiling with `export PROFILING=True`
 from pyglm.utils.profiling import show_line_stats
@@ -19,32 +21,51 @@ def demo(seed=None):
     print "Setting seed to ", seed
     np.random.seed(seed)
 
-    ###########################################################
-    # Load some example data.
-    # See data/synthetic/generate.py to create more.
-    ###########################################################
-    data_path = os.path.join("data", "synthetic", "synthetic_K20_C1_T10000.pkl.gz")
-    with gzip.open(data_path, 'r') as f:
-        S, true_model = cPickle.load(f)
 
-    T      = S.shape[0]
-    N      = true_model.N
-    B      = true_model.B
-    dt     = true_model.dt
-    dt_max = true_model.dt_max
+    N = 27          # Number of neurons
+    T = 60000       # Number of time bins
+    dt = 1.0        # Time bin width
+    dt_max = 10.0   # Max time of synaptic influence
+    B = 2           # Number of basis functions for the weights
+
+    #   Bias hyperparameters
+    bias_hypers = {"mu_0": -1.0, "sigma_0": 0.25}
+
+    p = 0.5                 # Probability of connection for each pair of clusters
+    mu = np.zeros((B,))     # Mean weight for each pair of clusters
+    sigma = 1.0 * np.eye(B) # Covariance of weight for each pair of clusters
+
+    # Define the true network model for the GLM
+    true_network = FactorizedNetworkDistribution(
+        N,
+        BernoulliAdjacencyDistribution, {"p": p},
+        FixedGaussianWeightDistribution, {"B": B, "mu": mu, "sigma": sigma})
+
+    true_model = Population(N=N, dt=dt, dt_max=dt_max, B=B,
+                       bias_hypers=bias_hypers,
+                       network=true_network)
 
     ###########################################################
     # Create a test spike-and-slab model
     ###########################################################
+    # Create another copy of the model with the true network model
+    test_network = FactorizedNetworkDistribution(
+        N,
+        BernoulliAdjacencyDistribution, {"p": p},
+        FixedGaussianWeightDistribution, {"B": B, "mu": mu, "sigma": sigma})
 
-    # Copy the network hypers.
     test_model = Population(N=N, dt=dt, dt_max=dt_max, B=B,
-                            basis_hypers=true_model.basis_hypers,
-                            observation_hypers=true_model.observation_hypers,
-                            activation_hypers=true_model.activation_hypers,
-                            weight_hypers=true_model.weight_hypers,
-                            network_hypers=true_model.network_hypers)
-    test_model.add_data(S)
+                            bias_hypers=bias_hypers,
+                            network=test_network)
+
+
+    # Sample some synthetic data from the true model
+    S = true_model.generate(T=T, keep=True, verbose=False)
+
+    # Add training data in chunks
+    chunksz = 1024
+    for offset in xrange(0, T, chunksz):
+        test_model.add_data(S[offset:min(offset+chunksz,T)])
 
     ###########################################################
     # Fit the test model with Gibbs sampling

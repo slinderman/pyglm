@@ -2,13 +2,14 @@
 Weight models
 """
 import numpy as np
-from scipy.misc import logsumexp
-
-from graphistician.abstractions import NetworkDistribution
+from scipy.linalg.lapack import dpotrs
 
 from pyglm.abstractions import Component
 from pyglm.internals.distributions import Bernoulli, Gaussian, TruncatedScalarGaussian
 from pyglm.utils.utils import logistic, logit, normal_cdf, sample_truncnorm
+
+from pyglm.utils.profiling import line_profiled
+PROFILING = True
 
 class NoWeights(Component):
     def __init__(self, population):
@@ -278,6 +279,7 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
     def obs_model(self):
         return self.population.observation_model
 
+    @line_profiled
     def collapsed_resample(self, augmented_data=[]):
         if not isinstance(augmented_data, list):
             augmented_data = [augmented_data]
@@ -285,11 +287,16 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
         #  TODO: We can parallelize over n_post
         P = self.network.adjacency.P
         for n in xrange(self.N):
-            mu_full, Sigma_full = self._compute_full_prior(n)
-            self._collapsed_resample_A(n, augmented_data, P, mu_full, Sigma_full)
-            self._collapsed_resample_W_b(n, augmented_data, mu_full, Sigma_full)
+            # Compute the prior and posterior sufficient statistics of W
+            J_prior, h_prior = self._prior_sufficient_statistics(n)
+            J_lkhd, h_lkhd = self._lkhd_sufficient_statistics(n, augmented_data)
+            J_post = J_prior + J_lkhd
+            h_post = h_prior + h_lkhd
 
-    def _compute_full_prior(self, n):
+            self._collapsed_resample_A(n, P, J_prior, h_prior, J_post, h_post)
+            self._collapsed_resample_W_b(n, J_post, h_post)
+
+    def _prior_sufficient_statistics(self, n):
         mu_b    = self.bias_model.mu_0
         sigma_b = self.bias_model.sigma_0
 
@@ -306,23 +313,22 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
         K = mu_full.shape[0]
         assert Sigma_full.shape == (K,K)
 
-        return mu_full, Sigma_full
+        # Compute the information form
+        J_prior = np.linalg.inv(Sigma_full)
+        h_prior = J_prior.dot(mu_full)
 
-    def _collapsed_posterior_statistics(self, n, augmented_data, mu_full, Sigma_full):
-        # Get a binary mask to extract the mu and Sigma
-        # entries corresponding to connections
-        Aeff = np.concatenate(([1], np.repeat(self.A[:,n], self.B))).astype(np.bool)
+        return J_prior, h_prior
 
-        # Get effective params for nonzero A's
-        mu_eff = mu_full[Aeff]
-        Sigma_eff = Sigma_full[np.ix_(Aeff, Aeff)]
-
-        prior_prec          = np.linalg.inv(Sigma_eff)
-        prior_mean_dot_prec = np.linalg.solve(Sigma_eff, mu_eff)
-
+    def _lkhd_sufficient_statistics(self, n, augmented_data):
+        """
+        Compute the full likelihood sufficient statistics as if all connections
+         were present.
+        """
         # Compute the sufficient statistics of the likelihood
-        lkhd_prec = np.zeros_like(prior_prec)
-        lkhd_mean_dot_prec = np.zeros_like(prior_mean_dot_prec)
+        # These will be the same shape as those of the prior
+        D = 1 + self.N * self.B
+        J_lkhd = np.zeros((D, D))
+        h_lkhd = np.zeros(D)
 
         # Compute the posterior sufficient statistics
         for data in augmented_data:
@@ -330,98 +336,57 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
             omega = data["omega"]
             kappa = data["kappa"]
 
-            F_flat = data["F"].reshape((T,self.N*self.B))
-            F_full = np.concatenate((np.ones((T,1)), F_flat), axis=1)
-            F_eff = F_full[:, Aeff]
+            F_flat = data["F_full"]
+            assert F_flat.shape == (T,self.N*self.B+1)
 
-            lkhd_prec += (F_eff * omega[:,n][:,None]).T.dot(F_eff)
-            lkhd_mean_dot_prec  += kappa[:,n].dot(F_eff)
+            # The likelihood terms will be dense
+            # h_lkhd is a 1xT vector times a T x NB matrix
+            # We will only need a subset of the resulting NB vector
+            J_lkhd += (F_flat * omega[:,n][:,None]).T.dot(F_flat)
+            h_lkhd  += kappa[:,n].dot(F_flat)
 
-        # Compute the posterior parameters of W
-        Lambda_post = prior_prec + lkhd_prec
-        Sigma_post = np.linalg.inv(Lambda_post)
-        mu_post = Sigma_post.dot(prior_mean_dot_prec + lkhd_mean_dot_prec)
+        return J_lkhd, h_lkhd
 
-        return mu_eff, Sigma_eff, mu_post, Sigma_post
-
-
-    def _collapsed_posterior_statistics_fail(self, n, augmented_data, mu_full, Sigma_full):
-        # Now do it without memory copying
-        # Get a binary mask to extract the mu and Sigma
-        # entries corresponding to connections
+    @line_profiled
+    def _marginal_likelihood(self, n, J_prior, h_prior, J_post, h_post):
+        """
+        Compute the marginal likelihood as the ratio of log normalizers
+        """
         Aeff = np.concatenate(([1], np.repeat(self.A[:,n], self.B))).astype(np.bool)
 
-        # Get effective params for nonzero A's
-        mu_eff = mu_full[Aeff]
-        Sigma_eff = Sigma_full[np.ix_(Aeff, Aeff)]
+        # Extract the entries for which A=1
+        J0 = J_prior[np.ix_(Aeff, Aeff)]
+        h0 = h_prior[Aeff]
+        Jp = J_post[np.ix_(Aeff, Aeff)]
+        hp = h_post[Aeff]
 
-        prior_prec          = np.linalg.inv(Sigma_eff)
-        prior_mean_dot_prec = np.linalg.solve(Sigma_eff, mu_eff)
+        # This relates to the mean/covariance parameterization as follows
+        # log |C| = log |J^{-1}| = -log |J|
+        # and
+        # mu^T C^{-1} mu = mu^T h
+        #                = mu C^{-1} C h
+        #                = h^T C h
+        #                = h^T J^{-1} h
+        # ml = 0
+        # ml -= 0.5*np.linalg.slogdet(Jp)[1]
+        # ml += 0.5*np.linalg.slogdet(J0)[1]
+        # ml += 0.5*hp.dot(np.linalg.solve(Jp, hp))
+        # ml -= 0.5*h0.T.dot(np.linalg.solve(J0, h0))
 
-        # Initialize terms for pairwise computation
-        As = self.A[:,n].nonzero()[0]
-        B = self.B
+        # Now compute it even faster using the Cholesky!
+        L0 = np.linalg.cholesky(J0)
+        Lp = np.linalg.cholesky(Jp)
 
-        lkhd_prec = np.zeros_like(prior_prec)
-        lkhd_mean_dot_prec = np.zeros_like(prior_mean_dot_prec)
-        for data in augmented_data:
-            F = data["Ftrans"]
-            omegan = data["omega"][:,n]
-            kappan = data["kappa"][:,n]
+        ml = 0
+        ml -= np.sum(np.log(np.diag(Lp)))
+        ml += np.sum(np.log(np.diag(L0)))
+        ml += 0.5*hp.T.dot(dpotrs(Lp, hp, lower=True)[0])
+        ml -= 0.5*h0.T.dot(dpotrs(L0, h0, lower=True)[0])
 
-            # Compute the mean dot precision
-            lkhd_mean_dot_prec[0] += kappan.sum()
-            for i,m in enumerate(As):
-                slc = slice(1+i*B, 1+(i+1)*B)
-                lkhd_mean_dot_prec[slc] += kappan.dot(F[m,:,:])
+        return ml
 
-            # Compute precision cross terms with the bias
-            lkhd_prec[0,0] = omegan.sum()
-            for i,m in enumerate(As):
-                slc = slice(1+i*B, 1+(i+1)*B)
-                # TODO: See if we can slice this without memory copies
-                fo = omegan.dot(F[m,:,:])
-                # fo = np.einsum("t,tc->c", omegan, F[:,m,:])
-                lkhd_prec[0,slc] = lkhd_prec[slc,0] = fo
-
-            # Compute precision cross terms for each pair of presynaptic neurons
-            for i,m1 in enumerate(As):
-                for j,m2 in enumerate(As):
-                    if i < j:
-                        continue
-
-                    slc1 = slice(1+i*B, 1+(i+1)*B)
-                    slc2 = slice(1+j*B, 1+(j+1)*B)
-
-                    # TODO: See if we can slice this without memory copies
-                    # import ipdb; ipdb.set_trace()
-                    fof = (F[m1,:,:] * omegan[:,None]).T.dot(F[m2,:,:])
-
-                    # Try einsum
-                    # fof = np.einsum("tb,t,tc->bc", F[:,m1,:], omegan, F[:,m2,:])
-
-                    # Try this with blas instead
-                    # from scipy.linalg.blas import dgemm
-                    # fof = dgemm(alpha=1.0,
-                    #             a=(F[m1,:,:] * omegan[:,None]).T,
-                    #             b=F[m2,:,:].T,
-                    #             trans_b=True)
-
-                    lkhd_prec[slc1,slc2] = fof
-                    lkhd_prec[slc2,slc1] = fof.T
-
-        # Assert that the two approaches are identical
-        # assert np.allclose(lkhd_mean_dot_prec, lkhd_mean_dot_prec2)
-        # assert np.allclose(lkhd_prec, lkhd_prec2)
-
-        # Compute the posterior parameters of W
-        Lambda_post = prior_prec + lkhd_prec
-        Sigma_post = np.linalg.inv(Lambda_post)
-        mu_post = Sigma_post.dot(prior_mean_dot_prec + lkhd_mean_dot_prec)
-
-        return mu_eff, Sigma_eff, mu_post, Sigma_post
-
-    def _collapsed_resample_A_base(self, n, augmented_data, P, mu_full, Sigma_full):
+    @line_profiled
+    def _collapsed_resample_A_slow(self, n, P, J_prior, h_prior, J_post, h_post):
         """
         Resample the presence or absence of a connection (synapse)
         :param n_pre:
@@ -429,33 +394,33 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
         :param stats:
         :return:
         """
-        # First sample A[:,n] -- the presence or absence of a connections from
-        # presynaptic neurons
+        # Sample A[m,n] -- the presence or absence of a connections from
+        # presynaptic neuron m -- given the rest of the incoming A[:,n]
         perm = np.random.permutation(self.N)
         for m in perm:
-
-            ### TODO: NEW
             # Compute the marginal prob with and without A[m,n]
             lps = np.zeros(2)
             for v in [0,1]:
                 self.A[m,n] = v
 
-                mu_eff, Sigma_eff, mu_post, Sigma_post = \
-                    self._collapsed_posterior_statistics(n, augmented_data, mu_full, Sigma_full)
-
-                # Compute the marginal probability
-                lps[v] += np.linalg.slogdet(Sigma_post)[1]
-                lps[v] -= np.linalg.slogdet(Sigma_eff)[1]
-                lps[v] += mu_post.T.dot(np.linalg.solve(Sigma_post, mu_post))
-                lps[v] -= mu_eff.T.dot(np.linalg.solve(Sigma_eff, mu_eff))
+                # Now compute the marginal likelihood using J and h
+                lps[v] = self._marginal_likelihood(n,
+                                                   J_prior, h_prior,
+                                                   J_post, h_post)
                 lps[v] += v * np.log(P[m,n]) + (1-v) * np.log(1-P[m,n])
 
             # Sample from the marginal probability
-            ps = np.exp(lps - logsumexp(lps))
-            assert np.allclose(ps.sum(), 1.0)
+            max_lps = max(lps[0], lps[1])
+            se_lps = np.sum(np.exp(lps-max_lps))
+            lse_lps = np.log(se_lps) + max_lps
+            ps = np.exp(lps - lse_lps)
+            # ps_old = np.exp(lps - logsumexp(lps))
+            # assert np.allclose(ps, ps_old)
+            # assert np.allclose(ps.sum(), 1.0)
             self.A[m,n] = np.random.rand() < ps[1]
 
-    def _collapsed_resample_A(self, n, augmented_data, P, mu_full, Sigma_full):
+    @line_profiled
+    def _collapsed_resample_A(self, n, P, J_prior, h_prior, J_post, h_post):
         """
         Resample the presence or absence of a connection (synapse)
         :param n_pre:
@@ -467,60 +432,59 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
         # presynaptic neurons
         perm = np.random.permutation(self.N)
 
-        # Initialize the posterior statistics
-        post_stats_prev = \
-            self._collapsed_posterior_statistics(n, augmented_data, mu_full, Sigma_full)
+        ml_prev = self._marginal_likelihood(n, J_prior, h_prior, J_post, h_post)
 
         for m in perm:
 
             # Compute the marginal prob with and without A[m,n]
             lps = np.zeros(2)
 
-            # We already have posterior stats for the current value of A
-            # We can use them to compute the marginal probability
+            # We already have the marginal likelihood for the current value of A
+            # We just need to add the prior
             v_prev = self.A[m,n]
-            mu_eff_prev, Sigma_eff_prev, mu_post_prev, Sigma_post_prev = post_stats_prev
-            lps[v_prev] += np.linalg.slogdet(Sigma_post_prev)[1]
-            lps[v_prev] -= np.linalg.slogdet(Sigma_eff_prev)[1]
-            lps[v_prev] += mu_post_prev.T.dot(np.linalg.solve(Sigma_post_prev, mu_post_prev))
-            lps[v_prev] -= mu_eff_prev.T.dot(np.linalg.solve(Sigma_eff_prev, mu_eff_prev))
+            lps[v_prev] += ml_prev
             lps[v_prev] += v_prev * np.log(P[m,n]) + (1-v_prev) * np.log(1-P[m,n])
 
             # Now compute the posterior stats for 1-v
             v_new = 1 - v_prev
             self.A[m,n] = v_new
-            post_stats_new = \
-                self._collapsed_posterior_statistics(n, augmented_data, mu_full, Sigma_full)
 
-            mu_eff_new, Sigma_eff_new, mu_post_new, Sigma_post_new = post_stats_new
-            lps[v_new] += np.linalg.slogdet(Sigma_post_new)[1]
-            lps[v_new] -= np.linalg.slogdet(Sigma_eff_new)[1]
-            lps[v_new] += mu_post_new.T.dot(np.linalg.solve(Sigma_post_new, mu_post_new))
-            lps[v_new] -= mu_eff_new.T.dot(np.linalg.solve(Sigma_eff_new, mu_eff_new))
+            ml_new = self._marginal_likelihood(n, J_prior, h_prior, J_post, h_post)
+
+            lps[v_new] += ml_new
             lps[v_new] += v_new * np.log(P[m,n]) + (1-v_new) * np.log(1-P[m,n])
 
             # Sample from the marginal probability
-            ps = np.exp(lps - logsumexp(lps))
-            assert np.allclose(ps.sum(), 1.0)
+            max_lps = max(lps[0], lps[1])
+            se_lps = np.sum(np.exp(lps-max_lps))
+            lse_lps = np.log(se_lps) + max_lps
+            ps = np.exp(lps - lse_lps)
+
+            # ps = np.exp(lps - logsumexp(lps))
+            # assert np.allclose(ps.sum(), 1.0)
             v_smpl = np.random.rand() < ps[1]
             self.A[m,n] = v_smpl
 
             # Cache the posterior stats
-            post_stats_prev = post_stats_prev if v_smpl == v_prev else post_stats_new
+            ml_prev = ml_prev if v_smpl == v_prev else ml_new
 
-    def _collapsed_resample_W_b(self, n, augmented_data, mu_full, Sigma_full):
+    @line_profiled
+    def _collapsed_resample_W_b(self, n, J_post, h_post):
         """
         Resample the weight of a connection (synapse)
-        :param n_pre:
-        :param n_post:
-        :param stats:
-        :return:
         """
-        # Once we've resampled A[:,n] we can resample b[n] and W[:,n]
-        mu_eff, Sigma_eff, mu_post, Sigma_post = \
-            self._collapsed_posterior_statistics(n, augmented_data, mu_full, Sigma_full)
+        Aeff = np.concatenate(([1], np.repeat(self.A[:,n], self.B))).astype(np.bool)
+        Jp = J_post[np.ix_(Aeff, Aeff)]
+        hp = h_post[Aeff]
 
-        Wbn = np.random.multivariate_normal(mu_post, Sigma_post)
+        # Sample in mean and covariance (standard) form
+        # mup = np.linalg.solve(Jp, hp)
+        # Sigp = np.linalg.inv(Jp)
+        # Wbn = np.random.multivariate_normal(mup, Sigp)
+
+        # Sample in information form
+        from pyglm.utils.utils import sample_gaussian
+        Wbn = sample_gaussian(J=Jp, h=hp)
 
         # Set bias and weights
         self.bias_model.b[n] = Wbn[0]

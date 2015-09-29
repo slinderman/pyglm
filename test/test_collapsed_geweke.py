@@ -27,9 +27,6 @@ def demo(seed=None):
     dt_max = 10.0                                           # Max time of synaptic influence
     B = 2                                                   # Number of basis functions for the weights
 
-    # Test the model at a particular temperature
-    temperature = 0.25
-
     #   Bias hyperparameters
     bias_hypers = {"mu_0": -1.0, "sigma_0": 0.25}
 
@@ -55,7 +52,6 @@ def demo(seed=None):
     N_samples = 10000
     samples = []
     lps = []
-    import ipdb; ipdb.set_trace()
     for itr in progprint_xrange(N_samples):
         lps.append(test_model.log_probability())
         samples.append(test_model.copy_sample())

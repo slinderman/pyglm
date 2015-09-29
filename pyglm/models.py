@@ -809,11 +809,11 @@ class _BayesianPopulationBase(Model):
         if F is None:
             F = self.basis.convolve_with_basis(S)
 
-        # TODO: Remove or commit to using this
-        Ftrans = np.transpose(F, [1,0,2]).copy("C")
+        F_flat = F.reshape((T,self.N*self.B))
+        F_full = np.concatenate((np.ones((T,1)), F_flat), axis=1)
 
         # Augment the data with extra local variables and regressors
-        augmented_data = {"T": T, "S": S, "F": F, "Ftrans": Ftrans}
+        augmented_data = {"T": T, "S": S, "F": F, "F_full": F_full}
 
         # The model components may require local variables for each data point
         self.observation_model.augment_data(augmented_data)
