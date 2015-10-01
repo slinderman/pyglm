@@ -232,6 +232,14 @@ def chol_add_row(Lprev, B, C, out=None):
     :param C:      DxD matrix to append to A
     :param out:    N+D x N+D output matrix or None
     """
+    if B.ndim == 1:
+        B = B[:,None]
+
+    if np.isscalar(C):
+        C = np.array([[C]])
+    elif C.ndim == 1:
+        C = C[:,None]
+
     N, D = Lprev.shape[0], B.shape[1]
     assert Lprev.shape[1] == N
     assert B.shape == (N,D)
@@ -240,38 +248,64 @@ def chol_add_row(Lprev, B, C, out=None):
     if out is None:
         out = np.zeros((N+D, N+D))
 
-    E = solve_triangular(Lprev, B).T
-    F = C - E.dot(E.T)
+    E = solve_triangular(Lprev, B, lower=True).T
+    F = np.linalg.cholesky(C - E.dot(E.T))
 
     out[:N,:N] = Lprev
     out[N:,:N] = E
     out[N:,N:] = F
     return out
 
-def chol_remove_row(Lprev, slc, out=None):
+def chol_remove_row(Lprev, start, stop, out=None):
     """
-    Compute L* = chol(A*)
+    Compute L = chol(A) given L* = chol(A*)
     where
-    A* = [[A,   B],
-          [B^T, C]]
+    A* = [[A,    B,    C],
+          [B.T,  D,    E],
+          [C.T,  E.T,  F]]
 
     We know
-    L* = [[L, 0],
-          [E, F]]
+    L* = [[L*, 0, 0],
+          [J*, K*, 0],
+          [P*, Q*, R*]]
 
-    and that L = chol(A). By math,
-    E = L^{-1} B
-    F = C - E^T E
+    and we want
+    L = [[L, 0],   = chol([[A, C],
+         [P, R]]           [C, F]]
+
+    We can see that L = chol(A). By math,
+    LP = C = L*P*  -> P = P*
+    and
+    P*P* + Q*Q* + R*R* = F = PP + RR
+    which implies
+    R = chol(Q*Q* + R*R*)
 
     :param Lprev:  N+DxN+D Cholesky decomposition of A
     :param slc:    slice of size D to remove from A
     :param out:    NxN output matrix or None
     """
     NpD = Lprev.shape[0]
-    D = slc.size
+    D = stop - start
     N = NpD - D
 
     if out is None:
         out = np.zeros((N, N))
 
-    raise NotImplementedError()
+    L = Lprev[:start, :start]
+    P = Lprev[stop:, :start]
+    Qs = Lprev[stop:, start:stop]
+    Rs = Lprev[stop:, stop:]
+
+    if stop < NpD:
+        R = np.linalg.cholesky(Qs.dot(Qs.T) + Rs.dot(Rs.T))
+    else:
+        R = np.array([])
+
+    # Fill in the output matrix
+    out[:start, :start] = L
+    out[start:, :start] = P
+    out[start:, start:]  = R
+
+    return out
+
+
