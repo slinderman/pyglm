@@ -101,8 +101,8 @@ alt_ml, alt_ml_std  = alt_model.ais(N_samples=20, B=1000, verbose=True)
 
 
 # Plot the marginal likelihood results
-plt.figure()
-plt.bar(np.arange(2), [test_ml, alt_ml], width=0.8)
-plt.xticks(np.arange(2)+0.4)
-plt.gca().set_xticklabels(['True', 'Alt'], rotation='vertical')
-plt.show(block=True)
+# plt.figure()
+# plt.bar(np.arange(2), [test_ml, alt_ml], width=0.8)
+# plt.xticks(np.arange(2)+0.4)
+# plt.gca().set_xticklabels(['True', 'Alt'], rotation='vertical')
+# plt.show(block=True)

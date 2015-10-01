@@ -211,3 +211,67 @@ def sample_gaussian(mu=None,Sigma=None,J=None,h=None):
         x = np.random.randn(h.shape[0])
         return solve_triangular(L,x,lower=True,trans='T') \
             + dpotrs(L,h,lower=True)[0]
+
+def chol_add_row(Lprev, B, C, out=None):
+    """
+    Compute L* = chol(A*)
+    where
+    A* = [[A,   B],
+          [B^T, C]]
+
+    We know
+    L* = [[L, 0],
+          [E, F]]
+
+    and that L = chol(A). By math,
+    E = L^{-1} B
+    F = C - E^T E
+
+    :param Lprev:  NxN Cholesky decomposition of A
+    :param B:      NxD matrix to append to A
+    :param C:      DxD matrix to append to A
+    :param out:    N+D x N+D output matrix or None
+    """
+    N, D = Lprev.shape[0], B.shape[1]
+    assert Lprev.shape[1] == N
+    assert B.shape == (N,D)
+    assert C.shape == (D,D)
+
+    if out is None:
+        out = np.zeros((N+D, N+D))
+
+    E = solve_triangular(Lprev, B).T
+    F = C - E.dot(E.T)
+
+    out[:N,:N] = Lprev
+    out[N:,:N] = E
+    out[N:,N:] = F
+    return out
+
+def chol_remove_row(Lprev, slc, out=None):
+    """
+    Compute L* = chol(A*)
+    where
+    A* = [[A,   B],
+          [B^T, C]]
+
+    We know
+    L* = [[L, 0],
+          [E, F]]
+
+    and that L = chol(A). By math,
+    E = L^{-1} B
+    F = C - E^T E
+
+    :param Lprev:  N+DxN+D Cholesky decomposition of A
+    :param slc:    slice of size D to remove from A
+    :param out:    NxN output matrix or None
+    """
+    NpD = Lprev.shape[0]
+    D = slc.size
+    N = NpD - D
+
+    if out is None:
+        out = np.zeros((N, N))
+
+    raise NotImplementedError()
