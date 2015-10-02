@@ -149,7 +149,7 @@ def chol_add_row(Lprev, start, BDE, out=None):
     L*J* = B                            -> J* = L^{-1} B
     J*J* + K*K* = D                     -> K* = chol(D-J*J*)
     P*J* + K*Q* = E                     -> Q* = K*^{-1} (E-P*J*)
-    P*P* + Q*Q* + R*R* = F = PP + RR    -> R* = chol(F - P*P* - Q*Q*)
+    P*P* + Q*Q* + R*R* = F = PP + RR    -> R* = chol(RR - Q*Q*)
 
     :param Lprev:  NxN Cholesky decomposition of A
     :param start:  Start index to add new entries to A
@@ -165,12 +165,30 @@ def chol_add_row(Lprev, start, BDE, out=None):
     D = BDE[start:start+p,:]
     E = BDE[start+p:,:]
 
+    # Get L, P, and R
+    L = Lprev[:start, :start]
+    P = Lprev[start:, :start]
+    R = Lprev[start:, start:]
 
+    # Compute the missing pieces
+    # TODO: Double check the transposes
+    J = solve_triangular(L, B)
+    K = np.linalg.cholesky(D-J.dot(J.T))
+    Q = solve_triangular(K, E.T - P.dot(J))
+    R = np.linalg.cholesky(R.dot(R.T) - Q.dot(Q.T))
+
+    # Put them into the output
     if out is None:
         out = np.zeros((N+p, N+p))
 
-    # TODO: Finish this
-    raise NotImplemented()
+    out[:start, :start] = L
+    out[start:start+p,:start] = J
+    out[start:start+p,start:start+p] = K
+    out[start+p:,:start] = P
+    out[start+p:,start:start+p] = Q
+    out[start+p:,start+p:] = R
+
+    return out
 
 def chol_remove_row(Lprev, start, stop, out=None):
     """
