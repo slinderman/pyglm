@@ -385,6 +385,46 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
 
         return ml
 
+    def _marginal_likelihood_new_conn(self, m, n, J_prior, h_prior, J_post, h_post,
+                                      L_prior_prev, L_post_prev):
+        """
+        Compute the marginal likelihood when we add a new connection from neuron m,
+        given that we have the cholesky decomposition of  J_prior and J_post for
+        the connections that already existed.
+        """
+        Aeff = np.concatenate(([1], np.repeat(self.A[:,n], self.B))).astype(np.bool)
+
+        # Extract the entries for which A=1
+        J0 = J_prior[np.ix_(Aeff, Aeff)]
+        h0 = h_prior[Aeff]
+        Jp = J_post[np.ix_(Aeff, Aeff)]
+        hp = h_post[Aeff]
+
+        # This relates to the mean/covariance parameterization as follows
+        # log |C| = log |J^{-1}| = -log |J|
+        # and
+        # mu^T C^{-1} mu = mu^T h
+        #                = mu C^{-1} C h
+        #                = h^T C h
+        #                = h^T J^{-1} h
+        # ml = 0
+        # ml -= 0.5*np.linalg.slogdet(Jp)[1]
+        # ml += 0.5*np.linalg.slogdet(J0)[1]
+        # ml += 0.5*hp.dot(np.linalg.solve(Jp, hp))
+        # ml -= 0.5*h0.T.dot(np.linalg.solve(J0, h0))
+
+        # Now compute it even faster using the Cholesky!
+        L0 = np.linalg.cholesky(J0)
+        Lp = np.linalg.cholesky(Jp)
+
+        ml = 0
+        ml -= np.sum(np.log(np.diag(Lp)))
+        ml += np.sum(np.log(np.diag(L0)))
+        ml += 0.5*hp.T.dot(dpotrs(Lp, hp, lower=True)[0])
+        ml -= 0.5*h0.T.dot(dpotrs(L0, h0, lower=True)[0])
+
+        return ml
+
     @line_profiled
     def _collapsed_resample_A_slow(self, n, P, J_prior, h_prior, J_post, h_post):
         """
