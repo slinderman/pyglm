@@ -70,7 +70,7 @@ def demo(seed=None):
     ###########################################################
     # Fit the test model with Gibbs sampling
     ###########################################################
-    N_samples = 10
+    N_samples = 3
     samples = []
     lps = []
     for itr in xrange(N_samples):

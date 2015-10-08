@@ -385,19 +385,17 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
 
         return ml
 
-    def _marginal_likelihood_new_conn(self, m, n, J_prior, h_prior, J_post, h_post,
-                                      L_prior_prev, L_post_prev):
+    @line_profiled
+    def _marginal_likelihood_with_block_update(self,
+        n, J0_mat, h_prior, Jp_mat, h_post):
         """
-        Compute the marginal likelihood when we add a new connection from neuron m,
-        given that we have the cholesky decomposition of  J_prior and J_post for
-        the connections that already existed.
+        Compute the marginal likelihood as the ratio of log normalizers
         """
         Aeff = np.concatenate(([1], np.repeat(self.A[:,n], self.B))).astype(np.bool)
+        Ainds = np.where(Aeff)[0]
 
         # Extract the entries for which A=1
-        J0 = J_prior[np.ix_(Aeff, Aeff)]
         h0 = h_prior[Aeff]
-        Jp = J_post[np.ix_(Aeff, Aeff)]
         hp = h_post[Aeff]
 
         # This relates to the mean/covariance parameterization as follows
@@ -407,25 +405,18 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
         #                = mu C^{-1} C h
         #                = h^T C h
         #                = h^T J^{-1} h
-        # ml = 0
-        # ml -= 0.5*np.linalg.slogdet(Jp)[1]
-        # ml += 0.5*np.linalg.slogdet(J0)[1]
-        # ml += 0.5*hp.dot(np.linalg.solve(Jp, hp))
-        # ml -= 0.5*h0.T.dot(np.linalg.solve(J0, h0))
-
-        # Now compute it even faster using the Cholesky!
-        L0 = np.linalg.cholesky(J0)
-        Lp = np.linalg.cholesky(Jp)
+        J0inds, J0inv, J0ldet = J0_mat.compute_submatrix_inverse(Ainds)
+        Jpinds, Jpinv, Jpldet = Jp_mat.compute_submatrix_inverse(Ainds)
 
         ml = 0
-        ml -= np.sum(np.log(np.diag(Lp)))
-        ml += np.sum(np.log(np.diag(L0)))
-        ml += 0.5*hp.T.dot(dpotrs(Lp, hp, lower=True)[0])
-        ml -= 0.5*h0.T.dot(dpotrs(L0, h0, lower=True)[0])
+        ml -= 0.5*Jpldet
+        ml += 0.5*J0ldet
+        ml += 0.5*hp.dot(Jpinv.dot(hp))
+        ml -= 0.5*h0.T.dot(J0inv.dot(h0))
 
-        return ml
+        return ml, (J0inds, J0inv, J0ldet), (Jpinds, Jpinv, Jpldet)
 
-    @line_profiled
+
     def _collapsed_resample_A_slow(self, n, P, J_prior, h_prior, J_post, h_post):
         """
         Resample the presence or absence of a connection (synapse)
@@ -458,6 +449,65 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
             # assert np.allclose(ps, ps_old)
             # assert np.allclose(ps.sum(), 1.0)
             self.A[m,n] = np.random.rand() < ps[1]
+
+    def _collapsed_resample_A_with_block_update(self, n, P, J_prior, h_prior, J_post, h_post):
+        """
+        Resample the presence or absence of a connection (synapse)
+        :param n_pre:
+        :param n_post:
+        :param stats:
+        :return:
+        """
+        # First sample A[:,n] -- the presence or absence of a connections from
+        # presynaptic neurons
+        perm = np.random.permutation(self.N)
+
+        # Initialize a big matrix
+        from pyglm.utils.fastinv import BigInvertibleMatrix
+        J0mat = BigInvertibleMatrix(J_prior)
+        Jpmat = BigInvertibleMatrix(J_post)
+        ml_prev, J0prms, Jpprms = \
+            self._marginal_likelihood_with_block_update(n, J0mat, h_prior, Jpmat, h_post)
+        J0mat.update(*J0prms)
+        Jpmat.update(*Jpprms)
+
+        for m in perm:
+
+            # Compute the marginal prob with and without A[m,n]
+            lps = np.zeros(2)
+
+            # We already have the marginal likelihood for the current value of A
+            # We just need to add the prior
+            v_prev = self.A[m,n]
+            lps[v_prev] += ml_prev
+            lps[v_prev] += v_prev * np.log(P[m,n]) + (1-v_prev) * np.log(1-P[m,n])
+
+            # Now compute the posterior stats for 1-v
+            v_new = 1 - v_prev
+            self.A[m,n] = v_new
+            ml_new, J0prms, Jpprms = \
+                self._marginal_likelihood_with_block_update(n, J0mat, h_prior, Jpmat, h_post)
+
+            lps[v_new] += ml_new
+            lps[v_new] += v_new * np.log(P[m,n]) + (1-v_new) * np.log(1-P[m,n])
+
+            # Sample from the marginal probability
+            max_lps = max(lps[0], lps[1])
+            se_lps = np.sum(np.exp(lps-max_lps))
+            lse_lps = np.log(se_lps) + max_lps
+            ps = np.exp(lps - lse_lps)
+
+            # ps = np.exp(lps - logsumexp(lps))
+            # assert np.allclose(ps.sum(), 1.0)
+            v_smpl = np.random.rand() < ps[1]
+            self.A[m,n] = v_smpl
+
+            # Cache the posterior stats and update the matrix objects
+            if v_smpl != v_prev:
+                ml_prev = ml_new
+                J0mat.update(*J0prms)
+                Jpmat.update(*Jpprms)
+
 
     @line_profiled
     def _collapsed_resample_A(self, n, P, J_prior, h_prior, J_post, h_post):
@@ -505,8 +555,10 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
             v_smpl = np.random.rand() < ps[1]
             self.A[m,n] = v_smpl
 
-            # Cache the posterior stats
-            ml_prev = ml_prev if v_smpl == v_prev else ml_new
+            # Cache the posterior stats and update the matrix objects
+            if v_smpl != v_prev:
+                ml_prev = ml_new
+
 
     @line_profiled
     def _collapsed_resample_W_b(self, n, J_post, h_post):
