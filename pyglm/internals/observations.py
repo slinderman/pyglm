@@ -9,6 +9,10 @@ from hips.inference.slicesample import slicesample
 from pyglm.abstractions import Component
 from pyglm.utils.utils import logistic
 
+from pyglm.utils.profiling import line_profiled
+PROFILING = False
+
+
 class _PolyaGammaAugmentedObservationsBase(Component):
     """
     Class to keep track of a set of spike count observations and the
@@ -89,6 +93,7 @@ class _PolyaGammaAugmentedObservationsBase(Component):
     def _log_likelihood_given_activation(self, S, psi):
         raise NotImplementedError()
 
+    @line_profiled
     def resample(self, augmented_data_list, temperature=1.0):
         """
         Resample omega given xi and psi, then resample psi given omega, X, w, and sigma

@@ -29,6 +29,7 @@ from pyglm.internals.weights import NoWeights, SpikeAndSlabGaussianWeights, Spik
 from pyglm.utils.basis import CosineBasis
 from pyglm.utils.utils import logistic, dlogistic_dx, logit
 from pyglm.utils.profiling import line_profiled
+PROFILING = True
 
 
 class HomogeneousPoissonModel(Model):
@@ -1096,6 +1097,7 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         # Resample the network given the weight model
         self.network.resample((self.weight_model.A, self.weight_model.W))
 
+    @line_profiled
     def collapsed_resample_model(self, temperature=1.0):
         assert temperature >= 0.0 and temperature <= 1.0
 
@@ -1181,7 +1183,6 @@ class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
             # sys.stdout.flush()
             self.network.meanfieldupdate(self.weight_model)
 
-    @line_profiled
     def meanfield_coordinate_descent_step(self):
         # TODO: Support multiple datasets
         assert len(self.data_list) == 1, "Can only do mean field variational inference with one dataset"
@@ -1196,7 +1197,6 @@ class _MeanFieldPopulation(_BayesianPopulationBase, ModelMeanField):
         # Update the network given the weights
         self.network.meanfieldupdate(self.weight_model)
 
-    @line_profiled
     def get_vlb(self):
         # TODO: Support multiple datasets
         assert len(self.data_list) == 1, "Can only compute VLBs with one dataset"

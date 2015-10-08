@@ -275,16 +275,15 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
     def bias_model(self):
         return self.population.bias_model
 
-    @property
-    def obs_model(self):
-        return self.population.observation_model
-
     @line_profiled
     def collapsed_resample(self, augmented_data=[]):
         if not isinstance(augmented_data, list):
             augmented_data = [augmented_data]
 
-        #  TODO: We can parallelize over n_post
+        self._serial_collapsed_resample(augmented_data)
+        self._parallel_collapsed_resample(augmented_data)
+
+    def _serial_collapsed_resample(self, augmented_data):
         P = self.network.adjacency.P
         for n in xrange(self.N):
             # Compute the prior and posterior sufficient statistics of W
@@ -295,6 +294,40 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
 
             self._collapsed_resample_A(n, P, J_prior, h_prior, J_post, h_post)
             self._collapsed_resample_W_b(n, J_post, h_post)
+
+    def _parallel_collapsed_resample(self, augmented_data=[]):
+        """
+        Resample A and W. This  version uses joblib to parallelize
+        over columns of the network.
+        """
+        if not isinstance(augmented_data, list):
+            augmented_data = [augmented_data]
+
+        # Use the module trick to avoid copying globals
+        import pyglm.internals.parallel as par
+        par.augmented_data = augmented_data
+        par.weight_model = self
+        par.bias_model = self.bias_model
+        par.network = self.network
+        par.P = self.network.adjacency.P
+        par.N = self.N
+        par.B = self.B
+
+        # We can naively parallelize over receiving neurons, k2
+        # To avoid serializing and copying the data object, we
+        # manually extract the required arrays Sk, Fk, etc.
+        from joblib import Parallel, delayed
+        results = Parallel(n_jobs=-1, backend="multiprocessing")(
+            delayed(par._parallel_collapsed_resample_column)(n) for n in range(self.N))
+
+        # Parse the results
+        b = np.array([r[0] for r in results])
+        A = np.array([r[1] for r in results]).T
+        W = np.array([r[2] for r in results]).transpose(1,0,2)
+
+        self.bias_model.b = b
+        self.A = A
+        self.W = W
 
     def _prior_sufficient_statistics(self, n):
         mu_b    = self.bias_model.mu_0
@@ -347,7 +380,6 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
 
         return J_lkhd, h_lkhd
 
-    @line_profiled
     def _marginal_likelihood(self, n, J_prior, h_prior, J_post, h_post):
         """
         Compute the marginal likelihood as the ratio of log normalizers
@@ -385,7 +417,6 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
 
         return ml
 
-    @line_profiled
     def _marginal_likelihood_with_block_update(self,
         n, J0_mat, h_prior, Jp_mat, h_post):
         """
@@ -509,7 +540,6 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
                 Jpmat.update(*Jpprms)
 
 
-    @line_profiled
     def _collapsed_resample_A(self, n, P, J_prior, h_prior, J_post, h_post):
         """
         Resample the presence or absence of a connection (synapse)
@@ -560,7 +590,6 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
                 ml_prev = ml_new
 
 
-    @line_profiled
     def _collapsed_resample_W_b(self, n, J_post, h_post):
         """
         Resample the weight of a connection (synapse)

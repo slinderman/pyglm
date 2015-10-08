@@ -6,6 +6,7 @@ import numpy as np
 
 from pyglm.abstractions import Component
 from pyglm.utils.profiling import line_profiled
+PROFILING = False
 
 class _ActivationBase(Component):
     """
@@ -48,7 +49,6 @@ class _ActivationBase(Component):
             n_pre, n_post = synapse
         return n_pre, n_post
 
-    @line_profiled
     def compute_residual(self, augmented_data, bias=None, synapse=None, bkgd=None):
         """
         Compute the residual activation for either the bias or the specified synapse.
@@ -87,23 +87,28 @@ class DeterministicActivation(_ActivationBase):
     def compute_psi(self, augmented_data):
         N = self.N
         T = augmented_data["T"]
-        F = augmented_data["F"]
+        F_full = augmented_data["F_full"]
+        b = self.bias_model.b
         W = self.weight_model.W_effective
+        # F = augmented_data["F"]
 
         # compute psi
-        # psi = np.zeros((T,N))
-        # psi += self.bias_model.b[None, :]
-        #
-        # for n_post in xrange(N):
-        #     psi[:,n_post] += np.tensordot(F, W[:,n_post,:], axes=((1,2), (0,1)))
-
         psi = np.zeros((T,N))
-        if not np.allclose(W, 0):
-            np.einsum("tmb,mnb->tn", F, W, out=psi)
-        psi += self.bias_model.b[None, :]
+        for n_post in xrange(N):
+            W_full = np.concatenate(([b[n_post]], W[:,n_post,:].ravel()))
+            psi[:,n_post] = F_full.dot(W_full)
 
-        # Add background activations
         psi += self.background_model.mean_background_activation(augmented_data)
+
+        # Slow way using einsum
+        # psi2 = np.zeros((T,N))
+        # if not np.allclose(W, 0):
+        #     np.einsum("tmb,mnb->tn", F, W, out=psi2)
+        # psi2 += self.bias_model.b[None, :]
+        #
+        # # Add background activations
+        # psi2 += self.background_model.mean_background_activation(augmented_data)
+        # assert np.allclose(psi, psi2)
 
         return psi
 
@@ -148,7 +153,6 @@ class DeterministicActivation(_ActivationBase):
         obs = self.observation_model
         return obs.omega(augmented_data)
 
-    @line_profiled
     def mean_dot_precision(self, augmented_data, bias=None, synapse=None, psi_other=None):
         F = augmented_data["F"]
         obs = self.observation_model
