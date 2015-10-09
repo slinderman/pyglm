@@ -10,7 +10,7 @@ from pyglm.abstractions import Component
 from pyglm.utils.utils import logistic
 
 from pyglm.utils.profiling import line_profiled
-PROFILING = True
+PROFILING = False
 
 
 class _PolyaGammaAugmentedObservationsBase(Component):

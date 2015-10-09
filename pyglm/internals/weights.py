@@ -9,7 +9,7 @@ from pyglm.internals.distributions import Bernoulli, Gaussian, TruncatedScalarGa
 from pyglm.utils.utils import logistic, logit, normal_cdf, sample_truncnorm
 
 from pyglm.utils.profiling import line_profiled
-PROFILING = True
+PROFILING = False
 
 class NoWeights(Component):
     def __init__(self, population):

@@ -29,7 +29,7 @@ from pyglm.internals.weights import NoWeights, SpikeAndSlabGaussianWeights, Spik
 from pyglm.utils.basis import CosineBasis
 from pyglm.utils.utils import logistic, dlogistic_dx, logit
 from pyglm.utils.profiling import line_profiled
-PROFILING = True
+PROFILING = False
 
 
 class HomogeneousPoissonModel(Model):
