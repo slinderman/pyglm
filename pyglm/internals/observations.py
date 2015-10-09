@@ -10,7 +10,7 @@ from pyglm.abstractions import Component
 from pyglm.utils.utils import logistic
 
 from pyglm.utils.profiling import line_profiled
-PROFILING = False
+PROFILING = True
 
 
 class _PolyaGammaAugmentedObservationsBase(Component):
@@ -266,6 +266,7 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
         return np.random.negative_binomial(self.xi, 1-p)
 
     # Override the Gibbs sampler to also sample xi
+    @line_profiled
     def resample(self, augmented_data_list, temperature=1.0):
         if self.do_resample_xi:
             self._resample_xi_discrete(augmented_data_list)
@@ -310,24 +311,34 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
         # print "Xi:"
         # print self.xi
 
-    def _resample_xi_discrete(self, augmented_data_list, xi_max=100):
-        # Compute the activations
-        Ss   = np.vstack([d["S"] for d in augmented_data_list])
-        psis = np.vstack([self.activation.compute_psi(d) for d in augmented_data_list])
+    @line_profiled
+    def _resample_xi_discrete(self, augmented_data_list, xi_max=20):
+        from pybasicbayes.util.stats import sample_discrete_from_log
+        from pyglm.internals.negbin import nb_likelihood_xi
 
-        # Resample xi using slice sampling
+        # Resample xi with uniform prior over discrete set
         # p(\xi | \psi, s) \propto p(\xi) * p(s | \xi, \psi)
-        for n in xrange(self.N):
-            Sn   = Ss[:,n]
-            psin = psis[:,n]
-            pn   = logistic(psin)
-            pn   = np.clip(pn, 1e-32, 1-1e-32)
+        lp_xis = np.zeros((self.N, xi_max))
+        for d in augmented_data_list:
+            psi = self.activation.compute_psi(d)
+            for n in xrange(self.N):
+                Sn   = d["S"][:,n].copy()
+                psin = psi[:,n].copy()
+                pn   = logistic(psin)
+                pn   = np.clip(pn, 1e-32, 1-1e-32)
 
-            from pybasicbayes.util.stats import sample_discrete_from_log
-            xis = np.arange(1, xi_max)
-            lp_xi = (gammaln(Sn[:,None]+xis[None,:]) - gammaln(xis[None,:])).sum(0)
-            lp_xi += (xis[None,:] * np.log(1-pn)[:,None]).sum(0)
-            self.xi[0,n] = xis[sample_discrete_from_log(lp_xi)]
+                xis = np.arange(1, xi_max+1).astype(np.float)
+                lp_xi = np.zeros(xi_max)
+                nb_likelihood_xi(Sn, pn, xis, lp_xi)
+                lp_xis[n] += lp_xi
+
+                # lp_xi2 = (gammaln(Sn[:,None]+xis[None,:]) - gammaln(xis[None,:])).sum(0)
+                # lp_xi2 += (xis[None,:] * np.log(1-pn)[:,None]).sum(0)
+                #
+                # assert np.allclose(lp_xi, lp_xi2)
+
+        for n in xrange(self.N):
+            self.xi[0,n] = xis[sample_discrete_from_log(lp_xis[n])]
 
         # print "Xi: ", self.xi
 

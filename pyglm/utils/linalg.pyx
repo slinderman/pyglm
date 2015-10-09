@@ -1,5 +1,4 @@
 # distutils: extra_compile_args = -O3 -w
-# distutils: include_dirs = pylds/utils/
 # cython: boundscheck = False, nonecheck = False, wraparound = False, cdivision = True
 
 from cython cimport floating

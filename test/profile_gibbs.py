@@ -8,7 +8,7 @@ from graphistician.networks import FactorizedNetworkDistribution
 # Turn on line profiling with `export PROFILING=True`
 from pyglm.utils.profiling import show_line_stats
 
-from pyglm.models import Population
+from pyglm.models import Population, NegativeBinomialPopulation
 
 def demo(seed=None):
     """
@@ -29,11 +29,11 @@ def demo(seed=None):
     B = 2           # Number of basis functions for the weights
 
     #   Bias hyperparameters
-    bias_hypers = {"mu_0": -1.0, "sigma_0": 0.25}
+    bias_hypers = {"mu_0": -2.0, "sigma_0": 0.25}
 
-    p = 0.5                 # Probability of connection for each pair of clusters
-    mu = np.zeros((B,))     # Mean weight for each pair of clusters
-    sigma = 1.0 * np.eye(B) # Covariance of weight for each pair of clusters
+    p = 0.1                 # Probability of connection for each pair of clusters
+    mu = -2 * np.ones((B,))     # Mean weight for each pair of clusters
+    sigma = 0.1 * np.eye(B) # Covariance of weight for each pair of clusters
 
     # Define the true network model for the GLM
     true_network = FactorizedNetworkDistribution(
@@ -41,7 +41,7 @@ def demo(seed=None):
         BernoulliAdjacencyDistribution, {"p": p},
         FixedGaussianWeightDistribution, {"B": B, "mu": mu, "sigma": sigma})
 
-    true_model = Population(N=N, dt=dt, dt_max=dt_max, B=B,
+    true_model = NegativeBinomialPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
                        bias_hypers=bias_hypers,
                        network=true_network)
 
@@ -54,9 +54,12 @@ def demo(seed=None):
         BernoulliAdjacencyDistribution, {"p": p},
         FixedGaussianWeightDistribution, {"B": B, "mu": mu, "sigma": sigma})
 
-    test_model = Population(N=N, dt=dt, dt_max=dt_max, B=B,
+    observation_hypers = {"xi": 10., "alpha_xi": 1.0, "beta_xi": 1.0}
+
+    test_model = NegativeBinomialPopulation(N=N, dt=dt, dt_max=dt_max, B=B,
                             bias_hypers=bias_hypers,
-                            network=test_network)
+                            network=test_network,
+                            observation_hypers=observation_hypers)
 
 
     # Sample some synthetic data from the true model
