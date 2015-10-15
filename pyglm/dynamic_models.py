@@ -146,15 +146,14 @@ class PGEmissions(Distribution):
     """
     A base class for the emission matrix, C.
     """
-    def __init__(self, model, C=None, sigmasq_C=1.):
+    def __init__(self, D_out, D_in, C=None, sigmasq_C=1.):
         """
-        :param N: Observation dimension
-        :param D: Latent dimension
+        :param D_out: Observation dimension
+        :param D_in: Latent dimension
         :param C: Initial NxD emission matrix
         :param sigma_C: prior variance of emission matrix entries
         """
-        self.model = model
-        self.D_out, self.D_in, self.sigmasq_C = model.p, model.n, sigmasq_C
+        self.D_out, self.D_in, self.sigmasq_C = D_out, D_in, sigmasq_C
 
         if C:
             assert C.shape == (self.D_out, self.D_in)
@@ -181,15 +180,11 @@ class PGLDSStates(LDSStates):
         assert isinstance(model, _PGLDSBase)
         super(PGLDSStates, self).__init__(model, *args, **kwargs)
 
-    @property
-    def observations(self):
-        return self.model.observations
-
     def resample(self):
 
         # Have the observation object ompute the conditional mean and covariance
-        conditional_mean = self.observations.conditional_mean(self.data)
-        conditional_cov = self.observations.conditional_cov(self.data, flat=True)
+        conditional_mean = self.data.conditional_mean()
+        conditional_cov = self.data.conditional_cov(flat=True)
 
         ll, self.stateseq = filter_and_sample_diagonal(
             self.mu_init, self.sigma_init,
@@ -208,7 +203,7 @@ class PGLDSStates(LDSStates):
             # Sample latent states from the prior
             z = self.generate_states()
             psi = z.dot(self.C.T)
-            lls[m] = self.observations.log_likelihood_given_activation(psi)
+            lls[m] = self.data.log_likelihood_given_activation(psi)
 
         # Compute the average
         hll = logsumexp(lls) - np.log(M)
@@ -236,8 +231,6 @@ class _PGLDSBase(NonstationaryLDS):
 
     def _generate_obs(self, s):
         if s.data is None:
-            # TODO: Compute psi from z and C
-            # TODO: Sample rvs using self.observation
             psi = self.emission_distn.rvs(x=s.stateseq)
             data = self._observation_class(psi=psi, **self._observation_kwargs)
             s.data = data
