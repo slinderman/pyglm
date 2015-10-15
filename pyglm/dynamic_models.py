@@ -6,6 +6,7 @@ import abc
 import numpy as np
 
 from scipy.misc import logsumexp
+from scipy.special import gammaln
 
 from pybasicbayes.abstractions import Distribution
 from pylds.states import LDSStates
@@ -14,16 +15,22 @@ from pylds.models import NonstationaryLDS
 
 import pypolyagamma as ppg
 
+from pyglm.utils.utils import logistic
+
 class _PGObservationsBase(object):
     """
     Base class for Polya-gamma observations
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, X):
+    def __init__(self, X=None, psi=None):
         """
         :param X: TxN matrix of observations
         """
+        assert X is not None or psi is not None
+        if psi is not None and X is None:
+            X = self.rvs(psi)
+
         assert X.ndim == 2
         self.X = X
         self.T, self.N = X.shape
@@ -45,6 +52,14 @@ class _PGObservationsBase(object):
     def b(self):
         # Distribution specific exponent a(x)
         raise NotImplementedError()
+
+    @abc.abstractmethod
+    def log_likelihood_given_activation(self, psi):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def rvs(self, psi):
+        raise NotImplementedError
 
     @property
     def kappa(self):
@@ -89,13 +104,43 @@ class _PGObservationsBase(object):
 
 class BernoulliObservations(_PGObservationsBase):
     # TODO: Implement a and b!
-    pass
+    def log_likelihood_given_activation(self, psi):
+        p   = logistic(psi)
+        p   = np.clip(p, 1e-32, 1-1e-32)
+
+        ll = (self.X * np.log(p) + (1-self.X) * np.log(1-p))
+        return ll
+
+    def rvs(self, psi):
+        p = logistic(psi)
+        return np.random.rand(*p.shape) < p
+
 
 
 class NegativeBinomialObservations(_PGObservationsBase):
     # TODO: Implement a and b!
     pass
+    def __init__(self, xi=10., **kwargs):
+        super(NegativeBinomialObservations, self).__init__(**kwargs)
+        assert xi > 0
+        self.xi = xi
 
+    def rvs(self, psi):
+        p = logistic(psi)
+        p = np.clip(p, 1e-32, 1-1e-32)
+        return np.random.negative_binomial(self.xi, 1-p)
+
+    def log_likelihood_given_activation(self, psi):
+        p   = logistic(psi)
+        p   = np.clip(p, 1e-32, 1-1e-32)
+
+        return self.log_normalizer(self.X, self.xi) \
+               + self.X * np.log(p) \
+               + self.xi * np.log(1-p)
+
+    @staticmethod
+    def log_normalizer(S, xi):
+        return gammaln(S+xi) - gammaln(xi) - gammaln(S+1)
 
 class PGEmissions(Distribution):
     """
@@ -125,6 +170,11 @@ class PGEmissions(Distribution):
             # TODO: Resample C_{n,:} given z and omega[:,n]
             pass
 
+    def rvs(self,size=[],x=None):
+        assert x.ndim==2 and x.shape[1] == self.D_in
+        psi = x.dot(self.C.T)
+        return psi
+
 
 class PGLDSStates(LDSStates):
     def __init__(self, model, *args, **kwargs):
@@ -148,48 +198,17 @@ class PGLDSStates(LDSStates):
 
         assert np.all(np.isfinite(self.stateseq))
 
-    def log_likelihood(self):
+    def log_likelihood(self, M=100):
         """
-        Compute conditional log likelihood given omega
+        Compute conditional log likelihood by Monte Carlo sampling omega
         """
-        # Have the observation object ompute the conditional mean and covariance
-        conditional_mean = self.observations.conditional_mean(self.data)
-        conditional_cov = self.observations.conditional_cov(self.data, flat=True)
-
-        assert conditional_mean.shape == (self.T, self.p)
-        assert conditional_cov.shape == (self.T, self.p, self.p)
-
-        normalizer, _, _ = kalman_filter(
-            self.mu_init, self.sigma_init,
-            self.A, self.sigma_states,
-            self.C, conditional_cov, conditional_mean)
-        return normalizer
-
-
-class _PGLDSBase(NonstationaryLDS):
-    _observation_class = _PGObservationsBase
-
-
-    def add_data(self, data, **kwargs):
-        assert isinstance(data, np.ndarray) and data.ndim == 2 and data.shape[1] == self.n
-        obs = self._observation_class(data)
-        self.states_list.append(PGLDSStates(model=self, data=obs))
-
-    def heldout_log_likelihood(self, X, M=100):
-        return self._mc_heldout_log_likelihood(X, M)
-
-    def _mc_heldout_log_likelihood(self, X, M=100):
-        raise NotImplementedError()
-        # Estimate the held out likelihood using Monte Carlo
-        T, K = X.shape
-        assert K == self.K
-
+        # TODO: We can derive better ways of estimating the log likelihood
         lls = np.zeros(M)
         for m in xrange(M):
             # Sample latent states from the prior
-            states = self.generate(T=T, keep=False)
-            data["x"] = X
-            lls[m] = self.emission_distn.log_likelihood(data)
+            z = self.generate_states()
+            psi = z.dot(self.C.T)
+            lls[m] = self.observations.log_likelihood_given_activation(psi)
 
         # Compute the average
         hll = logsumexp(lls) - np.log(M)
@@ -201,23 +220,42 @@ class _PGLDSBase(NonstationaryLDS):
 
         return hll, std_hll
 
+
+class _PGLDSBase(NonstationaryLDS):
+    _observation_class = _PGObservationsBase
+    _observation_kwargs = {}
+
+    def __init__(self, observation_kwargs={}, **kwargs):
+        super(_PGLDSBase, self).__init__(**kwargs)
+        self._observation_kwargs.update(observation_kwargs)
+
+    def add_data(self, data, **kwargs):
+        assert isinstance(data, np.ndarray) and data.ndim == 2 and data.shape[1] == self.n
+        obs = self._observation_class(data, **self._observation_kwargs)
+        self.states_list.append(PGLDSStates(model=self, data=obs))
+
     def _generate_obs(self, s):
-        raise NotImplementedError
         if s.data is None:
             # TODO: Compute psi from z and C
             # TODO: Sample rvs using self.observation
-            s.data = self.emission_distn.rvs(x=s.stateseq,return_xy=False)
+            psi = self.emission_distn.rvs(x=s.stateseq)
+            data = self._observation_class(psi=psi, **self._observation_kwargs)
+            s.data = data
         else:
             # filling in missing data
             raise NotImplementedError
+
         return s.data
 
 
 class BernoulliLDS(_PGLDSBase):
     _observation_class = BernoulliObservations
+    _observation_kwargs = {}
 
 
 class NegativeBinomialLDS(_PGLDSBase):
     _observation_class = NegativeBinomialObservations
+    _observation_args = {"xi": 10.}
+
 
 
