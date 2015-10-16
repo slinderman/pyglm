@@ -151,10 +151,16 @@ class PGEmissions(Distribution):
         :param D_out: Observation dimension
         :param D_in: Latent dimension
         :param C: Initial NxD emission matrix
-        :param sigma_C: prior variance of emission matrix entries
+        :param sigmasq_C: prior variance on C
         """
         self.D_out, self.D_in, self.sigmasq_C = D_out, D_in, sigmasq_C
 
+        """self.mean_C  = np.zeros((self.D_out, self.D_in)) 
+        self.sigma_Cns = np.zeros((self.D_out, self.D_in, self.D_in))
+        for i in range(self.D_out):
+            self.sigma_Cns[i, :, :] = sigmasq_C * np.eye(self.D_in)
+        """
+        
         if C:
             assert C.shape == (self.D_out, self.D_in)
             self.C = C
@@ -163,11 +169,31 @@ class PGEmissions(Distribution):
 
     def resample(self, states_list):
         zs = [s.stateseq for s in states_list]
+        kappas = [s.observations.kappa for s in states_list]
         omegas = [s.observations.omega for s in states_list]
 
+        assert(len(kappas) = len(omegas))
+        import pdb
+        pdb.set_trace()
+
+        
+        z = np.hstack(zs)
+        kappa = np.hstack(kappas)
+        omega = np.hstack(omegas)
+
+        sIinv = (1 / self.sigmasq_C) * np.eye((self.D_in, self.D_in))
         for n in xrange(self.D_out):
             # TODO: Resample C_{n,:} given z and omega[:,n]
-            pass
+            Omega = np.diag(1 / omega[:, n])
+            
+            zOz = np.dot(np.dot(z.T, Omega), z)
+            sigmainv = sIinv + z0z
+            self.C[n, :] = np.random.randn(
+                np.dot(np.dot(kappa.T, z), sigmainv),
+                np.linalg.inv(sigmainv)
+            )
+            
+                    
 
     def rvs(self,size=[],x=None):
         assert x.ndim==2 and x.shape[1] == self.D_in
@@ -182,7 +208,7 @@ class PGLDSStates(LDSStates):
 
     def resample(self):
 
-        # Have the observation object ompute the conditional mean and covariance
+        # Have the observation object compute the conditional mean and covariance
         conditional_mean = self.data.conditional_mean()
         conditional_cov = self.data.conditional_cov(flat=True)
 
@@ -249,6 +275,3 @@ class BernoulliLDS(_PGLDSBase):
 class NegativeBinomialLDS(_PGLDSBase):
     _observation_class = NegativeBinomialObservations
     _observation_args = {"xi": 10.}
-
-
-
