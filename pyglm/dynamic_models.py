@@ -189,7 +189,7 @@ class PGEmissions(Distribution):
             zOz = np.dot(np.dot(z.T, Omega), z)
             sigmainv = sIinv + z0z
             self.C[n, :] = np.random.randn(
-                np.dot(np.dot(kappa.T, z), sigmainv),
+                np.dot(np.dot(kappa[:, T].T, z), sigmainv),
                 np.linalg.inv(sigmainv)
             )
             
