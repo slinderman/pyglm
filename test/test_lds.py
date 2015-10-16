@@ -11,7 +11,7 @@ from pyglm.utils.utils import logistic
 
 import pyglm.dynamic_models
 reload(pyglm.dynamic_models)
-from pyglm.dynamic_models import BernoulliLDS, PGEmissions
+from pyglm.dynamic_models import BernoulliLDS, NegativeBinomialLDS, PGEmissions
 
 npr.seed(0)
 
@@ -35,7 +35,7 @@ D_out, D_in = C.shape
 #  generate data  #
 ###################
 
-truemodel = BernoulliLDS(
+truemodel = NegativeBinomialLDS(
     init_dynamics_distn=Gaussian(mu_init, sigma_init),
     dynamics_distn=AutoRegression(A=A,sigma=sigma_states),
     emission_distn=PGEmissions(D_out, D_in, C=C))
@@ -50,7 +50,7 @@ p_true = logistic(psi_true)
 ###############
 #  fit model  #
 ###############
-model = BernoulliLDS(
+model = NegativeBinomialLDS(
     init_dynamics_distn=Gaussian(mu_0=np.zeros(D_in), sigma_0=np.eye(D_in),
                                  kappa_0=1.0, nu_0=D_in+1),
     dynamics_distn=AutoRegression(
@@ -76,7 +76,7 @@ plt.plot(data.X, 'bx', ls="none")
 # plt.plot(psi, 'r')
 plt.plot(p_true, 'r', lw=2)
 plt.errorbar(np.arange(T), ps.mean(0), yerr=ps.std(0), fmt='--r', )
-plt.ylim(-0.1, 1.1)
+plt.ylim(-0.1, data.X.max() + .1)
 
 plt.figure()
 plt.plot(lls)

@@ -15,7 +15,7 @@ from pylds.models import NonstationaryLDS
 
 import pypolyagamma as ppg
 
-from pyglm.utils.utils import logistic
+from pyglm.utils.utils import logistic, sample_gaussian
 
 class _PGObservationsBase(object):
     """
@@ -130,17 +130,24 @@ class BernoulliObservations(_PGObservationsBase):
 
 
 class NegativeBinomialObservations(_PGObservationsBase):
-    # TODO: Implement a and b!
-    pass
     def __init__(self, xi=10., **kwargs):
-        super(NegativeBinomialObservations, self).__init__(**kwargs)
         assert xi > 0
         self.xi = xi
+
+        super(NegativeBinomialObservations, self).__init__(**kwargs)
+
+    @property
+    def a(self):
+        return self.X
+
+    @property
+    def b(self):
+        return self.X + self.xi
 
     def rvs(self, psi):
         p = logistic(psi)
         p = np.clip(p, 1e-32, 1-1e-32)
-        return np.random.negative_binomial(self.xi, 1-p)
+        return np.random.negative_binomial(self.xi, 1-p).astype(np.float)
 
     def log_likelihood_given_activation(self, psi):
         p   = logistic(psi)
@@ -167,12 +174,6 @@ class PGEmissions(Distribution):
         """
         self.D_out, self.D_in, self.sigmasq_C = D_out, D_in, sigmasq_C
 
-        """self.mean_C  = np.zeros((self.D_out, self.D_in)) 
-        self.sigma_Cns = np.zeros((self.D_out, self.D_in, self.D_in))
-        for i in range(self.D_out):
-            self.sigma_Cns[i, :, :] = sigmasq_C * np.eye(self.D_in)
-        """
-        
         if C is not None:
             assert C.shape == (self.D_out, self.D_in)
             self.C = C
@@ -180,31 +181,28 @@ class PGEmissions(Distribution):
             self.C = np.sqrt(sigmasq_C) * np.random.rand(self.D_out, self.D_in)
 
     def resample(self, states_list):
-        zs = [s.stateseq for s in states_list]
-        kappas = [s.data.kappa for s in states_list]
-        omegas = [s.data.omega for s in states_list]
-
-        assert(len(kappas) == len(omegas))
-        # import pdb
-        # pdb.set_trace()
-
-        z = np.vstack(zs)
-        kappa = np.vstack(kappas)
-        omega = np.vstack(omegas)
-
-        sIinv = (1 / self.sigmasq_C) * np.eye(self.D_in)
         for n in xrange(self.D_out):
-            # TODO: Resample C_{n,:} given z and omega[:,n]
-            Omega = np.diag(1 / omega[:, n])
-            
-            zOz = np.dot(np.dot(z.T, Omega), z)
-            sigmainv = sIinv + zOz
-            sigma = np.linalg.inv(sigmainv)
-            self.C[n, :] = np.random.multivariate_normal(
-                np.dot(np.dot(kappa[:, n].T, z), sigma),
-                sigma
-            )
-            
+            # Resample C_{n,:} given z, omega[:,n], and kappa[:,n]
+            prior_h = np.zeros(self.D_in)
+            prior_J = 1./self.sigmasq_C * np.eye(self.D_in)
+
+            lkhd_h = np.zeros(self.D_in)
+            lkhd_J = np.zeros((self.D_in, self.D_in))
+
+            for states in states_list:
+                z = states.stateseq
+                kappa = states.data.kappa
+                omega = states.data.omega
+
+                # J += z.T.dot(diag(omega_n)).dot(z)
+                lkhd_J += (z * omega[:,n][:,None]).T.dot(z)
+                lkhd_h += kappa[:,n].T.dot(z)
+
+            post_h = prior_h + lkhd_h
+            post_J = prior_J + lkhd_J
+
+            self.C[n,:] = sample_gaussian(J=post_J, h=post_h)
+
     def log_likelihood(self, C):
         # TODO: Normalize
         return -0.5 * (C**2 / self.sigmasq_C).sum()
@@ -287,7 +285,7 @@ class _PGLDSBase(NonstationaryLDS):
 
     def add_data(self, data, **kwargs):
         assert isinstance(data, np.ndarray) and data.ndim == 2 and data.shape[1] == self.p
-        obs = self._observation_class(data, **self._observation_kwargs)
+        obs = self._observation_class(X=data, **self._observation_kwargs)
         self.states_list.append(PGLDSStates(model=self, data=obs))
 
     def _generate_obs(self, s):
@@ -303,7 +301,7 @@ class _PGLDSBase(NonstationaryLDS):
 
     def resample_parameters(self):
         self.resample_dynamics_distn()
-        # self.resample_emission_distn()
+        self.resample_emission_distn()
 
     def resample_emission_distn(self):
         self.emission_distn.resample(self.states_list)
@@ -316,4 +314,4 @@ class BernoulliLDS(_PGLDSBase):
 
 class NegativeBinomialLDS(_PGLDSBase):
     _observation_class = NegativeBinomialObservations
-    _observation_args = {"xi": 10.}
+    _observation_args = {"xi": 1.}
