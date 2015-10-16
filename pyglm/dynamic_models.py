@@ -41,7 +41,7 @@ class _PGObservationsBase(object):
         self.ppgs = [ppg.PyPolyaGamma(seed) for seed in seeds]
 
         # Initialize auxiliary variables, omega
-        self.omega = np.zeros((self.T, self.N))
+        self.omega = np.ones((self.T, self.N))
 
     @abc.abstractproperty
     def a(self):
@@ -65,6 +65,11 @@ class _PGObservationsBase(object):
     def kappa(self):
         # TODO: Cache this?
         return self.a - self.b / 2.0
+
+    def resample(self, psi):
+        ppg.pgdrawvpar(self.ppgs, self.b.ravel(), psi.ravel(),
+                       self.omega.ravel())
+
 
     def conditional_mean(self):
         """
@@ -103,17 +108,24 @@ class _PGObservationsBase(object):
 
 
 class BernoulliObservations(_PGObservationsBase):
-    # TODO: Implement a and b!
+    @property
+    def a(self):
+        return self.X
+
+    @property
+    def b(self):
+        return np.ones_like(self.X)
+
     def log_likelihood_given_activation(self, psi):
         p   = logistic(psi)
-        p   = np.clip(p, 1e-32, 1-1e-32)
+        p   = np.clip(p, 1e-16, 1-1e-16)
 
         ll = (self.X * np.log(p) + (1-self.X) * np.log(1-p))
         return ll
 
     def rvs(self, psi):
         p = logistic(psi)
-        return np.random.rand(*p.shape) < p
+        return (np.random.rand(*p.shape) < p).astype(np.float)
 
 
 
@@ -161,7 +173,7 @@ class PGEmissions(Distribution):
             self.sigma_Cns[i, :, :] = sigmasq_C * np.eye(self.D_in)
         """
         
-        if C:
+        if C is not None:
             assert C.shape == (self.D_out, self.D_in)
             self.C = C
         else:
@@ -169,31 +181,33 @@ class PGEmissions(Distribution):
 
     def resample(self, states_list):
         zs = [s.stateseq for s in states_list]
-        kappas = [s.observations.kappa for s in states_list]
-        omegas = [s.observations.omega for s in states_list]
+        kappas = [s.data.kappa for s in states_list]
+        omegas = [s.data.omega for s in states_list]
 
-        assert(len(kappas) = len(omegas))
-        import pdb
-        pdb.set_trace()
+        assert(len(kappas) == len(omegas))
+        # import pdb
+        # pdb.set_trace()
 
-        
-        z = np.hstack(zs)
-        kappa = np.hstack(kappas)
-        omega = np.hstack(omegas)
+        z = np.vstack(zs)
+        kappa = np.vstack(kappas)
+        omega = np.vstack(omegas)
 
-        sIinv = (1 / self.sigmasq_C) * np.eye((self.D_in, self.D_in))
+        sIinv = (1 / self.sigmasq_C) * np.eye(self.D_in)
         for n in xrange(self.D_out):
             # TODO: Resample C_{n,:} given z and omega[:,n]
             Omega = np.diag(1 / omega[:, n])
             
             zOz = np.dot(np.dot(z.T, Omega), z)
-            sigmainv = sIinv + z0z
-            self.C[n, :] = np.random.randn(
-                np.dot(np.dot(kappa[:, T].T, z), sigmainv),
-                np.linalg.inv(sigmainv)
+            sigmainv = sIinv + zOz
+            sigma = np.linalg.inv(sigmainv)
+            self.C[n, :] = np.random.multivariate_normal(
+                np.dot(np.dot(kappa[:, n].T, z), sigma),
+                sigma
             )
             
-                    
+    def log_likelihood(self, C):
+        # TODO: Normalize
+        return -0.5 * (C**2 / self.sigmasq_C).sum()
 
     def rvs(self,size=[],x=None):
         assert x.ndim==2 and x.shape[1] == self.D_in
@@ -202,11 +216,17 @@ class PGEmissions(Distribution):
 
 
 class PGLDSStates(LDSStates):
-    def __init__(self, model, *args, **kwargs):
+    def __init__(self, model, data):
         assert isinstance(model, _PGLDSBase)
-        super(PGLDSStates, self).__init__(model, *args, **kwargs)
+        assert isinstance(data, _PGObservationsBase)
+        T = data.X.shape[0]
+        super(PGLDSStates, self).__init__(model, data=data, T=T)
 
     def resample(self):
+        self.resample_states()
+        self.resample_auxiliary_variables()
+
+    def resample_states(self):
 
         # Have the observation object compute the conditional mean and covariance
         conditional_mean = self.data.conditional_mean()
@@ -219,7 +239,15 @@ class PGLDSStates(LDSStates):
 
         assert np.all(np.isfinite(self.stateseq))
 
-    def log_likelihood(self, M=100):
+    def resample_auxiliary_variables(self):
+        psi = self.stateseq.dot(self.C.T)
+        self.data.resample(psi)
+
+    def log_likelihood(self):
+        psi = self.stateseq.dot(self.C.T)
+        return self.data.log_likelihood_given_activation(psi).sum()
+
+    def heldout_log_likelihood(self, M=100):
         """
         Compute conditional log likelihood by Monte Carlo sampling omega
         """
@@ -229,7 +257,7 @@ class PGLDSStates(LDSStates):
             # Sample latent states from the prior
             z = self.generate_states()
             psi = z.dot(self.C.T)
-            lls[m] = self.data.log_likelihood_given_activation(psi)
+            lls[m] = self.data.log_likelihood_given_activation(psi).sum()
 
         # Compute the average
         hll = logsumexp(lls) - np.log(M)
@@ -246,12 +274,19 @@ class _PGLDSBase(NonstationaryLDS):
     _observation_class = _PGObservationsBase
     _observation_kwargs = {}
 
-    def __init__(self, observation_kwargs={}, **kwargs):
-        super(_PGLDSBase, self).__init__(**kwargs)
+    def __init__(self, init_dynamics_distn, dynamics_distn, emission_distn, observation_kwargs={}):
+        assert isinstance(emission_distn, PGEmissions)
+        super(_PGLDSBase, self).__init__(init_dynamics_distn=init_dynamics_distn,
+                                         dynamics_distn=dynamics_distn,
+                                         emission_distn=emission_distn)
         self._observation_kwargs.update(observation_kwargs)
 
+    @property
+    def C(self):
+        return self.emission_distn.C
+
     def add_data(self, data, **kwargs):
-        assert isinstance(data, np.ndarray) and data.ndim == 2 and data.shape[1] == self.n
+        assert isinstance(data, np.ndarray) and data.ndim == 2 and data.shape[1] == self.p
         obs = self._observation_class(data, **self._observation_kwargs)
         self.states_list.append(PGLDSStates(model=self, data=obs))
 
@@ -265,6 +300,13 @@ class _PGLDSBase(NonstationaryLDS):
             raise NotImplementedError
 
         return s.data
+
+    def resample_parameters(self):
+        self.resample_dynamics_distn()
+        # self.resample_emission_distn()
+
+    def resample_emission_distn(self):
+        self.emission_distn.resample(self.states_list)
 
 
 class BernoulliLDS(_PGLDSBase):
