@@ -165,20 +165,28 @@ class PGEmissions(Distribution):
     """
     A base class for the emission matrix, C.
     """
-    def __init__(self, D_out, D_in, C=None, sigmasq_C=1.):
+    def __init__(self, D_out, D_in, C=None, sigmasq_C=1., b=None, sigmasq_b=1.):
         """
         :param D_out: Observation dimension
         :param D_in: Latent dimension
         :param C: Initial NxD emission matrix
         :param sigmasq_C: prior variance on C
+        :param b: Initial Nx1 emission matrix
+        :param sigmasq_b: prior variance on b
         """
-        self.D_out, self.D_in, self.sigmasq_C = D_out, D_in, sigmasq_C
+        self.D_out, self.D_in, self.sigmasq_C, self.sigmasq_b = D_out, D_in, sigmasq_C, sigmasq_b
 
         if C is not None:
             assert C.shape == (self.D_out, self.D_in)
             self.C = C
         else:
             self.C = np.sqrt(sigmasq_C) * np.random.rand(self.D_out, self.D_in)
+
+        if b is not None:
+            assert b.shape == (self.D_out, 1)
+            self.b = b
+        else:
+            self.b = np.sqrt(sigmasq_b) * np.random.rand(self.D_out, 1)
 
     def resample(self, states_list):
         for n in xrange(self.D_out):
@@ -203,13 +211,41 @@ class PGEmissions(Distribution):
 
             self.C[n,:] = sample_gaussian(J=post_J, h=post_h)
 
-    def log_likelihood(self, C):
+        for n in xrange(self.D_out):
+            # Resample b_{n} given z, omega[:,n], and kappa[:,n]
+            prior_h = np.zeros(1)
+            prior_J = 1./self.sigmasq_b * np.eye(1)
+
+            lkhd_h = np.zeros(1)
+            lkhd_J = np.zeros((1, 1))
+
+            for states in states_list:
+                z = states.stateseq
+                kappa = states.data.kappa
+                omega = states.data.omega
+
+                # J += z.T.dot(diag(omega_n)).dot(z)
+                lkhd_J += np.sum(omega[:,n][:,None].T)
+                lkhd_h += np.sum(kappa[:,n].T)
+
+            post_h = prior_h + lkhd_h
+            post_J = prior_J + lkhd_J
+
+            self.b[n] = sample_gaussian(J=post_J, h=post_h)
+
+    def log_likelihood(self, C, b):
         # TODO: Normalize
-        return -0.5 * (C**2 / self.sigmasq_C).sum()
+        C_ll = -0.5 * (C**2 / self.sigmasq_C).sum()
+        b_ll = -0.5 * (b ** 2  / self.sigmasq_b).sum()
+        return C_ll + b_ll
 
     def rvs(self,size=[],x=None):
         assert x.ndim==2 and x.shape[1] == self.D_in
         psi = x.dot(self.C.T)
+        
+        for n in xrange(self.D_out):
+            psi[n, :] += self.b[n]
+        
         return psi
 
 
