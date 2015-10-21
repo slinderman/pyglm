@@ -224,7 +224,8 @@ class PGEmissions(Distribution):
                 kappa = states.data.kappa
                 omega = states.data.omega
 
-                # J += z.T.dot(diag(omega_n)).dot(z)
+                # A bias is equivalent to an element of z fixed at 1,
+                # so just sum things
                 lkhd_J += np.sum(omega[:,n][:,None].T)
                 lkhd_h += np.sum(kappa[:,n].T)
 
