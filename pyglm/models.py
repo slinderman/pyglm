@@ -62,7 +62,8 @@ class _BayesianPopulationBase(Model):
                  bias=None, bias_hypers={},
                  background=None, background_hypers={},
                  weights=None, weight_hypers={},
-                 network=None, network_hypers={}):
+                 network=None, network_hypers={},
+                 standard_model=None):
         """
         Initialize a discrete time network Hawkes model with K processes.
 
@@ -148,6 +149,9 @@ class _BayesianPopulationBase(Model):
         # Initialize the data list to empty
         self.data_list = []
 
+        if standard_model:
+            self.initialize_with_standard_model(standard_model)
+
     def initialize_with_standard_model(self, standard_model):
         """
         Initialize the model parameters with a standard model.
@@ -158,6 +162,7 @@ class _BayesianPopulationBase(Model):
         self.basis = copy.deepcopy(standard_model.basis)
         self.weight_model.initialize_with_standard_model(standard_model)
         self.bias_model.initialize_with_standard_model(standard_model)
+        self.network.initialize_hypers(np.ones(self.N, self.N), standard_model.W)
 
     def initialize_with_model(self, standard_model):
         """
@@ -476,7 +481,8 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         # Resample the network given the weight model
         self.network.resample((self.weight_model.A, self.weight_model.W))
 
-    def ais(self, N_samples=100, B=1000, steps_per_B=1, verbose=True, full_output=False):
+    def ais(self, N_samples=100, B=1000, steps_per_B=1,
+            verbose=True, full_output=False, callback=None):
         """
         Since Gibbs sampling as a function of temperature is implemented,
         we can use AIS to approximate the marginal likelihood of the model.
@@ -514,9 +520,14 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
                 for s in range(steps_per_B):
                     self.collapsed_resample_model(temperature=betas[b])
 
+                # Call the given callback
+                if callback:
+                    callback(self, m, b)
+
             if verbose:
                 print ""
                 print "W: %f" % lw[m]
+
 
         # Compute the mean of the weights to get an estimate of the normalization constant
         log_Z = -np.log(N_samples) + logsumexp(lw)
