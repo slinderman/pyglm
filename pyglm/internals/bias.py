@@ -27,10 +27,14 @@ class _GaussianBiasBase(Component):
         return self.population.activation_model
 
     def initialize_with_standard_model(self, standard_model):
+        # Initialize the biases
         b_std = standard_model.bias.copy()
         assert b_std.shape == (self.N,)
-
         self.b = b_std
+
+        # Also initialize the bias distribution
+        self.mu_0 = b_std.mean()
+        self.lambda_0 = 1./b_std.var()
 
     def log_prior(self):
         return ScalarGaussian(self.mu_0, self.sigma_0).log_probability(self.b).sum()

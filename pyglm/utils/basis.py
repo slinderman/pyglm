@@ -80,8 +80,6 @@ class Basis(object):
 
         return ibasis
 
-    def create_basis(self):
-        raise NotImplementedError("Override this in base class")
 
 class CosineBasis(Basis):
     """
