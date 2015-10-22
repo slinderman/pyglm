@@ -55,7 +55,7 @@ model = NegativeBinomialLDS(
                                  kappa_0=1.0, nu_0=D_in+1),
     dynamics_distn=AutoRegression(
             sigma=sigma_states, nu_0=D_in+1, S_0=D_in*np.eye(D_in), M_0=np.zeros((D_in, D_in)), K_0=D_in*np.eye(D_in)),
-    emission_distn=PGEmissions(D_out, D_in, C=C, sigmasq_C=1.0))
+    emission_distn=PGEmissions(D_out, D_in, sigmasq_C=1.0))
 model.add_data(data.X)
 
 N_samples = 1000

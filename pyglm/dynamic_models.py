@@ -191,14 +191,17 @@ class PGEmissions(Distribution):
     def resample(self, states_list):
         for n in xrange(self.D_out):
             # Resample C_{n,:} given z, omega[:,n], and kappa[:,n]
-            prior_h = np.zeros(self.D_in)
-            prior_J = 1./self.sigmasq_C * np.eye(self.D_in)
+            prior_h = np.zeros(self.D_in + 1)
+            prior_J = 1./self.sigmasq_C * np.eye(self.D_in + 1)
+            prior_J[self.D_in, self.D_in] = 1. / self.sigmasq_b
 
-            lkhd_h = np.zeros(self.D_in)
-            lkhd_J = np.zeros((self.D_in, self.D_in))
+            lkhd_h = np.zeros(self.D_in + 1)
+            lkhd_J = np.zeros((self.D_in + 1, self.D_in + 1))
 
             for states in states_list:
                 z = states.stateseq
+                # TODO: figure out how to do this more nicely later
+                z = np.hstack((z, np.ones((z.shape[0], 1))))
                 kappa = states.data.kappa
                 omega = states.data.omega
 
@@ -209,30 +212,9 @@ class PGEmissions(Distribution):
             post_h = prior_h + lkhd_h
             post_J = prior_J + lkhd_J
 
-            self.C[n,:] = sample_gaussian(J=post_J, h=post_h)
-
-        for n in xrange(self.D_out):
-            # Resample b_{n} given z, omega[:,n], and kappa[:,n]
-            prior_h = np.zeros(1)
-            prior_J = 1./self.sigmasq_b * np.eye(1)
-
-            lkhd_h = np.zeros(1)
-            lkhd_J = np.zeros((1, 1))
-
-            for states in states_list:
-                z = states.stateseq
-                kappa = states.data.kappa
-                omega = states.data.omega
-
-                # A bias is equivalent to an element of z fixed at 1,
-                # so just sum things
-                lkhd_J += np.sum(omega[:,n][:,None].T)
-                lkhd_h += np.sum(kappa[:,n].T)
-
-            post_h = prior_h + lkhd_h
-            post_J = prior_J + lkhd_J
-
-            self.b[n] = sample_gaussian(J=post_J, h=post_h)
+            joint_sample = sample_gaussian(J=post_J, h=post_h)
+            self.C[n,:]  = joint_sample[:self.D_in]
+            self.b[n]    = joint_sample[self.D_in]
 
     def log_likelihood(self, C, b):
         # TODO: Normalize
