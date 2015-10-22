@@ -275,13 +275,12 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
     def bias_model(self):
         return self.population.bias_model
 
-    @line_profiled
     def collapsed_resample(self, augmented_data=[]):
         if not isinstance(augmented_data, list):
             augmented_data = [augmented_data]
 
         self._serial_collapsed_resample(augmented_data)
-        self._parallel_collapsed_resample(augmented_data)
+        # self._parallel_collapsed_resample(augmented_data)
 
     def _serial_collapsed_resample(self, augmented_data):
         P = self.network.adjacency.P

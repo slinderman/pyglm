@@ -162,7 +162,7 @@ class _BayesianPopulationBase(Model):
         self.basis = copy.deepcopy(standard_model.basis)
         self.weight_model.initialize_with_standard_model(standard_model)
         self.bias_model.initialize_with_standard_model(standard_model)
-        self.network.initialize_hypers(np.ones(self.N, self.N), standard_model.W)
+        self.network.initialize_hypers(None, standard_model.W)
 
     def initialize_with_model(self, standard_model):
         """

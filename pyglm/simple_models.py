@@ -265,7 +265,6 @@ class StandardBernoulliPopulation(Model):
         from sklearn.linear_model import LogisticRegression
         from sklearn.svm import l1_min_c
 
-        print "Initializing with logistic regresion"
         F = np.vstack([d["F"] for d in self.data_list])
         S = np.vstack([d["S"] for d in self.data_list])
 
