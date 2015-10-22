@@ -15,7 +15,7 @@ from pylds.models import NonstationaryLDS
 
 import pypolyagamma as ppg
 
-from pyglm.utils.utils import logistic, sample_gaussian
+from pyglm.utils.utils import logistic, logit, sample_gaussian
 
 class _PGObservationsBase(object):
     """
@@ -41,8 +41,10 @@ class _PGObservationsBase(object):
         self.ppgs = [ppg.PyPolyaGamma(seed) for seed in seeds]
 
         # Initialize auxiliary variables, omega
+        # Get an approximate value of psi
+        psi0 = self.invert_mean(self.empirical_mean())
         self.omega = np.ones((self.T, self.N))
-        ppg.pgdrawvpar(self.ppgs, self.b.ravel(), np.zeros(self.T * self.N), self.omega.ravel())
+        ppg.pgdrawvpar(self.ppgs, self.b.ravel(), psi0.ravel(), self.omega.ravel())
 
     @abc.abstractproperty
     def a(self):
@@ -62,6 +64,10 @@ class _PGObservationsBase(object):
     def rvs(self, psi):
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def invert_mean(self, mean):
+        raise NotImplementedError
+
     @property
     def kappa(self):
         # TODO: Cache this?
@@ -71,6 +77,12 @@ class _PGObservationsBase(object):
         ppg.pgdrawvpar(self.ppgs, self.b.ravel(), psi.ravel(),
                        self.omega.ravel())
 
+    def empirical_mean(self, sigma=3.0):
+        """
+        Smooth X to get an empirical rate
+        """
+        from scipy.ndimage.filters import gaussian_filter1d
+        return 0.001 + gaussian_filter1d(self.X.astype(np.float), sigma, axis=0)
 
     def conditional_mean(self):
         """
@@ -117,6 +129,9 @@ class BernoulliObservations(_PGObservationsBase):
     def b(self):
         return np.ones_like(self.X)
 
+    def invert_mean(self, mean):
+        return logit(mean)
+
     def log_likelihood_given_activation(self, psi):
         p   = logistic(psi)
         p   = np.clip(p, 1e-16, 1-1e-16)
@@ -144,6 +159,13 @@ class NegativeBinomialObservations(_PGObservationsBase):
     @property
     def b(self):
         return self.X + self.xi
+
+    def invert_mean(self, mean):
+        # Mean is r * exp(logit(p))
+        # = r * exp(logit(logistic(psi)))
+        # = r * exp(psi)
+        # psi = log(mean / r)
+        return np.log(mean / self.xi)
 
     def rvs(self, psi):
         p = logistic(psi)
@@ -182,6 +204,10 @@ class ApproxPoissonObservations(NegativeBinomialObservations):
         :return:
         """
         return self.kappa / self.omega + np.log(self.xi)
+
+    def invert_mean(self, mean):
+        # Mean is exp(psi)
+        return np.log(mean / self.xi)
 
     def rvs(self, psi):
         p = logistic(psi - np.log(self.xi))
@@ -224,6 +250,10 @@ class TruePoissonObservations(_PGObservationsBase):
     def b(self):
         # Distribution specific exponent a(x)
         raise NotImplementedError()
+
+    def invert_mean(self, mean):
+        # Mean is exp(psi)
+        return np.log(mean)
 
     def log_likelihood_given_activation(self, psi):
         """
@@ -407,6 +437,7 @@ class _PGLDSBase(NonstationaryLDS):
     def resample_parameters(self):
         self.resample_dynamics_distn()
         self.resample_emission_distn()
+        # pass
 
     def resample_emission_distn(self):
         self.emission_distn.resample(self.states_list)
@@ -431,4 +462,4 @@ class PoissonLDS(_PGLDSBase):
 
 class ApproxPoissonLDS(_PGLDSBase):
     _observation_class = ApproxPoissonObservations
-    _observation_args = {"xi": 500. }
+    _observation_args = {}
