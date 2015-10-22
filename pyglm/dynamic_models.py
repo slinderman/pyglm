@@ -42,6 +42,7 @@ class _PGObservationsBase(object):
 
         # Initialize auxiliary variables, omega
         self.omega = np.ones((self.T, self.N))
+        ppg.pgdrawvpar(self.ppgs, self.b.ravel(), np.zeros(self.T * self.N), self.omega.ravel())
 
     @abc.abstractproperty
     def a(self):
@@ -161,11 +162,88 @@ class NegativeBinomialObservations(_PGObservationsBase):
     def log_normalizer(S, xi):
         return gammaln(S+xi) - gammaln(xi) - gammaln(S+1)
 
+
+class ApproxPoissonObservations(NegativeBinomialObservations):
+    """
+    Approximate Poisson(e^psi) with NB(xi, \sigma(psi - log xi)) for large xi
+    """
+    def __init__(self, xi=500.0, **kwargs):
+        super(ApproxPoissonObservations, self).__init__(xi=xi, **kwargs)
+
+    def resample(self, psi):
+        ppg.pgdrawvpar(self.ppgs, self.b.ravel(),
+                       (psi - np.log(self.xi)).ravel(),
+                       self.omega.ravel())
+
+    def conditional_mean(self):
+        """
+        Compute the conditional mean \psi given \omega
+        :param augmented_data:
+        :return:
+        """
+        return self.kappa / self.omega + np.log(self.xi)
+
+    def rvs(self, psi):
+        p = logistic(psi - np.log(self.xi))
+        p = np.clip(p, 1e-32, 1-1e-32)
+        return np.random.negative_binomial(self.xi, 1-p).astype(np.float)
+
+    def log_likelihood_given_activation(self, psi):
+        p   = logistic(psi - np.log(self.xi))
+        p   = np.clip(p, 1e-32, 1-1e-32)
+
+        return self.log_normalizer(self.X, self.xi) \
+               + self.X * np.log(p) \
+               + self.xi * np.log(1-p)
+
+
+class TruePoissonObservations(_PGObservationsBase):
+    """
+    Model for simulating truly Poisson observations
+    (even though we can't do  exact inference in this model
+    with the PG trick.)
+    """
+    def __init__(self, X=None, psi=None):
+        """
+        :param X: TxN matrix of observations
+        """
+        assert X is not None or psi is not None
+        if psi is not None and X is None:
+            X = self.rvs(psi)
+
+        assert X.ndim == 2
+        self.X = X
+        self.T, self.N = X.shape
+
+    @property
+    def a(self):
+        # Distribution specific exponent a(x)
+        raise NotImplementedError()
+
+    @property
+    def b(self):
+        # Distribution specific exponent a(x)
+        raise NotImplementedError()
+
+    def log_likelihood_given_activation(self, psi):
+        """
+        -lmbda + np.log(lmbda) * x - gammaln(x+1)
+        """
+        lmbda = np.exp(psi)
+        ll = -lmbda + self.X * np.log(lmbda) - gammaln(self.X+1)
+        return ll
+
+    def rvs(self, psi):
+        lmbda = np.exp(psi)
+        return np.random.poisson(lmbda)
+
+
 class PGEmissions(Distribution):
     """
     A base class for the emission matrix, C.
     """
-    def __init__(self, D_out, D_in, C=None, sigmasq_C=1., b=None, sigmasq_b=1.):
+    def __init__(self, D_out, D_in, C=None, sigmasq_C=1.,
+                 b=None, mu_b=0., sigmasq_b=1.):
         """
         :param D_out: Observation dimension
         :param D_in: Latent dimension
@@ -174,7 +252,8 @@ class PGEmissions(Distribution):
         :param b: Initial Nx1 emission matrix
         :param sigmasq_b: prior variance on b
         """
-        self.D_out, self.D_in, self.sigmasq_C, self.sigmasq_b = D_out, D_in, sigmasq_C, sigmasq_b
+        self.D_out, self.D_in, self.sigmasq_C, self.mu_b, self.sigmasq_b = \
+            D_out, D_in, sigmasq_C, mu_b, sigmasq_b
 
         if C is not None:
             assert C.shape == (self.D_out, self.D_in)
@@ -189,21 +268,23 @@ class PGEmissions(Distribution):
             self.b = np.sqrt(sigmasq_b) * np.random.rand(self.D_out, 1)
 
     def resample(self, states_list):
+        D = self.D_in
         for n in xrange(self.D_out):
             # Resample C_{n,:} given z, omega[:,n], and kappa[:,n]
-            prior_h = np.zeros(self.D_in + 1)
-            prior_J = 1./self.sigmasq_C * np.eye(self.D_in + 1)
-            prior_J[self.D_in, self.D_in] = 1. / self.sigmasq_b
+            prior_h = np.zeros(D + 1)
+            prior_h[D] = self.mu_b / self.sigmasq_b
+            prior_J = 1./self.sigmasq_C * np.eye(D + 1)
+            prior_J[D, D] = 1. / self.sigmasq_b
 
-            lkhd_h = np.zeros(self.D_in + 1)
-            lkhd_J = np.zeros((self.D_in + 1, self.D_in + 1))
+            lkhd_h = np.zeros(D + 1)
+            lkhd_J = np.zeros((D + 1, D + 1))
 
             for states in states_list:
                 z = states.stateseq
                 # TODO: figure out how to do this more nicely later
                 z = np.hstack((z, np.ones((z.shape[0], 1))))
-                kappa = states.data.kappa
-                omega = states.data.omega
+                kappa = states.data.conditional_mean() / states.data.conditional_cov(flat=True)
+                omega = states.data.conditional_prec(flat=True)
 
                 # J += z.T.dot(diag(omega_n)).dot(z)
                 lkhd_J += (z * omega[:,n][:,None]).T.dot(z)
@@ -213,8 +294,8 @@ class PGEmissions(Distribution):
             post_J = prior_J + lkhd_J
 
             joint_sample = sample_gaussian(J=post_J, h=post_h)
-            self.C[n,:]  = joint_sample[:self.D_in]
-            self.b[n]    = joint_sample[self.D_in]
+            self.C[n,:]  = joint_sample[:D]
+            self.b[n]    = joint_sample[D]
 
     def log_likelihood(self, C, b):
         # TODO: Normalize
@@ -224,10 +305,10 @@ class PGEmissions(Distribution):
 
     def rvs(self,size=[],x=None):
         assert x.ndim==2 and x.shape[1] == self.D_in
-        psi = x.dot(self.C.T)
+        psi = x.dot(self.C.T) + self.b.T
         
-        for n in xrange(self.D_out):
-            psi[n, :] += self.b[n]
+        # for n in xrange(self.D_out):
+        #     psi[:,n] += self.b[n]
         
         return psi
 
@@ -239,14 +320,21 @@ class PGLDSStates(LDSStates):
         T = data.X.shape[0]
         super(PGLDSStates, self).__init__(model, data=data, T=T)
 
+    @property
+    def b(self):
+        return self.emission_distn.b
+
+    @property
+    def psi(self):
+        return self.stateseq.dot(self.C.T) + self.b.T
+
     def resample(self):
         self.resample_states()
         self.resample_auxiliary_variables()
 
     def resample_states(self):
-
         # Have the observation object compute the conditional mean and covariance
-        conditional_mean = self.data.conditional_mean()
+        conditional_mean = self.data.conditional_mean() - self.b.T
         conditional_cov = self.data.conditional_cov(flat=True)
 
         ll, self.stateseq = filter_and_sample_diagonal(
@@ -257,12 +345,10 @@ class PGLDSStates(LDSStates):
         assert np.all(np.isfinite(self.stateseq))
 
     def resample_auxiliary_variables(self):
-        psi = self.stateseq.dot(self.C.T)
-        self.data.resample(psi)
+        self.data.resample(self.psi)
 
     def log_likelihood(self):
-        psi = self.stateseq.dot(self.C.T)
-        return self.data.log_likelihood_given_activation(psi).sum()
+        return self.data.log_likelihood_given_activation(self.psi).sum()
 
     def heldout_log_likelihood(self, M=100):
         """
@@ -273,7 +359,7 @@ class PGLDSStates(LDSStates):
         for m in xrange(M):
             # Sample latent states from the prior
             z = self.generate_states()
-            psi = z.dot(self.C.T)
+            psi = z.dot(self.C.T) + self.b.T
             lls[m] = self.data.log_likelihood_given_activation(psi).sum()
 
         # Compute the average
@@ -334,3 +420,15 @@ class BernoulliLDS(_PGLDSBase):
 class NegativeBinomialLDS(_PGLDSBase):
     _observation_class = NegativeBinomialObservations
     _observation_args = {"xi": 1.}
+
+class PoissonLDS(_PGLDSBase):
+    _observation_class = TruePoissonObservations
+    _observation_args = {}
+
+    def resample_model(self):
+        raise NotImplementedError()
+
+
+class ApproxPoissonLDS(_PGLDSBase):
+    _observation_class = ApproxPoissonObservations
+    _observation_args = {"xi": 500. }
