@@ -125,21 +125,22 @@ def step():
 # movie.write_videofile(movie_file, fps=30)
 
 # Inference
-N_samples = 1000
+N_samples = 500
 results = [step() for _ in progprint_xrange(N_samples)]
 
 # Plot average results
 lls = np.array([r[0] for r in results])
 lmbdas = np.array([r[1] for r in results[N_samples//2:]])
-lmbda_mean = lmbdas.mean(0).ravel()
-lmbda_std = lmbdas.std(0).ravel()
+lmbda_mean = lmbdas.mean(0)
+lmbda_std = lmbdas.std(0)
 
 for n in xrange(N):
     hs[n].set_data([],[])
     plt.subplot(N,1,n+1)
-    sausage_plot(np.arange(T), lmbda_mean, lmbda_std, color='k', alpha=0.5)
+    sausage_plot(np.arange(T), lmbda_mean[:,n], lmbda_std[:,n],
+                 color=colors[1], alpha=0.5)
 
-plt.plot(np.arange(T), lmbda_mean, color='k')
+    plt.plot(np.arange(T), lmbda_mean[:,n], color=colors[1])
 plt.pause(0.001)
 
 plt.figure()
