@@ -42,7 +42,7 @@ class _PGObservationsBase(object):
 
         # Initialize auxiliary variables, omega
         # Get an approximate value of psi
-        psi0 = self.invert_mean(self.empirical_mean())
+        psi0 = self.invert_rate(self.empirical_rate())
         self.omega = np.ones((self.T, self.N))
         ppg.pgdrawvpar(self.ppgs, self.b.ravel(), psi0.ravel(), self.omega.ravel())
 
@@ -65,8 +65,19 @@ class _PGObservationsBase(object):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def invert_mean(self, mean):
+    def rate(self, psi):
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def invert_rate(self, rate):
+        raise NotImplementedError
+
+    def empirical_rate(self, sigma=3.0):
+        """
+        Smooth X to get an empirical rate
+        """
+        from scipy.ndimage.filters import gaussian_filter1d
+        return 0.001 + gaussian_filter1d(self.X.astype(np.float), sigma, axis=0)
 
     @property
     def kappa(self):
@@ -76,13 +87,6 @@ class _PGObservationsBase(object):
     def resample(self, psi):
         ppg.pgdrawvpar(self.ppgs, self.b.ravel(), psi.ravel(),
                        self.omega.ravel())
-
-    def empirical_mean(self, sigma=3.0):
-        """
-        Smooth X to get an empirical rate
-        """
-        from scipy.ndimage.filters import gaussian_filter1d
-        return 0.001 + gaussian_filter1d(self.X.astype(np.float), sigma, axis=0)
 
     def conditional_mean(self):
         """
@@ -129,8 +133,11 @@ class BernoulliObservations(_PGObservationsBase):
     def b(self):
         return np.ones_like(self.X)
 
-    def invert_mean(self, mean):
-        return logit(mean)
+    def rate(self, psi):
+        return logistic(psi)
+
+    def invert_rate(self, rate):
+        return logit(rate)
 
     def log_likelihood_given_activation(self, psi):
         p   = logistic(psi)
@@ -160,12 +167,15 @@ class NegativeBinomialObservations(_PGObservationsBase):
     def b(self):
         return self.X + self.xi
 
-    def invert_mean(self, mean):
+    def rate(self, psi):
+        return self.xi * np.exp(psi)
+
+    def invert_rate(self, rate):
         # Mean is r * exp(logit(p))
         # = r * exp(logit(logistic(psi)))
         # = r * exp(psi)
         # psi = log(mean / r)
-        return np.log(mean / self.xi)
+        return np.log(rate / self.xi)
 
     def rvs(self, psi):
         p = logistic(psi)
@@ -192,10 +202,21 @@ class ApproxPoissonObservations(NegativeBinomialObservations):
     def __init__(self, xi=500.0, **kwargs):
         super(ApproxPoissonObservations, self).__init__(xi=xi, **kwargs)
 
+    def rate(self, psi):
+        return np.exp(psi)
+
+    def invert_rate(self, rate):
+        # Mean is r * exp(logit(p))
+        # = r * exp(logit(logistic(psi)))
+        # = r * exp(psi)
+        # psi = log(mean / r)
+        return np.log(rate / self.xi)
+
     def resample(self, psi):
         ppg.pgdrawvpar(self.ppgs, self.b.ravel(),
                        (psi - np.log(self.xi)).ravel(),
                        self.omega.ravel())
+        assert np.all(np.isfinite(self.omega))
 
     def conditional_mean(self):
         """
@@ -204,10 +225,6 @@ class ApproxPoissonObservations(NegativeBinomialObservations):
         :return:
         """
         return self.kappa / self.omega + np.log(self.xi)
-
-    def invert_mean(self, mean):
-        # Mean is exp(psi)
-        return np.log(mean / self.xi)
 
     def rvs(self, psi):
         p = logistic(psi - np.log(self.xi))
@@ -251,9 +268,11 @@ class TruePoissonObservations(_PGObservationsBase):
         # Distribution specific exponent a(x)
         raise NotImplementedError()
 
-    def invert_mean(self, mean):
-        # Mean is exp(psi)
-        return np.log(mean)
+    def rate(self, psi):
+        return np.exp(psi)
+
+    def invert_rate(self, rate):
+        return np.log(rate)
 
     def log_likelihood_given_activation(self, psi):
         """
@@ -358,6 +377,10 @@ class PGLDSStates(LDSStates):
     def psi(self):
         return self.stateseq.dot(self.C.T) + self.b.T
 
+    @property
+    def rate(self):
+        return self.data.rate(self.psi)
+
     def resample(self):
         self.resample_states()
         self.resample_auxiliary_variables()
@@ -421,7 +444,11 @@ class _PGLDSBase(NonstationaryLDS):
     def add_data(self, data, **kwargs):
         assert isinstance(data, np.ndarray) and data.ndim == 2 and data.shape[1] == self.p
         obs = self._observation_class(X=data, **self._observation_kwargs)
-        self.states_list.append(PGLDSStates(model=self, data=obs))
+        states = PGLDSStates(model=self, data=obs)
+        # Resample the stateseq a few times
+        [states.resample_states() for _ in xrange(10)]
+        self.states_list.append(states)
+
 
     def _generate_obs(self, s):
         if s.data is None:
