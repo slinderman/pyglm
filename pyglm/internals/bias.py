@@ -36,6 +36,10 @@ class _GaussianBiasBase(Component):
         self.mu_0 = b_std.mean()
         self.lambda_0 = 1./b_std.var()
 
+    def initialize_from_prior(self):
+        self.b = self.mu_0 + \
+                 np.sqrt(self.sigma_0) * np.random.randn(self.N)
+
     def log_prior(self):
         return ScalarGaussian(self.mu_0, self.sigma_0).log_probability(self.b).sum()
 

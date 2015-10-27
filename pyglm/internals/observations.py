@@ -20,11 +20,11 @@ class _PolyaGammaAugmentedObservationsBase(Component):
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, population):
+    def __init__(self, population, trunc=50):
         self.population = population
         num_threads = ppg.get_omp_num_threads()
         seeds = np.random.randint(2**16, size=num_threads)
-        self.ppgs = [ppg.PyPolyaGamma(seed) for seed in seeds]
+        self.ppgs = [ppg.PyPolyaGamma(seed, trunc) for seed in seeds]
         self.N = self.population.N
 
     @property

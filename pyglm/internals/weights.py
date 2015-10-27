@@ -99,6 +99,19 @@ class _SpikeAndSlabGaussianWeightsBase(Component):
     def activation(self):
         return self.population.activation_model
 
+    def initialize_from_prior(self):
+        P = self.network.adjacency.P
+        Mu = self.network.weights.Mu
+        Sigma = self.network.weights.Sigma
+
+        self.A = np.random.rand(self.N, self.N) < P
+
+        W = np.zeros((self.N, self.N, self.B))
+        for n1 in xrange(self.N):
+            for n2 in xrange(self.N):
+                W[n1,n2] = np.random.multivariate_normal(Mu[n1,n2], Sigma[n1,n2])
+        self.W = W
+
     def initialize_with_standard_model(self, standard_model, threshold=75):
         """
         Initialize with the weights from a standard model

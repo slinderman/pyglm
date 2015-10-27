@@ -37,6 +37,9 @@ class _ActivationBase(Component):
     def weight_model(self):
         return self.population.weight_model
 
+    def initialize_from_prior(self):
+        pass
+
     @abc.abstractmethod
     def compute_psi(self, augmented_data):
         raise NotImplementedError()

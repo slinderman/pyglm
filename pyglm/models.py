@@ -152,6 +152,13 @@ class _BayesianPopulationBase(Model):
         if standard_model:
             self.initialize_with_standard_model(standard_model)
 
+    def initialize_from_prior(self):
+        # This is not equivalent to REsampling with temperature=0!
+        self.network.initialize_from_prior()
+        self.bias_model.initialize_from_prior()
+        self.weight_model.initialize_from_prior()
+        self.activation_model.initialize_from_prior()
+
     def initialize_with_standard_model(self, standard_model):
         """
         Initialize the model parameters with a standard model.
@@ -452,9 +459,6 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
             self.network.resample((self.weight_model.A, self.weight_model.W))
 
     def resample_model(self, temperature=1.0):
-        # # TODO: Support multile datasets
-        # assert len(self.data_list) == 1, "Can only do Gibbs sampling with one dataset"
-        # data = self.data_list[0]
         assert temperature >= 0.0 and temperature <= 1.0
 
         # update model components one at a time
@@ -494,8 +498,7 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         lw = np.zeros(N_samples)
         for m in progprint_xrange(N_samples):
             # Initialize the model with a draw from the prior
-            # This is equivalent to sampling with temperature=0
-            self.collapsed_resample_model(temperature=0.0)
+            self.initialize_from_prior()
 
             # Keep track of the log of the m-th weight
             # It starts at zero because the prior is assumed to be normalized
