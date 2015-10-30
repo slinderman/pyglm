@@ -55,7 +55,6 @@ psi_true = z_true.dot(C.T) + truemodel.emission_distn.b.T
 lmbda_true = np.exp(psi_true)
 
 
-
 ###############
 #  fit model  #
 ###############
@@ -66,7 +65,12 @@ model = ApproxPoissonLDS(
                                   nu_0=D+1, S_0=D*np.eye(D),
                                   M_0=np.zeros((D, D)), K_0=D*np.eye(D)),
     emission_distn=PGEmissions(N, D, sigmasq_C=1.0, mu_b=-2))
-model.add_data(data.X)
+
+# Mask off neuron 0
+mask = np.ones((T,N), dtype=np.bool)
+mask[T//2:,0] = False
+
+model.add_data(data.X, mask=mask)
 states = model.states_list[0]
 
 ###############
@@ -115,8 +119,8 @@ def make_frame(t):
 
 def step():
     model.resample_model()
-    update_plot()
-    return model.log_likelihood(), states.rate
+    # update_plot()
+    return model.log_likelihood(), model.heldout_log_likelihood(), states.rate, states.omega
 
 
 # Use moviemaker to make the spine movie
@@ -130,9 +134,15 @@ results = [step() for _ in progprint_xrange(N_samples)]
 
 # Plot average results
 lls = np.array([r[0] for r in results])
-lmbdas = np.array([r[1] for r in results[N_samples//2:]])
+hlls = np.array([r[1] for r in results])
+lmbdas = np.array([r[2] for r in results[N_samples//2:]])
+omegas = np.array([r[3] for r in results[N_samples//2:]])
+
 lmbda_mean = lmbdas.mean(0)
 lmbda_std = lmbdas.std(0)
+
+omega_mean = omegas.mean(0)
+omega_std = omegas.std(0)
 
 for n in xrange(N):
     hs[n].set_data([],[])
@@ -143,8 +153,26 @@ for n in xrange(N):
     plt.plot(np.arange(T), lmbda_mean[:,n], color=colors[1])
 plt.pause(0.001)
 
+# plt.ion()
+fig = plt.figure(figsize=(8,4))
+for n in xrange(N):
+    plt.subplot(N,1,n+1)
+    sausage_plot(np.arange(T), omega_mean[:,n], omega_std[:,n],
+                 color=colors[2], alpha=0.5)
+
+    plt.plot(np.arange(T), omega_mean[:,n], color=colors[2])
+plt.show()
+
 plt.figure()
 plt.plot(lls)
 plt.xlabel("Iteration")
 plt.ylabel("LL")
+
+plt.figure()
+plt.plot(hlls)
+plt.xlabel("Iteration")
+plt.ylabel("Heldout LL")
+
+
 plt.show()
+

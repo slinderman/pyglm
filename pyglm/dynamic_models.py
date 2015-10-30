@@ -23,13 +23,19 @@ class _PGObservationsBase(object):
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, X=None, psi=None):
+    def __init__(self, X=None, psi=None, mask=None):
         """
         :param X: TxN matrix of observations
         """
         assert X is not None or psi is not None
         if psi is not None and X is None:
             X = self.rvs(psi)
+
+        if mask is None:
+            mask = np.ones_like(X, dtype=np.bool)
+        else:
+            assert mask.shape == X.shape and mask.dtype == np.bool
+        self.mask = mask
 
         assert X.ndim == 2
         self.X = X
@@ -46,6 +52,9 @@ class _PGObservationsBase(object):
         self.omega = np.ones((self.T, self.N))
         ppg.pgdrawvpar(self.ppgs, self.b.ravel(), psi0.ravel(), self.omega.ravel())
 
+        # Mask off omegas
+        self.omega[~self.mask] = 1e-8
+
     @abc.abstractproperty
     def a(self):
         # Distribution specific exponent a(x)
@@ -56,8 +65,15 @@ class _PGObservationsBase(object):
         # Distribution specific exponent a(x)
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def log_likelihood_given_activation(self, psi):
+        return self._log_likelihood_given_activation(psi, self.mask)
+
+    def hll_given_activation(self, psi):
+        return self._log_likelihood_given_activation(psi, ~self.mask)
+
+
+    @abc.abstractmethod
+    def _log_likelihood_given_activation(self, psi, mask):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -88,13 +104,19 @@ class _PGObservationsBase(object):
         ppg.pgdrawvpar(self.ppgs, self.b.ravel(), psi.ravel(),
                        self.omega.ravel())
 
+        # Mask off omegas
+        self.omega[~self.mask] = 1e-8
+
     def conditional_mean(self):
         """
         Compute the conditional mean \psi given \omega
         :param augmented_data:
         :return:
         """
-        return self.kappa / self.omega
+        mu = self.kappa / self.omega
+
+        # Mask off omegas
+        mu[~self.mask] = 0
 
     def conditional_prec(self, flat=False):
         """
@@ -139,11 +161,12 @@ class BernoulliObservations(_PGObservationsBase):
     def invert_rate(self, rate):
         return logit(rate)
 
-    def log_likelihood_given_activation(self, psi):
+    def _log_likelihood_given_activation(self, psi, mask):
         p   = logistic(psi)
         p   = np.clip(p, 1e-16, 1-1e-16)
 
         ll = (self.X * np.log(p) + (1-self.X) * np.log(1-p))
+        ll[~mask] = 0
         return ll
 
     def rvs(self, psi):
@@ -182,13 +205,16 @@ class NegativeBinomialObservations(_PGObservationsBase):
         p = np.clip(p, 1e-32, 1-1e-32)
         return np.random.negative_binomial(self.xi, 1-p).astype(np.float)
 
-    def log_likelihood_given_activation(self, psi):
+    def _log_likelihood_given_activation(self, psi, mask):
         p   = logistic(psi)
         p   = np.clip(p, 1e-32, 1-1e-32)
 
-        return self.log_normalizer(self.X, self.xi) \
-               + self.X * np.log(p) \
-               + self.xi * np.log(1-p)
+        ll = self.log_normalizer(self.X, self.xi) \
+             + self.X * np.log(p) \
+             + self.xi * np.log(1-p)
+
+        ll[~mask] = 0
+        return ll
 
     @staticmethod
     def log_normalizer(S, xi):
@@ -216,6 +242,10 @@ class ApproxPoissonObservations(NegativeBinomialObservations):
         ppg.pgdrawvpar(self.ppgs, self.b.ravel(),
                        (psi - np.log(self.xi)).ravel(),
                        self.omega.ravel())
+
+        # Mask off omegas
+        self.omega[~self.mask] = 1e-8
+
         assert np.all(np.isfinite(self.omega))
 
     def conditional_mean(self):
@@ -224,20 +254,25 @@ class ApproxPoissonObservations(NegativeBinomialObservations):
         :param augmented_data:
         :return:
         """
-        return self.kappa / self.omega + np.log(self.xi)
+        mu = self.kappa / self.omega + np.log(self.xi)
+        mu[~self.mask] = 0
+        return mu
 
     def rvs(self, psi):
         p = logistic(psi - np.log(self.xi))
         p = np.clip(p, 1e-32, 1-1e-32)
         return np.random.negative_binomial(self.xi, 1-p).astype(np.float)
 
-    def log_likelihood_given_activation(self, psi):
+    def _log_likelihood_given_activation(self, psi, mask):
         p   = logistic(psi - np.log(self.xi))
         p   = np.clip(p, 1e-32, 1-1e-32)
 
-        return self.log_normalizer(self.X, self.xi) \
+        ll = self.log_normalizer(self.X, self.xi) \
                + self.X * np.log(p) \
                + self.xi * np.log(1-p)
+
+        ll[~mask] = 0
+        return ll
 
 
 class TruePoissonObservations(_PGObservationsBase):
@@ -246,13 +281,19 @@ class TruePoissonObservations(_PGObservationsBase):
     (even though we can't do  exact inference in this model
     with the PG trick.)
     """
-    def __init__(self, X=None, psi=None):
+    def __init__(self, X=None, psi=None, mask=None):
         """
         :param X: TxN matrix of observations
         """
         assert X is not None or psi is not None
         if psi is not None and X is None:
             X = self.rvs(psi)
+
+        if mask is None:
+            mask = np.ones_like(X, dtype=np.bool)
+        else:
+            assert mask.shape == X.shape and mask.dtype == np.bool
+        self.mask = mask
 
         assert X.ndim == 2
         self.X = X
@@ -274,12 +315,13 @@ class TruePoissonObservations(_PGObservationsBase):
     def invert_rate(self, rate):
         return np.log(rate)
 
-    def log_likelihood_given_activation(self, psi):
+    def _log_likelihood_given_activation(self, psi, mask):
         """
         -lmbda + np.log(lmbda) * x - gammaln(x+1)
         """
         lmbda = np.exp(psi)
         ll = -lmbda + self.X * np.log(lmbda) - gammaln(self.X+1)
+        ll[~mask] = 0
         return ll
 
     def rvs(self, psi):
@@ -381,6 +423,10 @@ class PGLDSStates(LDSStates):
     def rate(self):
         return self.data.rate(self.psi)
 
+    @property
+    def omega(self):
+        return self.data.omega.copy()
+
     def resample(self):
         self.resample_states()
         self.resample_auxiliary_variables()
@@ -397,33 +443,37 @@ class PGLDSStates(LDSStates):
 
         assert np.all(np.isfinite(self.stateseq))
 
+
     def resample_auxiliary_variables(self):
         self.data.resample(self.psi)
 
     def log_likelihood(self):
         return self.data.log_likelihood_given_activation(self.psi).sum()
 
-    def heldout_log_likelihood(self, M=100):
-        """
-        Compute conditional log likelihood by Monte Carlo sampling omega
-        """
-        # TODO: We can derive better ways of estimating the log likelihood
-        lls = np.zeros(M)
-        for m in xrange(M):
-            # Sample latent states from the prior
-            z = self.generate_states()
-            psi = z.dot(self.C.T) + self.b.T
-            lls[m] = self.data.log_likelihood_given_activation(psi).sum()
+    def heldout_log_likelihood(self):
+        return self.data.hll_given_activation(self.psi).sum()
 
-        # Compute the average
-        hll = logsumexp(lls) - np.log(M)
-
-        # Use bootstrap to compute error bars
-        samples = np.random.choice(lls, size=(100, M), replace=True)
-        hll_samples = logsumexp(samples, axis=1) - np.log(M)
-        std_hll = hll_samples.std()
-
-        return hll, std_hll
+    # def heldout_log_likelihood(self, M=100):
+    #     """
+    #     Compute conditional log likelihood by Monte Carlo sampling omega
+    #     """
+    #     # TODO: We can derive better ways of estimating the log likelihood
+    #     lls = np.zeros(M)
+    #     for m in xrange(M):
+    #         # Sample latent states from the prior
+    #         z = self.generate_states()
+    #         psi = z.dot(self.C.T) + self.b.T
+    #         lls[m] = self.data._log_likelihood_given_activation(psi).sum()
+    #
+    #     # Compute the average
+    #     hll = logsumexp(lls) - np.log(M)
+    #
+    #     # Use bootstrap to compute error bars
+    #     samples = np.random.choice(lls, size=(100, M), replace=True)
+    #     hll_samples = logsumexp(samples, axis=1) - np.log(M)
+    #     std_hll = hll_samples.std()
+    #
+    #     return hll, std_hll
 
 
 class _PGLDSBase(NonstationaryLDS):
@@ -441,9 +491,9 @@ class _PGLDSBase(NonstationaryLDS):
     def C(self):
         return self.emission_distn.C
 
-    def add_data(self, data, **kwargs):
+    def add_data(self, data, mask=None, **kwargs):
         assert isinstance(data, np.ndarray) and data.ndim == 2 and data.shape[1] == self.p
-        obs = self._observation_class(X=data, **self._observation_kwargs)
+        obs = self._observation_class(X=data, mask=mask, **self._observation_kwargs)
         states = PGLDSStates(model=self, data=obs)
         # Resample the stateseq a few times
         [states.resample_states() for _ in xrange(10)]
@@ -468,6 +518,12 @@ class _PGLDSBase(NonstationaryLDS):
 
     def resample_emission_distn(self):
         self.emission_distn.resample(self.states_list)
+
+    def heldout_log_likelihood(self):
+        hll = 0
+        for states in self.states_list:
+            hll += states.heldout_log_likelihood()
+        return hll
 
 
 class BernoulliLDS(_PGLDSBase):
