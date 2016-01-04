@@ -9,7 +9,7 @@ import sys
 import numpy as np
 from scipy.misc import logsumexp
 
-from pybasicbayes.abstractions import Model, ModelGibbsSampling, ModelMeanField
+from pybasicbayes.abstractions import Model, ModelGibbsSampling, ModelMeanField, ModelParallelTempering
 from pybasicbayes.util.text import progprint_xrange
 
 from graphistician.networks import GaussianBernoulliNetwork
@@ -620,6 +620,32 @@ class _SVIPopulation(_BayesianPopulationBase):
 
         # Update the network given the weight model
         self.network.svi_step(self.weight_model, minibatchfrac=mbfrac, stepsize=stepsize)
+
+class _ParallelTemperingPopulation(_BayesianPopulationBase, ModelParallelTempering):
+    """
+    Implement Parallel Tempring for the population model
+    """
+    @property
+    def temperature(self):
+        if not hasattr(self, "_temperature"):
+            self._temperature = 1.0
+        return self._temperature
+
+    @temperature.setter
+    def temperature(self, value):
+        self._temperature = value
+
+    @property
+    def energy(self):
+        return -self.log_probability(temperature=self.temperature)
+
+    def swap_sample_with(self,other):
+        """
+        Swap the internals of the this model with the other model
+        :param other:
+        :return:
+        """
+        pass
 
 
 class Population(_GibbsPopulation, _MeanFieldPopulation, _SVIPopulation):
