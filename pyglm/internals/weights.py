@@ -141,7 +141,8 @@ class _SpikeAndSlabGaussianWeightsBase(Component):
         Sigma = self.network.weights.Sigma
 
         # Log prob of connections
-        lprior += Bernoulli(P).log_probability(self.A).sum()
+        if not self.network.adjacency.is_deterministic:
+            lprior += Bernoulli(P).log_probability(self.A).sum()
 
         # Log prob of weights
         for n_pre in xrange(self.N):
@@ -304,7 +305,10 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
             J_post = J_prior + J_lkhd
             h_post = h_prior + h_lkhd
 
-            self._collapsed_resample_A(n, P, J_prior, h_prior, J_post, h_post)
+            if self.network.adjacency.is_deterministic:
+                self.A[:,n] = P[:,n]
+            else:
+                self._collapsed_resample_A(n, P, J_prior, h_prior, J_post, h_post)
             self._collapsed_resample_W_b(n, J_post, h_post)
 
     def _parallel_collapsed_resample(self, augmented_data=[]):
