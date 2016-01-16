@@ -638,3 +638,322 @@ class StandardNegativeBinomialPopulation(StandardBernoulliPopulation):
                 xf = res.x
                 self.b[n]         = xf[0]
                 self.weights[n,:] = xf[1:]
+
+
+class _PPCABase(Model):
+    """
+    PPCA corresponds to the generative model:
+        A ~ MN(.,.)
+        b ~ N(.,.)
+        z_n ~ N(0, I)
+        psi_{t,n} = A.dot(z_n) + b
+        s_{t,n} ~ p(s | \sigma(psi_{t,n})
+    """
+    def __init__(self, S, D):
+        self.S = S
+        self.T, self.N = S.shape
+        self.D =  D
+
+        self.Z = np.zeros((self.N,self.D))
+        self.omega = np.zeros((self.T, self.N))
+
+        # Initialize regression model
+        # from pybasicbayes.distributions.regression import Regression
+        # S_0 = np.eye(self.T)
+        # K_0 = np.eye(self.D+1)
+        # M_0 = np.zeros((self.T, self.D+1))
+        # nu_0 = self.T+2
+        # self.regression = Regression(nu_0, S_0, M_0, K_0, affine=True)
+        self.A = np.zeros((self.T, self.D))
+        self.bias = np.zeros((self.T,))
+
+        import pypolyagamma as ppg
+        num_threads = ppg.get_omp_num_threads()
+        seeds = np.random.randint(2**16, size=num_threads)
+        self.ppgs = [ppg.PyPolyaGamma(seed) for seed in seeds]
+
+    @abc.abstractproperty
+    def a(self):
+        raise NotImplementedError
+
+    @abc.abstractproperty
+    def b(self):
+        raise NotImplementedError
+
+    @property
+    def kappa(self):
+        return self.a - self.b/2.0
+
+    # @property
+    # def A(self):
+    #     return self.regression.A[:,:-1]
+    #
+    # @property
+    # def bias(self):
+    #     return self.regression.A[:,-1]
+
+    @property
+    def psi(self):
+        return self.A.dot(self.Z.T) + self.bias[:,None]
+
+    def add_data(self,data):
+        raise Exception
+
+    def log_likelihood(self):
+        return np.sum(self.log_likelihood_given_activation(self.S, self.psi))
+
+    @abc.abstractmethod
+    def log_likelihood_given_activation(self, S, psi):
+        raise NotImplementedError
+
+    def heldout_neuron_log_likelihood(self, Stest, M=100):
+        from scipy.misc import logsumexp
+        assert Stest.shape == (self.T,)
+
+        # Sample a bunch of Zs
+        Ztest = np.random.randn(self.D, M)
+        psi_test = self.A.dot(Ztest) + self.bias[:,None]
+
+        plls = np.array([np.sum(
+                self.log_likelihood_given_activation(Stest, psi))
+                for psi in psi_test.T])
+
+        # Take the average of the predictive log likelihoods
+        mean_pll = -np.log(M) + logsumexp(plls)
+
+        # Use bootstrap to compute standard error
+        subsamples = np.random.choice(plls, size=(100, M), replace=True)
+        pll_subsamples = logsumexp(subsamples, axis=1) - np.log(M)
+        std_pll = pll_subsamples.std()
+
+        return mean_pll, std_pll
+
+
+    def generate(self):
+        raise NotImplementedError()
+
+    def resample_model(self):
+        # import ipdb ; ipdb.set_trace()
+        self._resample_auxiliary_vars()
+        self._resample_regression()
+        self._resample_Z()
+
+    def _resample_Z(self):
+        """
+        p(_n | A, kappa, omega) = p(z_n) * p(Az_n + b| kappa/omega, omega^-1)
+        = p(Z) p(Z | A.T (kappa/omega-b), A.T omega A)
+        """
+        from pybasicbayes.util.stats import sample_gaussian
+        kappa, omega = self.kappa, self.omega
+        A,b = self.A, self.bias
+
+        for n in range(self.N):
+            h = np.zeros(self.D)
+            J = np.eye(self.D)
+
+            h += A.T.dot((kappa[:,n]/omega[:,n] - b) * omega[:,n])
+            J += (A * omega[:,n][:,None]).T.dot(A)
+
+            self.Z[n] = sample_gaussian(J=J, h=h)
+
+    def _resample_regression(self):
+        """
+        p(A | Z, kappa, omega) = p(A) * p(AZ + b | kappa/omega, omega)
+        = \prod_t N(Ab_t, 0, I) * N(Z'.T Ab_t | kappa_t/omega_t, omega_t)
+        """
+        # xy = np.hstack((self.Z, self.S.T))
+        # self.regression.resample(xy)
+
+        from pybasicbayes.util.stats import sample_gaussian
+        kappa, omega = self.kappa, self.omega
+        Z = np.hstack((self.Z, np.ones((self.N,1))))
+
+        for t in xrange(self.T):
+            h = np.zeros(self.D+1)
+            J = np.eye(self.D+1)
+
+            h += Z.T.dot(kappa[t])
+            J += (Z * omega[t][:,None]).T.dot(Z)
+
+            Abt = sample_gaussian(J=J, h=h)
+            self.A[t], self.bias[t] = Abt[:-1], Abt[-1]
+
+        # import ipdb; ipdb.set_trace()
+        # print np.mean(self.A)
+        # print np.mean(self.bias)
+
+    def _resample_auxiliary_vars(self):
+        import pypolyagamma as ppg
+        b, psi = self.b, self.psi
+        ppg.pgdrawvpar(self.ppgs, b.ravel(), psi.ravel(),
+                       self.omega.ravel())
+
+
+class _MixtureModelBase(Model):
+    """
+    Mixture of neurons model
+    """
+    def __init__(self, S, C):
+        self.S, self.C = S, C
+        self.T, self.N = S.shape
+        self.c = np.random.randint(0,C, size=self.N)
+        self.psis = np.zeros((self.T, self.C))
+
+        from pybasicbayes.distributions.gaussian import ScalarGaussianNIX
+        self.gaussian = ScalarGaussianNIX(mu_0=0, kappa_0=1, sigmasq_0=1.0, nu_0=2.0)
+
+
+        import pypolyagamma as ppg
+        num_threads = ppg.get_omp_num_threads()
+        seeds = np.random.randint(2**16, size=num_threads)
+        self.ppgs = [ppg.PyPolyaGamma(seed) for seed in seeds]
+
+        self.omega = np.zeros((self.T, self.N))
+
+    @abc.abstractproperty
+    def a(self):
+        raise NotImplementedError
+
+    @abc.abstractproperty
+    def b(self):
+        raise NotImplementedError
+
+    @property
+    def kappa(self):
+        return self.a - self.b/2.0
+
+    @property
+    def psi(self):
+        return self.psis[:, self.c]
+
+    def add_data(self,data):
+        raise Exception
+
+    def log_likelihood(self):
+        return np.sum(self.log_likelihood_given_activation(self.S, self.psi))
+
+    @abc.abstractmethod
+    def log_likelihood_given_activation(self, S, psi):
+        raise NotImplementedError
+
+    def generate(self):
+        raise NotImplementedError()
+
+    def heldout_log_likelihood(self, S):
+        return self.log_likelihood(S).sum()
+
+    def resample_model(self):
+        self._resample_auxiliary_vars()
+        self._resample_c()
+        self._resample_psi()
+
+    def _resample_c(self):
+        from pybasicbayes.util.stats import sample_discrete_from_log
+        kappa, omega = self.kappa, self.omega
+        mu = kappa / omega
+        sigmasq = 1./omega
+        for n in xrange(self.N):
+            lps = np.zeros(self.C)
+            for i in xrange(self.C):
+                lps[i] += np.sum(-0.5 * (self.psis[:,i] - mu[:,n])**2 / sigmasq[:,n])
+
+            self.c[n] = sample_discrete_from_log(lps)
+
+    def _resample_psi(self):
+        mu, sigmasq = self.gaussian.mu, self.gaussian.sigmasq
+        kappa, omega = self.kappa, self.omega
+
+        for i in range(self.C):
+            h = mu / sigmasq * np.ones((self.T))
+            J_diag = 1. / sigmasq * np.ones((self.T))
+
+            for n in range(self.N):
+                if self.c[n] == i:
+                    h += kappa[:,n]
+                    J_diag += omega[:,n]
+
+            # Sample
+            mu_i = h / J_diag
+            sig_i = np.sqrt(1./J_diag)
+            self.psis[:,i] = mu_i + sig_i * np.random.randn(self.T)
+
+        # Resample global prior
+        data = []
+        for i in xrange(self.C):
+            if np.sum(self.c==i) > 0:
+                data.append(self.psis[:,i])
+        data = np.concatenate(data)
+        self.gaussian.resample(data)
+
+    def _resample_auxiliary_vars(self):
+        import pypolyagamma as ppg
+        b, psi = self.b, self.psi
+        ppg.pgdrawvpar(self.ppgs, b.ravel(), psi.ravel(),
+                       self.omega.ravel())
+
+
+
+class _BernoulliMixin(object):
+
+    @property
+    def a(self):
+        if not hasattr(self, "_a"):
+            self._a = self.S.copy()
+        return self._a
+
+    @property
+    def b(self):
+        if not hasattr(self, "_b"):
+            self._b = np.ones(self.S.shape)
+        return self._b
+
+    def log_likelihood_given_activation(self, S, psi):
+        p = logistic(psi)
+        p = np.clip(p, 1e-32, 1-1e-32)
+        ll = (S * np.log(p) + (1-S) * np.log(1-p))
+        return ll
+
+
+class _NegativeBinomialMixin(object):
+
+    def __init__(self, *args):
+        super(_NegativeBinomialMixin, self).__init__(*args)
+        self.xi = 10
+
+    @property
+    def a(self):
+        if not hasattr(self, "_a"):
+            self._a = self.S.copy()
+        return self._a
+
+    @property
+    def b(self):
+        if not hasattr(self, "_b"):
+            self._b = (self.S + self.xi).astype(np.float)
+        return self._b
+
+    def log_likelihood_given_activation(self, S, psi):
+        p = logistic(psi)
+        p = np.clip(p, 1e-32, 1-1e-32)
+        xi = self.xi
+
+        return self.log_normalizer(S, xi) \
+               + S * np.log(p) \
+               + xi * np.log(1-p)
+
+    @staticmethod
+    def log_normalizer(S, xi):
+        return gammaln(S+xi) - gammaln(xi) - gammaln(S+1)
+
+
+class BernoulliPPCA(_BernoulliMixin, _PPCABase):
+    pass
+
+class NegativeBinomialPPCA(_NegativeBinomialMixin, _PPCABase):
+    pass
+
+class BernoulliMixtureModel(_BernoulliMixin, _MixtureModelBase):
+    pass
+
+class NegativeBinomialMixtureModel(_NegativeBinomialMixin, _MixtureModelBase):
+    pass
