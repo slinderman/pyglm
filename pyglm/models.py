@@ -424,7 +424,14 @@ class _BayesianPopulationBase(Model):
             plls.append(pll)
 
         # Take the average of the predictive log likelihoods
-        return -np.log(M) + logsumexp(plls)
+        mean_pll = -np.log(M) + logsumexp(plls)
+
+        # Use bootstrap to compute standard error
+        subsamples = np.random.choice(plls, size=(100, M), replace=True)
+        pll_subsamples = logsumexp(subsamples, axis=1) - np.log(M)
+        std_pll = pll_subsamples.std()
+
+        return mean_pll, std_pll
 
     def compute_rate(self, augmented_data):
         # Compute the activation
