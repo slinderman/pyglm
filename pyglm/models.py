@@ -416,9 +416,11 @@ class _BayesianPopulationBase(Model):
                 np.einsum("tmb,mb->t", Ffull, Wnew, out=psi)
             psi += bnew
 
+            obs_new = self.observation_model.sample_predictive_distribution()
+
             # Use the observation model to compute the held out likelihood
             pll = self.observation_model.\
-                _log_likelihood_given_activation(Stest, psi).sum()
+                _log_likelihood_given_activation(Stest, psi, obs_params=obs_new).sum()
             plls.append(pll)
 
         # Take the average of the predictive log likelihoods

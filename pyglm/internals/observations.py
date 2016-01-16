@@ -86,11 +86,15 @@ class _PolyaGammaAugmentedObservationsBase(Component):
         raise NotImplementedError()
 
     @abc.abstractmethod
+    def sample_predictive_distribution(self):
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def expected_S(self, Psi):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def _log_likelihood_given_activation(self, S, psi):
+    def _log_likelihood_given_activation(self, S, psi, obs_params=None):
         raise NotImplementedError()
 
     @line_profiled
@@ -165,7 +169,7 @@ class BernoulliObservations(_PolyaGammaAugmentedObservationsBase):
         Psi = self.activation.compute_psi(augmented_data)
         return self._log_likelihood_given_activation(S, Psi)
 
-    def _log_likelihood_given_activation(self, S, psi):
+    def _log_likelihood_given_activation(self, S, psi, obs_params=None):
         p   = logistic(psi)
         p   = np.clip(p, 1e-32, 1-1e-32)
 
@@ -185,6 +189,9 @@ class BernoulliObservations(_PolyaGammaAugmentedObservationsBase):
     def rvs(self, Psi):
         p = logistic(Psi)
         return np.random.rand(*p.shape) < p
+
+    def sample_predictive_distribution(self):
+        return None
 
     def expected_S(self, Psi):
         p = logistic(Psi)
@@ -221,10 +228,19 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
                 self.xi = xi
 
             if alpha_xi is None and beta_xi is None:
+                self.alpha_xi = self.beta_xi = None
                 self.do_resample_xi = False
 
         if alpha_xi is None and beta_xi is None and xi is None:
             raise Exception("Either alpha_xi or beta_xi must be specified")
+
+    def sample_predictive_distribution(self):
+        if hasattr(self, "alpha_xi") and hasattr(self, "beta_xi"):
+            # \xi_n ~ 1 + Gamma(alpha, beta)
+            return 1+np.random.gamma(self.alpha_xi, 1./self.beta_xi)
+        else:
+            return np.mean(self.xi)
+
 
     def log_likelihood(self, augmented_data):
         S = augmented_data["S"]
@@ -232,13 +248,15 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
         return self._log_likelihood_given_activation(S, Psi)
 
 
-    def _log_likelihood_given_activation(self, S, psi):
-        p   = logistic(psi)
-        p   = np.clip(p, 1e-32, 1-1e-32)
+    def _log_likelihood_given_activation(self, S, psi, obs_params=None):
+        p = logistic(psi)
+        p = np.clip(p, 1e-32, 1-1e-32)
 
-        return self.log_normalizer(S, self.xi) \
+        xi = obs_params if obs_params is not None else self.xi
+
+        return self.log_normalizer(S, xi) \
                + S * np.log(p) \
-               + self.xi * np.log(1-p)
+               + xi * np.log(1-p)
 
     @staticmethod
     def log_normalizer(S, xi):
