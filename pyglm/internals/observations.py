@@ -235,7 +235,7 @@ class NegativeBinomialObservations(_PolyaGammaAugmentedObservationsBase):
             raise Exception("Either alpha_xi or beta_xi must be specified")
 
     def sample_predictive_distribution(self):
-        if hasattr(self, "alpha_xi") and hasattr(self, "beta_xi"):
+        if self.do_resample_xi:
             # \xi_n ~ 1 + Gamma(alpha, beta)
             return 1+np.random.gamma(self.alpha_xi, 1./self.beta_xi)
         else:
