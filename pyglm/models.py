@@ -235,7 +235,9 @@ class _BayesianPopulationBase(Model):
             # Add to the data list
             self.data_list.append(augmented_data)
 
-    def generate(self, keep=True, T=100, return_Psi=False, verbose=True):
+    def generate(self, keep=True, T=100, return_Psi=False, verbose=True,
+                 max_spks_per_bin=10, print_intvl=10000,
+                 background=None):
         """
         Generate data from the model.
 
@@ -260,7 +262,9 @@ class _BayesianPopulationBase(Model):
         X = np.zeros((T+L, N))
 
         # Precompute the impulse responses (LxNxN array)
-        H = np.tensordot(self.basis.basis, self.weight_model.W, axes=([1], [2]))
+        H = np.tensordot(self.basis.basis,
+                         self.weight_model.W_effective,
+                         axes=([1], [2]))
         assert H.shape == (L,self.N, self.N)
 
         # Transpose H so that it is faster for tensor mult
@@ -272,8 +276,13 @@ class _BayesianPopulationBase(Model):
         # Simulate the background
         X += self.background_model.generate(T+L)
 
+        # If given a background, add that too
+        if background is not None:
+            T_bkgd = background.shape[0]
+            assert background.shape[1] == self.N
+            X[:T_bkgd] += background
+
         # Cap the number of spikes in a time bin
-        max_spks_per_bin = 10
         n_exceptions = 0
 
         # Iterate over each time step and generate spikes
@@ -282,7 +291,7 @@ class _BayesianPopulationBase(Model):
 
         for t in np.arange(T):
             if verbose:
-                if np.mod(t,10000)==0:
+                if np.mod(t,print_intvl)==0:
                     print "t=%d" % t
 
             # Compute the rate for the given activation
@@ -298,11 +307,8 @@ class _BayesianPopulationBase(Model):
             # Check Spike limit
             if np.any(S[t,:] >= max_spks_per_bin):
                 n_exceptions += 1
-
-            # if np.any(S[t,:]>100):
-            #     print "More than 10 spikes in a bin! " \
-            #           "Decrease variance on impulse weights or decrease simulation bin width."
-            #     import pdb; pdb.set_trace()
+                if verbose:
+                    print "Exception: more than %d spikes in bin" % max_spks_per_bin
 
         # Cast S to int32
         assert np.all(np.isfinite(S[t,:]))
@@ -458,13 +464,14 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
     """
     Implement Gibbs sampling for the population model
     """
-    def initialize_with_standard_model(self, standard_model):
+    def initialize_with_standard_model(self, standard_model, N_network_iters=200):
         super(_GibbsPopulation, self).\
             initialize_with_standard_model(standard_model)
 
         # Update the network model a few times
-        N_network_updates = 10
-        for itr in xrange(N_network_updates):
+        print "Initializing network"
+        from tqdm import tqdm
+        for itr in tqdm(xrange(N_network_iters)):
             self.network.resample((self.weight_model.A, self.weight_model.W))
 
     def resample_model(self, temperature=1.0):
@@ -481,7 +488,7 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         self.network.resample((self.weight_model.A, self.weight_model.W))
 
     @line_profiled
-    def collapsed_resample_model(self, temperature=1.0):
+    def collapsed_resample_model(self, temperature=1.0, N_network_iters=1):
         assert temperature >= 0.0 and temperature <= 1.0
 
         # update model components one at a time
@@ -492,7 +499,9 @@ class _GibbsPopulation(_BayesianPopulationBase, ModelGibbsSampling):
         self.background_model.resample(self.data_list)
 
         # Resample the network given the weight model
-        self.network.resample((self.weight_model.A, self.weight_model.W))
+        for i in xrange(N_network_iters):
+            self.network.resample((self.weight_model.A,
+                                   self.weight_model.W))
 
     def ais(self, N_samples=100, B=1000, steps_per_B=1,
             verbose=True, full_output=False, callback=None):

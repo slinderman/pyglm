@@ -112,13 +112,14 @@ class _SpikeAndSlabGaussianWeightsBase(Component):
                 W[n1,n2] = np.random.multivariate_normal(Mu[n1,n2], Sigma[n1,n2])
         self.W = W
 
-    def initialize_with_standard_model(self, standard_model, threshold=75):
+    def initialize_with_standard_model(self, standard_model, threshold=90):
         """
         Initialize with the weights from a standard model
         :param standard_model:
         :param threshold:      percentile [0,100] of minimum weight
         :return:
         """
+        # import ipdb; ipdb.set_trace()
         W_std = standard_model.W
 
         # Make sure it is the correct shape before copying
@@ -158,7 +159,7 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
     def __init__(self, population):
         super(_GibbsSpikeAndSlabGaussianWeights, self).__init__(population)
 
-        self.resample()
+        # self.resample()
 
     def resample(self, augmented_data=[]):
 
@@ -282,7 +283,6 @@ class _GibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
 class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBase):
     def __init__(self, population):
         super(_CollapsedGibbsSpikeAndSlabGaussianWeights, self).__init__(population)
-
         self.collapsed_resample()
 
     @property
@@ -298,7 +298,8 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
 
     def _serial_collapsed_resample(self, augmented_data):
         P = self.network.adjacency.P
-        for n in xrange(self.N):
+        from tqdm import tqdm
+        for n in tqdm(xrange(self.N)):
             # Compute the prior and posterior sufficient statistics of W
             J_prior, h_prior = self._prior_sufficient_statistics(n)
             J_lkhd, h_lkhd = self._lkhd_sufficient_statistics(n, augmented_data)

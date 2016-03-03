@@ -256,7 +256,7 @@ class StandardBernoulliPopulation(Model):
         return self.log_likelihood(augmented_data)
 
 
-    def fit(self, L1=True):
+    def fit(self, L1=True, cs=None):
         """
         Use scikit-learn's LogisticRegression model to fit the data
 
@@ -268,67 +268,66 @@ class StandardBernoulliPopulation(Model):
         F = np.vstack([d["F"] for d in self.data_list])
         S = np.vstack([d["S"] for d in self.data_list])
 
-        if L1:
-            # Hold out some data for cross validation
-            offset = int(0.75 * S.shape[0])
-            T_xv = S.shape[0] - offset
-            F_xv = F[offset:, ...]
-            S_xv = S[offset:, ...]
-            augmented_xv_data = {"T": T_xv, "S": S_xv, "F": F_xv}
+        # Hold out some data for cross validation
+        offset = int(0.75 * S.shape[0])
+        T_xv = S.shape[0] - offset
+        F_xv = F[offset:, ...]
+        S_xv = S[offset:, ...]
+        augmented_xv_data = {"T": T_xv, "S": S_xv, "F": F_xv}
 
-            F    = F[:offset, ...]
-            S    = S[:offset, ...]
+        F    = F[:offset, ...]
+        S    = S[:offset, ...]
 
-            for n_post in xrange(self.N):
-                # Get a L1 regularization path for inverse penalty C
-                cs = l1_min_c(F, S[:,n_post], loss='log') * np.logspace(1, 4., 10)
-                # The intercept is also subject to penalization, even though
-                # we don't really want to penalize it. To counteract this effect,
-                # we scale the intercept by a large value
-                intercept_scaling = 10**6
+        # Get regularization path for inverse penalty C
+        if cs is None:
+            if L1:
+                cs = l1_min_c(F, S[:,0], loss='log') * np.logspace(1, 6., 10)
+            else:
+                cs = np.logspace(-5,1,10)
+            # cs = sigmas
+        # The intercept is also subject to penalization, even though
+        # we don't really want to penalize it. To counteract this effect,
+        # we scale the intercept by a large value
+        intercept_scaling = 1
 
+        penalty = "l1" if L1 else "l2"
 
-                print "Computing regularization path for neuron %d ..." % n_post
-                ints      = []
-                coeffs    = []
-                xv_scores = []
-                lr = LogisticRegression(C=1.0, penalty='l1',
-                                        fit_intercept=True, intercept_scaling=intercept_scaling,
-                                        tol=1e-6)
-                for c in cs:
-                    print "Fitting for C=%.5f" % c
-                    lr.set_params(C=c)
-                    lr.fit(F, S[:,n_post])
-                    ints.append(lr.intercept_.copy())
-                    coeffs.append(lr.coef_.ravel().copy())
-                    # xv_scores.append(lr.score(F_xv, S_xv[:,n_post]).copy())
+        for n_post in xrange(self.N):
+            print "Computing regularization path for neuron %d ..." % n_post
+            ints      = []
+            coeffs    = []
+            xv_scores = []
+            lr = LogisticRegression(C=1.0, penalty=penalty,
+                                    fit_intercept=True, intercept_scaling=intercept_scaling,
+                                    tol=1e-6)
+            for c in cs:
+                print "Fitting for C=%.5f" % c
+                lr.set_params(C=c)
+                lr.fit(F, S[:,n_post])
+                ints.append(lr.intercept_.copy())
+                coeffs.append(lr.coef_.ravel().copy())
+                # xv_scores.append(lr.score(F_xv, S_xv[:,n_post]).copy())
 
-                    # Temporarily set the weights and bias
-                    self.b[n_post] = lr.intercept_
-                    self.weights[n_post, :] = lr.coef_
-                    xv_scores.append(self.heldout_log_likelihood(augmented_data=augmented_xv_data))
-
-                # Choose the regularization penalty with cross validation
-                print "XV Scores: "
-                for c,score  in zip(cs, xv_scores):
-                    print "\tc: %.5f\tscore: %.1f" % (c,score)
-                best = np.argmax(xv_scores)
-                print "Best c: ", cs[best]
-
-                # Save the best weights
-                self.b[n_post]          = ints[best]
-                self.weights[n_post, :] = coeffs[best]
-
-        else:
-            # Just use standard L2 regularization
-            for n_post in xrange(self.N):
-                sys.stdout.write('.')
-                sys.stdout.flush()
-
-                lr = LogisticRegression(fit_intercept=True)
-                lr.fit(F,S[:,n_post])
+                # Temporarily set the weights and bias
                 self.b[n_post] = lr.intercept_
-                self.weights[n_post,:] = lr.coef_
+                self.weights[n_post, :] = lr.coef_
+                xv_scores.append(self.heldout_log_likelihood(augmented_data=augmented_xv_data))
+
+            # Choose the regularization penalty with cross validation
+            print "XV Scores: "
+            for c,score  in zip(cs, xv_scores):
+                print "\tc: %.5f\tscore: %.1f" % (c,score)
+            best = np.argmax(xv_scores)
+            print "Best c: ", cs[best]
+
+            # Save the best weights
+            self.b[n_post]          = ints[best]
+            self.weights[n_post, :] = coeffs[best]
+
+            print " Max w: ", self.weights[n_post].max(), \
+                  " Min w: ", self.weights[n_post].min()
+
+            assert abs(self.weights[n_post]).max() > 1e-6
 
         print ""
 
