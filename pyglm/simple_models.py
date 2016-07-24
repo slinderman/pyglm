@@ -327,7 +327,7 @@ class StandardBernoulliPopulation(Model):
             print " Max w: ", self.weights[n_post].max(), \
                   " Min w: ", self.weights[n_post].min()
 
-            assert abs(self.weights[n_post]).max() > 1e-6
+            # assert abs(self.weights[n_post]).max() > 1e-6
 
         print ""
 

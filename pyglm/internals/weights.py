@@ -573,6 +573,8 @@ class _CollapsedGibbsSpikeAndSlabGaussianWeights(_SpikeAndSlabGaussianWeightsBas
 
         for m in perm:
 
+            # TODO: Check if P[m,n] is deterministic
+
             # Compute the marginal prob with and without A[m,n]
             lps = np.zeros(2)
 
