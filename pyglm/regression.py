@@ -146,9 +146,33 @@ class _SparseScalarRegressionBase(GibbsSampling):
         """
         raise NotImplementedError
 
+    def _flatten_X(self, X):
+        if X.ndim == 2:
+            assert  X.shape[1] == self.N*self.B
+        elif X.ndim == 3:
+            X = np.reshape(X, (-1, self.N * self.B))
+        else:
+            raise Exception
+        return X
+
+
+    def extract_data(self, data):
+        D, N, B = self.D, self.N, self.B
+        assert D == 1, "Only supporting scalar regressions"
+
+        assert isinstance(data, tuple) and len(data) == 2
+        X, y = data
+        T = X.shape[0]
+        assert y.shape == (T, 1) or y.shape == (T,)
+
+        # Reshape X such that it is T x NB
+        X = self._flatten_X(X)
+        return X, y
+
     def activation(self, X):
         D, N, B = self.D, self.N, self.B
         assert D == 1, "Only supporting scalar regression"
+        X = self._flatten_X(X)
 
         W = np.reshape((self.a[:, None] * self.W[0]), (N * B,))
         b = self.b[0]
@@ -175,26 +199,6 @@ class _SparseScalarRegressionBase(GibbsSampling):
         h_prior = np.concatenate((self.h_w.ravel(), self.h_b.ravel()))
         assert h_prior.shape == (N*B+1,)
         return J_prior, h_prior
-
-    def extract_data(self, data):
-        D, N, B = self.D, self.N, self.B
-        assert D == 1, "Only supporting scalar regressions"
-
-        assert isinstance(data, tuple) and len(data) == 2
-        X, y = data
-        T = X.shape[0]
-        assert y.shape == (T, 1) or y.shape == (T,)
-
-        # Reshape X such that it is T x NB
-        if X.ndim == 2:
-            assert X.shape == (T, N * B)
-        elif X.ndim == 3:
-            assert X.shape == (T, N, B)
-            X = X.reshape(T, N * B)
-        else:
-            raise Exception("Invalid covariate shape")
-
-        return X, y
 
     def _lkhd_sufficient_statistics(self, datas):
         """
@@ -390,10 +394,8 @@ class SparseScalarRegression(_SparseScalarRegressionBase):
         if X is None:
             assert isinstance(size, int)
             X = np.random.randn(size,N*B)
-        else:
-            assert X.ndim == 2 and X.shape[1] == N*B
 
-        # Compute the regression mean
+        X = self._flatten_X(X)
         T = X.shape[0]
         return self.mean(X) + np.sqrt(self.eta) * np.random.randn(T)
 
@@ -499,9 +501,8 @@ class SparseBernoulliRegression(_SparsePGRegressionBase):
         if X is None:
             assert isinstance(size, int)
             X = np.random.randn(size, self.N*self.B)
-        else:
-            assert X.ndim == 2 and X.shape[1] == self.N*self.B
 
+        X = self._flatten_X(X)
         p = self.mean(X)
         y = np.random.rand(*p.shape) < p
 
