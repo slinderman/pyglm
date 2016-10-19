@@ -327,7 +327,7 @@ class _PGLDSBase(NonstationaryLDS):
 
     def _generate_obs(self, s):
         if s.data is None:
-            psi = self.emission_distn.rvs(x=s.stateseq)
+            psi = self.emission_distn.rvs(X=s.stateseq)
             data = self._observation_class(psi=psi, **self._observation_kwargs)
             s.data = data
         else:

@@ -34,6 +34,7 @@ from scipy.linalg.lapack import dpotrs
 from pybasicbayes.abstractions import GibbsSampling
 from pybasicbayes.util.stats import sample_gaussian, sample_discrete_from_log, sample_invgamma
 
+from pyglm.utils.utils import logistic
 
 class _SparseScalarRegressionBase(GibbsSampling):
     """
@@ -144,6 +145,14 @@ class _SparseScalarRegressionBase(GibbsSampling):
         homoskedastic Gaussian model, this is the data times the precision.
         """
         raise NotImplementedError
+
+    def activation(self, X):
+        D, N, B = self.D, self.N, self.B
+        assert D == 1, "Only supporting scalar regression"
+
+        W = np.reshape((self.a[:, None] * self.W[0]), (N * B,))
+        b = self.b[0]
+        return X.dot(W) + b
 
     @abc.abstractmethod
     def mean(self, X):
@@ -400,12 +409,7 @@ class SparseScalarRegression(_SparseScalarRegressionBase):
         self._resample_eta(datas)
 
     def mean(self, X):
-        D, N, B = self.D, self.N, self.B
-        assert D == 1, "Only supporting scalar regression"
-
-        W = np.reshape((self.a[:, None] * self.W[0]), (N * B,))
-        b = self.b[0]
-        return X.dot(W) + b
+        return self.activation(X)
 
     def _resample_eta(self, datas):
         D, N, B = self.D, self.N, self.B
@@ -422,149 +426,83 @@ class SparseScalarRegression(_SparseScalarRegressionBase):
 
         self.eta = sample_invgamma(alpha, beta)
 
-# class _PGLogisticRegressionBase(Distribution):
-#     """
-#     A base class for the emission matrix, C.
-#     """
-#     __metaclass__ = abc.ABCMeta
-#
-#     def __init__(self, D_out, D_in, A=None,
-#                  mu_A=0., sigmasq_A=1.,
-#                  b=None, mu_b=0., sigmasq_b=10.):
-#         """
-#         :param D_out: Observation dimension
-#         :param D_in: Latent dimension
-#         :param A: Initial NxD emission matrix
-#         :param sigmasq_A: prior variance on C
-#         :param b: Initial Nx1 emission matrix
-#         :param sigmasq_b: prior variance on b
-#         """
-#         self.D_out, self.D_in, \
-#         self.mu_A, self.sigmasq_A, \
-#         self.mu_b, self.sigmasq_b = \
-#             D_out, D_in, mu_A, sigmasq_A, mu_b, sigmasq_b
-#
-#
-#         if np.isscalar(mu_b):
-#             self.mu_b = mu_b * np.ones(D_out)
-#
-#         if np.isscalar(sigmasq_b):
-#             self.sigmasq_b = sigmasq_b * np.ones(D_out)
-#
-#         if np.isscalar(mu_A):
-#             self.mu_A = mu_A * np.ones((D_out, D_in))
-#         else:
-#             assert mu_A.shape == (D_out, D_in)
-#
-#         if np.isscalar(sigmasq_A):
-#             self.sigmasq_A = np.array([sigmasq_A * np.eye(D_in) for _ in range(D_out)])
-#         else:
-#             assert sigmasq_A.shape == (D_out, D_in, D_in)
-#
-#         if A is not None:
-#             assert A.shape == (self.D_out, self.D_in)
-#             self.A = A
-#         else:
-#             self.A = np.zeros((self.D_out, self.D_in))
-#             for d in range(self.D_out):
-#                 self.A[d] = npr.multivariate_normal(self.mu_A[d], self.sigmasq_A[d])
-#
-#         if b is not None:
-#             assert b.shape == (self.D_out, 1)
-#             self.b = b
-#         else:
-#             # self.b = np.sqrt(sigmasq_b) * npr.rand(self.D_out, 1)
-#             self.b = self.mu_b[:,None] + np.sqrt(self.sigmasq_b[:,None]) * npr.randn(self.D_out,1)
-#
-#     @abc.abstractmethod
-#     def a_func(self, data):
-#         raise NotImplementedError
-#
-#     @abc.abstractmethod
-#     def b_func(self, data):
-#         raise NotImplementedError
-#
-#     @abc.abstractmethod
-#     def c_func(self, data):
-#         raise NotImplementedError
-#
-#     def log_likelihood(self, xy, mask=None):
-#         if isinstance(xy, tuple):
-#             x,y = xy
-#         elif isinstance(xy, np.ndarray):
-#             x,y = xy[:,:self.D_in], xy[:,self.D_in:]
-#         else:
-#             raise NotImplementedError
-#
-#         psi = x.dot(self.A.T) + self.b.T
-#         ll = np.log(self.c_func(y)) + self.a_func(y) * psi - self.b_func(y) * np.log(1+np.exp(psi))
-#         if mask is not None:
-#             ll *= mask
-#
-#         return np.sum(ll, axis=1)
-#
-#     def rvs(self, x=None, size=[], return_xy=False):
-#         raise NotImplementedError
-#
-#     def kappa_func(self, data):
-#         return self.a_func(data) - self.b_func(data) / 2.0
-#
-#     def resample(self, datas, masks, omegas=None):
-#         # Resample auxiliary variables if they are not given
-#         if omegas is None:
-#             omegas = self._resample_auxiliary_variables(datas)
-#
-#         D = self.D_in
-#         for n in range(self.D_out):
-#             # Resample C_{n,:} given z, omega[:,n], and kappa[:,n]
-#             prior_Sigma = np.zeros((D + 1, D + 1))
-#             prior_Sigma[:D, :D] = self.sigmasq_A[n]
-#             prior_Sigma[D, D] = self.sigmasq_b[n]
-#             prior_J = np.linalg.inv(prior_Sigma)
-#
-#             prior_h = prior_J.dot(np.concatenate((self.mu_A[n], [self.mu_b[n]])))
-#
-#             lkhd_h = np.zeros(D + 1)
-#             lkhd_J = np.zeros((D + 1, D + 1))
-#
-#             for data, mask, omega in zip(datas, masks, omegas):
-#                 if isinstance(data, tuple):
-#                     x,y = data
-#                 else:
-#                     x,y = data[:,:D], data[:,D:]
-#                 augx = np.hstack((x, np.ones((x.shape[0], 1))))
-#                 J = omega * mask
-#                 h = self.kappa_func(y) * mask
-#
-#                 lkhd_J += (augx * J[:,n][:,None]).T.dot(augx)
-#                 lkhd_h += h[:,n].T.dot(augx)
-#
-#             post_h = prior_h + lkhd_h
-#             post_J = prior_J + lkhd_J
-#
-#             joint_sample = sample_gaussian(J=post_J, h=post_h)
-#             self.A[n,:]  = joint_sample[:D]
-#             self.b[n]    = joint_sample[D]
-#
-#     def _resample_auxiliary_variables(self, datas):
-#         import pypolyagamma as ppg
-#         num_threads = ppg.get_omp_num_threads()
-#         seeds = npr.randint(2 ** 16, size=num_threads)
-#         ppgs = [ppg.PyPolyaGamma(seed) for seed in seeds]
-#
-#         A, b = self.A, self.b
-#         omegas = []
-#         for data in datas:
-#             if isinstance(data, tuple):
-#                 x, y = data
-#             else:
-#                 x, y = data[:, :self.D_in], data[:, self.D_in:]
-#
-#             psi = x.dot(A.T) + b.T
-#             omega = np.zeros(y.size)
-#             ppg.pgdrawvpar(ppgs,
-#                            self.b_func(y).ravel(),
-#                            psi.ravel(),
-#                            omega)
-#             omegas.append(omega.reshape(y.shape))
-#         return omegas
+class _SparsePGRegressionBase(_SparseScalarRegressionBase):
+    """
+    Extend the sparse scalar regression to handle count observations
+    by leveraging the Polya-gamma augmentation for logistic regression
+    models. This supports the subclasses implemented below. Namely:
+    - SparseBernoulliRegression
+    - SparseBinomialRegression
+    - SparseNegativeBinomialRegression
+    """
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, N, B, **kwargs):
+        super(_SparsePGRegressionBase, self).__init__(N, B, **kwargs)
+
+        # Initialize Polya-gamma samplers
+        import pypolyagamma as ppg
+        num_threads = ppg.get_omp_num_threads()
+        seeds = np.random.randint(2 ** 16, size=num_threads)
+        self.ppgs = [ppg.PyPolyaGamma(seed) for seed in seeds]
+
+    @abc.abstractmethod
+    def a_func(self, y):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def b_func(self, y):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def c_func(self, y):
+        raise NotImplementedError
+
+    def log_likelihood(self, x):
+        X, y = self.extract_data(x)
+        psi = self.activation(X)
+        return np.log(self.c_func(y)) + self.a_func(y) * psi - self.b_func(y) * np.log1p(np.exp(psi))
+
+    def omega(self, X, y):
+        """
+        In the Polya-gamma augmentation, the precision is
+        given by an auxiliary variable that we must sample
+        """
+        import pypolyagamma as ppg
+        psi = self.activation(X)
+        omega = np.zeros(y.size)
+        ppg.pgdrawvpar(self.ppgs,
+                       self.b_func(y).ravel(),
+                       psi.ravel(),
+                       omega)
+        return omega.reshape(y.shape)
+
+    def kappa(self, X, y):
+        return self.a_func(y) - self.b_func(y) / 2.0
+
+
+class SparseBernoulliRegression(_SparsePGRegressionBase):
+    def a_func(self, data):
+        return data
+
+    def b_func(self, data):
+        return np.ones_like(data, dtype=np.float)
+
+    def c_func(self, data):
+        return 1.0
+
+    def mean(self, X):
+        psi = self.activation(X)
+        return logistic(psi)
+
+    def rvs(self, X=None, size=[], return_xy=False):
+        if X is None:
+            assert isinstance(size, int)
+            X = np.random.randn(size, self.N*self.B)
+        else:
+            assert X.ndim == 2 and X.shape[1] == self.N*self.B
+
+        p = self.mean(X)
+        y = np.random.rand(*p.shape) < p
+
+        return (X, y) if return_xy else y
