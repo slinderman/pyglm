@@ -56,7 +56,7 @@ true_model.plot()
 ```
 
 You should see something like this:
-`TODO`
+![True Model](examples/gif/true_model.jpg)
 
 
 Now create a test model and try to infer the network given the spike train.
@@ -78,7 +78,7 @@ for itr in xrange(N_samples):
 ```
 
 With interactive plotting enabled, you should see something like:
-`TODO`
+![Test Model](examples/gif/test_model.gif)
 
 Finally, we can plot the log likelihood over iterations to assess the
 convergence of the sampling algorithm, at least in a heuristic way.
@@ -89,6 +89,6 @@ plt.xlabel("Iteration")
 plt.ylabel("Log Likelihood")
 ```
 
-`TODO`
+![Log Likelihood](examples/gif/lls.png)
 
 
