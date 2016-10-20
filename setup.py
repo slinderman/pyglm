@@ -11,4 +11,14 @@ setup(name='pyglm',
       url='http://www.github.com/slinderman/pyglm',
       ext_modules=cythonize('**/*.pyx'),
       include_dirs=[np.get_include(),],
-      packages=['pyglm', 'pyglm.internals', 'pyglm.utils'])
+          install_requires=[
+        'numpy>=1.9.3', 'scipy>=0.16', 'matplotlib', 'pybasicbayes'],
+      classifiers=[
+        'Intended Audience :: Science/Research',
+        'Programming Language :: Python',
+        'Programming Language :: C++',
+      ],
+      keywords=[
+        'generalized linear model', 'autoregressive', 'computational neuroscience'],
+      platforms="ALL",
+      packages=['pyglm', 'pyglm.utils'])

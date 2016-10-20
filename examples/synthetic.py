@@ -11,12 +11,13 @@ from pybasicbayes.util.text import progprint_xrange
 from pyglm.utils.basis import cosine_basis
 from pyglm.models import SparseBernoulliGLM
 
-T = 10000
-N = 4
-B = 1
-L = 100
+T = 10000   # Number of time bins to generate
+N = 4       # Number of neurons
+B = 1       # Number of "basis functions"
+L = 100     # Autoregressive window of influence
 
-# Create a cosine basis
+# Create a cosine basis to model smooth influence of
+# spikes on one neuron on the later spikes of others.
 basis = cosine_basis(B=B, L=L) / L
 
 # Generate some data from a model with self inhibition
@@ -24,7 +25,7 @@ true_model = SparseBernoulliGLM(N, basis=basis, S_w=10.0, mu_b=-2.)
 for n in range(N):
     true_model.regressions[n].a[n] = True
     true_model.regressions[n].W[0,n,:] = -2.0
-X, Y = true_model.generate(T=T, keep=True)
+_, Y = true_model.generate(T=T, keep=True)
 
 # Create a test model for fitting
 test_model = SparseBernoulliGLM(N, basis=basis, S_w=2.0, mu_b=-2.)
