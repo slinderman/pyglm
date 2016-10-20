@@ -34,6 +34,7 @@ The nodes are connected via an excitatory network such that each event increases
 the likelihood of subsequent events on downstream nodes.
 ```python
 # Create a simple, sparse network of four neurons
+T = 10000   # Number of time bins to generate
 N = 4       # Number of neurons
 B = 1       # Number of "basis functions"
 L = 100     # Autoregressive window of influence
@@ -43,20 +44,18 @@ L = 100     # Autoregressive window of influence
 basis = cosine_basis(B=B, L=L) / L
 
 # Generate some data from a model with self inhibition
-true_model = SparseBernoulliGLM(N, basis=basis, S_w=10.0, mu_b=-2.)
+true_model = SparseBernoulliGLM(N, basis=basis)
 
 # Generate T time bins of events from the the model
-T = 10000   # Number of time bins to generate
-X, Y = true_model.generate(T=T, keep=True)
-
 # Y is the generated spike train.
 # X is the filtered spike train for inference.
+X, Y = true_model.generate(T=T, keep=True)
 ```
 
 Now create a test model and try to infer the network given the spike train.
 ```python
 # Create the test model and add the spike train
-test_model = SparseBernoulliGLM(N, basis=basis, S_w=2.0, mu_b=-2.)
+test_model = SparseBernoulliGLM(N, basis=basis)
 test_model.add_data(Y)
 
 # Run a Gibbs sampler
