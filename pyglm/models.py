@@ -1,5 +1,7 @@
 import numpy as np
 from pybasicbayes.abstractions import Model
+
+import pyglm.regression
 from pyglm.utils.basis import convolve_with_basis
 
 class NonlinearAutoregressiveModel(Model):
@@ -10,8 +12,7 @@ class NonlinearAutoregressiveModel(Model):
     # TODO: Finish description
     """
 
-    def __init__(self, N, regressions,
-                 basis=None, B=10):
+    def __init__(self, N, regressions, basis=None, B=10):
         """
         :param N:             Observation dimension
         :param regressions:   Regression objects, one per observation dim.
@@ -35,6 +36,19 @@ class NonlinearAutoregressiveModel(Model):
 
         # Initialize the data list to empty
         self.data_list = []
+
+    # Expose the autoregressive weights and adjacency matrix
+    @property
+    def weights(self):
+        return np.array([r.W[0] for r in self.regressions])
+
+    @property
+    def adjacency(self):
+        return np.array([r.a for r in self.regressions])
+
+    @property
+    def biases(self):
+        return np.array([r.b for r in self.regressions]).ravel()
 
     def add_data(self, data, X=None):
         N, B = self.N, self.B
@@ -64,13 +78,11 @@ class NonlinearAutoregressiveModel(Model):
                 X, Y = convolve_with_basis(data, self.basis), data
 
             for n, reg in enumerate(self.regressions):
-                ll += reg.log_likelihood((X, Y[:,n]))
+                ll += reg.log_likelihood((X, Y[:,n])).sum()
 
         return ll
 
-    def generate(self, keep=True, T=100, return_Psi=False, verbose=True,
-                 max_spks_per_bin=10, print_intvl=10000,
-                 background=None):
+    def generate(self, keep=True, T=100, verbose=False, print_intvl=10):
         """
         Generate data from the model.
 
@@ -90,19 +102,32 @@ class NonlinearAutoregressiveModel(Model):
         basis = np.flipud(basis)
         assert not np.allclose(basis, self.basis)
 
+        # Precompute the weights and biases
+        W = self.weights.reshape((N, N*B))  # N x NB (post x (pre x B))
+        b = self.biases                     # N (post)
+
         # Initialize output matrix of spike counts
         Y = np.zeros((T+L, N))
         X = np.zeros((T+L, N, B))
+        Psi = np.zeros((T+L, N))
 
         # Iterate forward in time
         for t in range(L,T+L):
+            if verbose:
+                if t % print_intvl == 0:
+                    print("Generate t={}".format(t))
             # 1. Project previous activity window onto the basis
             #    previous activity is L x N, basis is L x B,
             X[t] = Y[t-L:t].T.dot(basis)
 
-            # 2. Weight the previous activity with the regression weights
-            for n, reg in enumerate(self.regressions):
-                Y[t,n] = reg.rvs(X=X[t:t+1])
+            # 2. Compute the activation, W.dot(X[t]) + b
+            Psi[t] = W.dot(X[t].reshape((N*B,))) + b
+
+            # 3. Weight the previous activity with the regression weights
+            Y[t] = self.regressions[0].rvs(psi=Psi[t])
+
+            # for n, reg in enumerate(self.regressions):
+            #     Y[t,n] = reg.rvs(X=X[t:t+1])
 
         if keep:
             self.add_data(Y[L:], X=X[L:])
@@ -130,3 +155,26 @@ class NonlinearAutoregressiveModel(Model):
         for n, reg in enumerate(self.regressions):
             reg.resample([(X, Y[:,n]) for (X,Y) in self.data_list])
 
+
+# Alias the "GLM"
+GLM = NonlinearAutoregressiveModel
+
+# Define default GLMs for various regression classes
+class _DefaultMixin(object):
+    _regression_class = None
+    def __init__(self, N, B=10, basis=None, **kwargs):
+        B = B if basis is None else basis.shape[1]
+        regressions = [self._regression_class(N, B, **kwargs) for _ in range(N)]
+        super(_DefaultMixin, self).__init__(N, regressions, B=B, basis=basis)
+
+class GaussianGLM(_DefaultMixin, GLM):
+    _regression_class = pyglm.regression.GaussianRegression
+
+class SparseGaussianGLM(_DefaultMixin, GLM):
+    _regression_class = pyglm.regression.SparseGaussianRegression
+
+class BernoulliGLM(_DefaultMixin, GLM):
+    _regression_class = pyglm.regression.BernoulliRegression
+
+class SparseBernoulliGLM(_DefaultMixin, GLM):
+    _regression_class = pyglm.regression.SparseBernoulliRegression

@@ -27,6 +27,7 @@ This module implements these sparse regressions.
 """
 import abc
 import numpy as np
+import numpy.random as npr
 
 from scipy.linalg import block_diag
 from scipy.linalg.lapack import dpotrs
@@ -118,13 +119,13 @@ class _SparseScalarRegressionBase(GibbsSampling):
         self.h_b = self.J_b.dot(self.mu_b)
 
         # Initialize the model parameters with a draw from the prior
-        self.a = np.random.rand(N) < self.rho
+        self.a = npr.rand(N) < self.rho
         self.W = np.zeros((D,N,B))
         for d in range(D):
             for n in range(N):
-                self.W[d,n] = np.random.multivariate_normal(self.mu_w[d,n], self.S_w[d,n])
+                self.W[d,n] = self.a[n] * npr.multivariate_normal(self.mu_w[d,n], self.S_w[d,n])
 
-        self.b = np.random.multivariate_normal(self.mu_b, self.S_b)
+        self.b = npr.multivariate_normal(self.mu_b, self.S_b)
 
     @property
     def deterministic_sparsity(self):
@@ -265,7 +266,7 @@ class _SparseScalarRegressionBase(GibbsSampling):
         assert D == 1, "Only supporting scalar regressions"
 
 
-        perm = np.random.permutation(self.N)
+        perm = npr.permutation(self.N)
 
         ml_prev = self._marginal_likelihood(J_prior, h_prior, J_post, h_post)
         for n in perm:
@@ -275,7 +276,7 @@ class _SparseScalarRegressionBase(GibbsSampling):
             lps = np.zeros(2)
             # We already have the marginal likelihood for the current value of a[m]
             # We just need to add the prior
-            v_prev = self.a[n]
+            v_prev = int(self.a[n])
             lps[v_prev] += ml_prev
             lps[v_prev] += v_prev * np.log(rho[n]) + (1-v_prev) * np.log(1-rho[n])
 
@@ -293,7 +294,7 @@ class _SparseScalarRegressionBase(GibbsSampling):
             # se_lps = np.sum(np.exp(lps-max_lps))
             # lse_lps = np.log(se_lps) + max_lps
             # ps = np.exp(lps - lse_lps)
-            # v_smpl = np.random.rand() < ps[1]å
+            # v_smpl = npr.rand() < ps[1]å
             v_smpl = sample_discrete_from_log(lps)
             self.a[n] = v_smpl
 
@@ -360,14 +361,14 @@ class _SparseScalarRegressionBase(GibbsSampling):
 
         return ml
 
-class SparseScalarRegression(_SparseScalarRegressionBase):
+class SparseGaussianRegression(_SparseScalarRegressionBase):
     """
     The standard case of a sparse regression with Gaussian observations.
     """
     def __init__(self, N, B, D=1,
                  a_0=2.0, b_0=2.0, eta=None,
                  **kwargs):
-        super(SparseScalarRegression, self).__init__(N, B, D=D, **kwargs)
+        super(SparseGaussianRegression, self).__init__(N, B, D=D, **kwargs)
 
         # Initialize the noise model
         assert np.isscalar(a_0) and a_0 > 0
@@ -387,17 +388,19 @@ class SparseScalarRegression(_SparseScalarRegressionBase):
         X, y = self.extract_data(x)
         return -0.5 * np.log(2*np.pi*eta) -0.5 * (y-self.mean(X))**2 / eta
 
-    def rvs(self,size=[], X=None):
+    def rvs(self,size=[], X=None, psi=None):
         D, N, B = self.D, self.N, self.B
         assert D == 1, "Only supporting scalar regressions"
 
-        if X is None:
-            assert isinstance(size, int)
-            X = np.random.randn(size,N*B)
+        if psi is None:
+            if X is None:
+                assert isinstance(size, int)
+                X = npr.randn(size,N*B)
 
-        X = self._flatten_X(X)
-        T = X.shape[0]
-        return self.mean(X) + np.sqrt(self.eta) * np.random.randn(T)
+            X = self._flatten_X(X)
+            psi = self.mean(X)
+
+        return psi + np.sqrt(self.eta) * npr.randn(*psi.shape)
 
     def omega(self, X, y):
         T = X.shape[0]
@@ -407,7 +410,7 @@ class SparseScalarRegression(_SparseScalarRegressionBase):
         return y / self.eta
 
     def resample(self, datas):
-        super(SparseScalarRegression, self).resample(datas)
+        super(SparseGaussianRegression, self).resample(datas)
         self._resample_eta(datas)
 
     def mean(self, X):
@@ -428,6 +431,18 @@ class SparseScalarRegression(_SparseScalarRegressionBase):
 
         self.eta = sample_invgamma(alpha, beta)
 
+
+class GaussianRegression(SparseGaussianRegression):
+    """
+    The standard scalar regression has dense weights.
+    """
+    def __init__(self, N, B,
+                 **kwargs):
+        rho = np.ones(N)
+        kwargs["rho"] = rho
+        super(GaussianRegression, self).__init__(N, B, **kwargs)
+
+
 class _SparsePGRegressionBase(_SparseScalarRegressionBase):
     """
     Extend the sparse scalar regression to handle count observations
@@ -445,7 +460,7 @@ class _SparsePGRegressionBase(_SparseScalarRegressionBase):
         # Initialize Polya-gamma samplers
         import pypolyagamma as ppg
         num_threads = ppg.get_omp_num_threads()
-        seeds = np.random.randint(2 ** 16, size=num_threads)
+        seeds = npr.randint(2 ** 16, size=num_threads)
         self.ppgs = [ppg.PyPolyaGamma(seed) for seed in seeds]
 
     @abc.abstractmethod
@@ -497,13 +512,29 @@ class SparseBernoulliRegression(_SparsePGRegressionBase):
         psi = self.activation(X)
         return logistic(psi)
 
-    def rvs(self, X=None, size=[], return_xy=False):
-        if X is None:
-            assert isinstance(size, int)
-            X = np.random.randn(size, self.N*self.B)
+    def rvs(self, X=None, size=[], psi=None):
+        if psi is None:
+            if X is None:
+                assert isinstance(size, int)
+                X = npr.randn(size, self.N*self.B)
 
-        X = self._flatten_X(X)
-        p = self.mean(X)
-        y = np.random.rand(*p.shape) < p
+            X = self._flatten_X(X)
+            p = self.mean(X)
+        else:
+            p = logistic(psi)
 
-        return (X, y) if return_xy else y
+        y = npr.rand(*p.shape) < p
+
+        return y
+
+
+class BernoulliRegression(SparseBernoulliRegression):
+    """
+    The standard Bernoulli regression has dense weights.
+    """
+
+    def __init__(self, N, B, **kwargs):
+        rho = np.ones(N)
+        kwargs["rho"] = rho
+        super(BernoulliRegression, self).__init__(N, B, **kwargs)
+

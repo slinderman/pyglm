@@ -9,7 +9,7 @@ import seaborn as sns
 sns.set_style("white")
 
 from pybasicbayes.util.text import progprint_xrange
-from pyglm.regression import SparseBernoulliRegression
+from pyglm.regression import SparseBernoulliRegression, BernoulliRegression
 
 N = 2
 B = 1
