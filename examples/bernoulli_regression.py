@@ -1,5 +1,5 @@
 """
-Test the SparseScalarRegression model.
+Test the Bernoulli regression models.
 """
 import numpy as np
 # np.random.seed(1)
@@ -9,7 +9,7 @@ import seaborn as sns
 sns.set_style("white")
 
 from pybasicbayes.util.text import progprint_xrange
-from pyglm.regression import SparseBernoulliRegression, BernoulliRegression
+from pyglm.regression import SparseBernoulliRegression
 
 N = 2
 B = 1

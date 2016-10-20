@@ -7,9 +7,21 @@ from pyglm.utils.basis import convolve_with_basis
 class NonlinearAutoregressiveModel(Model):
     """
     The "generalized linear model" in neuroscience is really
-    a vector autoregressive model.
+    a vector autoregressive model. As the name suggests,
+    the key component in these models is a regression from
+    inputs, x, to outputs, y.
 
-    # TODO: Finish description
+    When the outputs are discrete random variables, like spike
+    counts, we typically take the regression to be a generalized
+    linear model:
+
+       y ~ p(mu(x), theta)
+       mu(x) = f(w \dot x)
+
+    where 'p' is a discrete distribution, like the Poisson,
+    and 'f' is a "link" function that maps a linear function of
+    x to the parameters of 'p'. Hence the name "GLM" in
+    computational neuroscience.
     """
 
     def __init__(self, N, regressions, basis=None, B=10):
@@ -82,13 +94,17 @@ class NonlinearAutoregressiveModel(Model):
 
         return ll
 
-    def generate(self, keep=True, T=100, verbose=False, print_intvl=10):
+    def generate(self, keep=True, T=100, verbose=False, intvl=10):
         """
         Generate data from the model.
 
         :param keep:    Add the data to the model's datalist
         :param T:       Number of time bins to simulate
-        :return:
+        :param verbose: Whether or not to print status
+        :param intvl:   Number of intervals between printing status
+
+        :return X:      Convolution of data with basis functions
+        :return Y:      Generate data matrix
         """
         if T == 0:
             return np.zeros((0,self.N))
@@ -97,8 +113,10 @@ class NonlinearAutoregressiveModel(Model):
         N, basis = self.N, self.basis
         L, B = basis.shape
 
-        # NOTE: to be consistent with 'convolve_with_basis', we have
-        # to flip the basis left to right here
+        # NOTE: the basis is defined such that the first row is the
+        #       previous time step and the last row is T-L steps in
+        #       the past. Thus, for the dot products below, we need
+        #       to flip the basis matrix.
         basis = np.flipud(basis)
         assert not np.allclose(basis, self.basis)
 
@@ -114,7 +132,7 @@ class NonlinearAutoregressiveModel(Model):
         # Iterate forward in time
         for t in range(L,T+L):
             if verbose:
-                if t % print_intvl == 0:
+                if t % intvl == 0:
                     print("Generate t={}".format(t))
             # 1. Project previous activity window onto the basis
             #    previous activity is L x N, basis is L x B,
@@ -126,12 +144,8 @@ class NonlinearAutoregressiveModel(Model):
             # 3. Weight the previous activity with the regression weights
             Y[t] = self.regressions[0].rvs(psi=Psi[t])
 
-            # for n, reg in enumerate(self.regressions):
-            #     Y[t,n] = reg.rvs(X=X[t:t+1])
-
         if keep:
             self.add_data(Y[L:], X=X[L:])
-            # self.add_data(Y[L:])
 
         return X[L:], Y[L:]
 
@@ -163,6 +177,14 @@ GLM = NonlinearAutoregressiveModel
 class _DefaultMixin(object):
     _regression_class = None
     def __init__(self, N, B=10, basis=None, **kwargs):
+        """
+        :param N:             Observation dimension.
+        :param basis:         Basis onto which the preceding activity is projected.
+                              In the "identity" case, this is just a lag matrix
+        :param B:             Basis dimensionality.
+                              In the "identity" case, this is the number of lags.
+        :param kwargs:        arguments to the corresponding regression constructor.
+        """
         B = B if basis is None else basis.shape[1]
         regressions = [self._regression_class(N, B, **kwargs) for _ in range(N)]
         super(_DefaultMixin, self).__init__(N, regressions, B=B, basis=basis)
