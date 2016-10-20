@@ -50,7 +50,14 @@ true_model = SparseBernoulliGLM(N, basis=basis)
 # Y is the generated spike train.
 # X is the filtered spike train for inference.
 X, Y = true_model.generate(T=T, keep=True)
+
+# Plot the model parameters and data
+true_model.plot()
 ```
+
+You should see something like this:
+`TODO`
+
 
 Now create a test model and try to infer the network given the spike train.
 ```python
@@ -58,12 +65,30 @@ Now create a test model and try to infer the network given the spike train.
 test_model = SparseBernoulliGLM(N, basis=basis)
 test_model.add_data(Y)
 
+# Initialize the plot
+_, _, handles = test_model.plot()
+
 # Run a Gibbs sampler
 N_samples = 100
 lps = []
 for itr in xrange(N_samples):
     test_model.resample_model()
     lps.append(test_model.log_likelihood())
+    test_model.plot(handles=handles)
 ```
+
+With interactive plotting enabled, you should see something like:
+`TODO`
+
+Finally, we can plot the log likelihood over iterations to assess the
+convergence of the sampling algorithm, at least in a heuristic way.
+
+```python
+plt.plot(lps)
+plt.xlabel("Iteration")
+plt.ylabel("Log Likelihood")
+```
+
+`TODO`
 
 

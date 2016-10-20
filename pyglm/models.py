@@ -169,6 +169,97 @@ class NonlinearAutoregressiveModel(Model):
         for n, reg in enumerate(self.regressions):
             reg.resample([(X, Y[:,n]) for (X,Y) in self.data_list])
 
+    ### Plotting
+    def plot(self,
+             fig=None,
+             axs=None,
+             handles=None,
+             title=None,
+             figsize=(6,3),
+             W_lim=3,
+             pltslice=slice(0, 500),
+             data_index=0,
+             N_to_plot=2):
+        """
+        Plot the parameters of the model
+        :return:
+        """
+        N, W, A, means = self.N, self.weights, self.adjacency, self.means[0]
+
+        import matplotlib.pyplot as plt
+        import matplotlib.gridspec as gridspec
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+        if handles is None:
+            handles = []
+
+            fig = plt.figure(figsize=figsize)
+            gs = gridspec.GridSpec(N_to_plot,3)
+            W_ax = fig.add_subplot(gs[:, 0])
+            A_ax = fig.add_subplot(gs[:, 1])
+            lam_axs = [fig.add_subplot(gs[i,2]) for i in range(N_to_plot)]
+            axs = (W_ax, A_ax, lam_axs)
+
+            # Plot the weights
+            h_W = W_ax.imshow(W[:,:,0], vmin=-W_lim, vmax=W_lim, cmap="RdBu", interpolation="nearest")
+            W_ax.set_xlabel("pre")
+            W_ax.set_ylabel("post")
+            W_ax.set_xticks(np.arange(self.N))
+            W_ax.set_xticklabels(np.arange(self.N)+1)
+            W_ax.set_yticks(np.arange(self.N))
+            W_ax.set_yticklabels(np.arange(self.N)+1)
+            W_ax.set_title("Weights")
+
+            divider = make_axes_locatable(W_ax)
+            cbax = divider.new_horizontal(size="5%", pad=0.05)
+            fig.add_axes(cbax)
+            plt.colorbar(h_W, cax=cbax)
+            handles.append(h_W)
+
+            h_A = A_ax.imshow(A, vmin=0, vmax=1, cmap="Greys", interpolation="nearest")
+            A_ax.set_xlabel("pre")
+            A_ax.set_ylabel("post")
+            A_ax.set_title("Adjacency")
+            A_ax.set_xticks(np.arange(self.N))
+            A_ax.set_xticklabels(np.arange(self.N) + 1)
+            A_ax.set_yticks(np.arange(self.N))
+            A_ax.set_yticklabels(np.arange(self.N) + 1)
+
+            handles.append(h_A)
+
+            # Plot the true and inferred rates
+            for n in range(min(N, N_to_plot)):
+                Y = self.data_list[data_index][1]
+                tn = np.where(Y[pltslice, n])[0]
+                lam_axs[n].plot(tn, np.ones_like(tn), 'ko', markersize=4)
+                h_fr = lam_axs[n].plot(means[pltslice, n], label="True")[0]
+                lam_axs[n].set_ylim(-0.05, 1.1)
+                lam_axs[n].set_ylabel("$\lambda_{}(t)$".format(n+1))
+
+                if n == 0:
+                    lam_axs[n].set_title("Firing Rates")
+
+                if n == min(N, N_to_plot) - 1:
+                    lam_axs[n].set_xlabel("Time")
+                handles.append(h_fr)
+
+            if title is not None:
+                handles.append(fig.suptitle(title))
+
+            plt.tight_layout()
+
+        else:
+            # If we are given handles, update the data
+            handles[0].set_data(W[:,:,0])
+            handles[1].set_data(A)
+            for n in range(min(N, N_to_plot)):
+                handles[2+n].set_data(np.arange(pltslice.start, pltslice.stop), means[pltslice, n])
+
+            if title is not None:
+                handles[-1].set_text(title)
+            plt.pause(0.001)
+
+        return fig, axs, handles
+
 
 # Alias the "GLM"
 GLM = NonlinearAutoregressiveModel
