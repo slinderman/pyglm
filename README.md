@@ -1,4 +1,4 @@
-# PyGLM -- Bayesian Inference for nonlinear autoregressive models of count data
+# PyGLM: Bayesian Inference for nonlinear autoregressive models of count data
 
 Neural circuits contain heterogeneous groups of neurons that differ in
 type, location, connectivity, and basic response properties. However,
@@ -29,9 +29,9 @@ spike trains alone.
 # Example
 We provide a number of classes for building and fitting such models.
 Let's walk through a simple example
-where  we construct a discrete time model with three nodes, as in `examples/discrete_demo`.
-The nodes are connected via an excitatory network such that each event increases
-the likelihood of subsequent events on downstream nodes.
+where  we construct a discrete time model with four neurons, as in `examples/synthetic`.
+The neurons are connected via a network such that spikes influence
+the rate of subsequent spikes on post-synaptic (downstream) neurons.
 ```python
 # Create a simple, sparse network of four neurons
 T = 10000   # Number of time bins to generate
