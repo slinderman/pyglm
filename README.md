@@ -56,6 +56,7 @@ true_model.plot()
 ```
 
 You should see something like this:
+
 ![True Model](examples/gif/true_model.jpg)
 
 

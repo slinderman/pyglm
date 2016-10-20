@@ -54,7 +54,7 @@ def _update(m, itr):
     test_model.plot(handles=handles,
                     pltslice=slice(0, 500),
                     title="Sample {}".format(itr+1))
-    fig.savefig("examples/gif/test_model_{:03d}.jpg".format(itr+1))
+    # fig.savefig("examples/gif/test_model_{:03d}.jpg".format(itr+1))
 
     return _collect(m)
 
@@ -72,4 +72,5 @@ fig = plt.figure(figsize=(4,4))
 plt.plot(lps)
 plt.xlabel("Iteration")
 plt.ylabel("Log Likelihood")
+plt.tight_layout()
 fig.savefig("examples/gif/lls.png")
