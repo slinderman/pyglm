@@ -11,8 +11,7 @@ plt.ion()
 from pybasicbayes.util.text import progprint_xrange
 
 from pyglm.utils.basis import cosine_basis
-import pyglm.models
-importlib.reload(pyglm.models)
+from pyglm.plotting import plot_glm
 from pyglm.models import SparseBernoulliGLM
 
 T = 10000   # Number of time bins to generate
@@ -47,7 +46,7 @@ fig.savefig("examples/gif/test_model_{:03d}.jpg".format(0))
 
 # Fit with Gibbs sampling
 def _collect(m):
-    return m.log_likelihood(), m.weights, m.adjacency, m.biases
+    return m.log_likelihood(), m.weights, m.adjacency, m.biases, m.means[0]
 
 def _update(m, itr):
     m.resample_model()
@@ -65,7 +64,7 @@ for itr in progprint_xrange(N_samples):
 
 # Unpack the samples
 samples = zip(*samples)
-lps, W_smpls, A_smpls, b_smpls = tuple(map(np.array, samples))
+lps, W_smpls, A_smpls, b_smpls, fr_smpls = tuple(map(np.array, samples))
 
 # Plot the log likelihood per iteration
 fig = plt.figure(figsize=(4,4))
@@ -74,3 +73,14 @@ plt.xlabel("Iteration")
 plt.ylabel("Log Likelihood")
 plt.tight_layout()
 fig.savefig("examples/gif/lls.png")
+
+# Plot the posterior mean and variance
+W_mean = W_smpls[N_samples//2:].mean(0)
+A_mean = A_smpls[N_samples//2:].mean(0)
+fr_mean = fr_smpls[N_samples//2:].mean(0)
+fr_std = fr_smpls[N_samples//2:].std(0)
+
+fig, _, _ = plot_glm(Y, W_mean, A_mean, fr_mean,
+                     std_firingrates=3*fr_std, title="Posterior Mean")
+
+fig.savefig("examples/gif/posterior_mean.jpg")

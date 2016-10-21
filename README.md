@@ -92,4 +92,7 @@ plt.ylabel("Log Likelihood")
 
 ![Log Likelihood](examples/gif/lls.png)
 
+Looks like it has! Now let's look at the posterior mean of the
+network and firing rates.
 
+![Posterior Mean](examples/gif/posterior_mean.jpg)
