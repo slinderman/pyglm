@@ -142,7 +142,7 @@ class NonlinearAutoregressiveModel(ModelGibbsSampling):
             # 2. Compute the activation, W.dot(X[t]) + b
             Psi[t] = W.dot(X[t].reshape((N*B,))) + b
 
-            # 3. Weight the previous activity with the regression weights
+            # 3. Sample new data
             Y[t] = self.regressions[0].rvs(psi=Psi[t])
 
         if keep:
@@ -200,6 +200,7 @@ class NonlinearAutoregressiveModel(ModelGibbsSampling):
             pltslice=pltslice,
             N_to_plot=N_to_plot)
 
+
 class HierarchicalNonlinearAutoregressiveModel(NonlinearAutoregressiveModel):
     """
     The network GLM is really just a hierarchical AR model. We specify a
@@ -234,7 +235,7 @@ class HierarchicalNonlinearAutoregressiveModel(NonlinearAutoregressiveModel):
             reg.mu_w = net.mu_W[n]
             reg.rho = net.rho[n]
 
-# Alias the "GLM"
+# Alias the "GLM" and its "Network" extension
 GLM = NonlinearAutoregressiveModel
 NetworkGLM = HierarchicalNonlinearAutoregressiveModel
 

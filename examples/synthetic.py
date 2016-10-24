@@ -34,7 +34,6 @@ _, Y = true_model.generate(T=T, keep=True)
 
 # Plot the true model
 fig, axs, handles = true_model.plot()
-fig.savefig("examples/gif/true_model.jpg")
 plt.pause(0.1)
 
 # Create a test model for fitting
@@ -47,7 +46,6 @@ test_model.add_data(Y)
 # Plot the test model
 fig, axs, handles = test_model.plot(title="Sample 0")
 plt.pause(0.1)
-fig.savefig("examples/gif/test_model_{:03d}.jpg".format(0))
 
 # Fit with Gibbs sampling
 def _collect(m):
@@ -75,7 +73,6 @@ plt.plot(lps)
 plt.xlabel("Iteration")
 plt.ylabel("Log Likelihood")
 plt.tight_layout()
-fig.savefig("examples/gif/lls.png")
 
 # Plot the posterior mean and variance
 W_mean = W_smpls[N_samples//2:].mean(0)
@@ -86,4 +83,4 @@ fr_std = fr_smpls[N_samples//2:].std(0)
 fig, _, _ = plot_glm(Y, W_mean, A_mean, fr_mean,
                      std_firingrates=3*fr_std, title="Posterior Mean")
 
-fig.savefig("examples/gif/posterior_mean.jpg")
+plt.show()

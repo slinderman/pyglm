@@ -72,7 +72,7 @@ class _NetworkModel(GibbsSampling):
         # TODO
         return None
 
-
+### Weight models
 class _IndependentGaussianMixin(_NetworkModel):
     """
     Each weight is an independent Gaussian with a shared NIW prior.
@@ -172,6 +172,37 @@ class _FixedWeightsMixin(_NetworkModel):
     def resample(self,data=[]):
         super(_FixedWeightsMixin, self).resample(data)
 
+# TODO: Define the stochastic block models
+
+### Adjacency models
+class _FixedAdjacencyMixin(_NetworkModel):
+    def __init__(self, N, B, rho=0.5, rho_self=None, **kwargs):
+        super(_FixedAdjacencyMixin, self).__init__(N, B)
+        self._rho = expand_scalar(rho, (N, N))
+        if rho_self is not None:
+            self._rho[np.diag_indices(N)] = rho_self
+
+    @property
+    def rho(self):
+        return self._rho
+
+    def resample(self,data=[]):
+        super(_FixedAdjacencyMixin, self).resample(data)
+
+
+
+class _DenseAdjacencyMixin(_NetworkModel):
+    def __init__(self, N, B, **kwargs):
+        super(_DenseAdjacencyMixin, self).__init__(N, B)
+        self._rho = np.ones((N,N))
+
+    @property
+    def rho(self):
+        return self._rho
+
+    def resample(self,data=[]):
+        super(_DenseAdjacencyMixin, self).resample(data)
+
 
 class _IndependentBernoulliMixin(_NetworkModel):
 
@@ -227,35 +258,7 @@ class _IndependentBernoulliMixin(_NetworkModel):
             mask = np.ones((N, N), dtype=bool)
             self._betabernoulli.resample(A[mask])
 
-
-class _FixedAdjacencyMixin(_NetworkModel):
-    def __init__(self, N, B, rho=0.5, rho_self=None, **kwargs):
-        super(_FixedAdjacencyMixin, self).__init__(N, B)
-        self._rho = expand_scalar(rho, (N, N))
-        if rho_self is not None:
-            self._rho[np.diag_indices(N)] = rho_self
-
-    @property
-    def rho(self):
-        return self._rho
-
-    def resample(self,data=[]):
-        super(_FixedAdjacencyMixin, self).resample(data)
-
-
-
-class _DenseAdjacencyMixin(_NetworkModel):
-    def __init__(self, N, B, **kwargs):
-        super(_DenseAdjacencyMixin, self).__init__(N, B)
-        self._rho = np.ones((N,N))
-
-    @property
-    def rho(self):
-        return self._rho
-
-    def resample(self,data=[]):
-        super(_DenseAdjacencyMixin, self).resample(data)
-
+# TODO: Define the distance and block models
 
 ### Define different combinations of network models
 class FixedMeanDenseNetwork(_DenseAdjacencyMixin,
