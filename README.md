@@ -1,3 +1,6 @@
+
+## NOTE: This is an old version of the code
+
 First, you need to install a few dependencies:
 1. You'll need PyPolyaGamma to be in your Python path. You can get it here:
 `git clone --recursive git@github.com:slinderman/pypolyagamma.git`
