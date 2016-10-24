@@ -35,7 +35,7 @@ from scipy.linalg.lapack import dpotrs
 from pybasicbayes.abstractions import GibbsSampling
 from pybasicbayes.util.stats import sample_gaussian, sample_discrete_from_log, sample_invgamma
 
-from pyglm.utils.utils import logistic
+from pyglm.utils.utils import logistic, expand_scalar, expand_cov
 
 class _SparseScalarRegressionBase(GibbsSampling):
     """
@@ -70,62 +70,85 @@ class _SparseScalarRegressionBase(GibbsSampling):
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, N, B, D=1,
+    def __init__(self, N, B,
                  rho=0.5,
                  mu_w=0.0, S_w=1.0,
                  mu_b=0.0, S_b=1.0):
-        self.D, self.N, self.B = D, N, B
+        self.N, self.B = N, B
 
         # Initialize the hyperparameters
-        # Expand the means
-        def expand_scalar(x, shp):
-            if np.isscalar(x):
-                x *= np.ones(shp)
-            else:
-                assert x.shape == shp
-            return x
-
-        self.rho = expand_scalar(rho, (N,))
-        self.mu_w = expand_scalar(mu_w, (D, N, B))
-        self.mu_b = expand_scalar(mu_b, (D,))
-
-        # Expand the covariance matrices
-        def expand_cov(c, shp):
-            assert len(shp) >= 2
-            assert shp[-2] == shp[-1]
-            d = shp[-1]
-            if np.isscalar(c):
-                c = c * np.eye(d)
-                tshp = np.array(shp)
-                tshp[-2:] = 1
-                c = np.tile(c, tshp)
-            else:
-                assert c.shape == shp
-
-            return c
-
-        self.S_w = expand_cov(S_w, (D, N, B, B))
-        self.S_b = expand_cov(S_b, (D,D))
-
-        # Compute information form parameters
-        self.J_w = np.zeros((D, N, B, B))
-        self.h_w = np.zeros((D, N, B))
-        for d in range(D):
-            for n in range(N):
-                self.J_w[d,n] = np.linalg.inv(self.S_w[d,n])
-                self.h_w[d,n] = self.J_w[d,n].dot(self.mu_w[d,n])
-
-        self.J_b = np.linalg.inv(self.S_b)
-        self.h_b = self.J_b.dot(self.mu_b)
+        self.rho = rho
+        self.mu_w = mu_w
+        self.mu_b = mu_b
+        self.S_w = S_w
+        self.S_b = S_b
 
         # Initialize the model parameters with a draw from the prior
         self.a = npr.rand(N) < self.rho
-        self.W = np.zeros((D,N,B))
-        for d in range(D):
-            for n in range(N):
-                self.W[d,n] = self.a[n] * npr.multivariate_normal(self.mu_w[d,n], self.S_w[d,n])
+        self.W = np.zeros((N,B))
+        for n in range(N):
+            self.W[n] = self.a[n] * npr.multivariate_normal(self.mu_w[n], self.S_w[n])
 
         self.b = npr.multivariate_normal(self.mu_b, self.S_b)
+
+    # Properties
+    @property
+    def rho(self):
+        return self._rho
+
+    @rho.setter
+    def rho(self, value):
+        self._rho = expand_scalar(value, (self.N,))
+
+    @property
+    def mu_w(self):
+        return self._mu_w
+
+    @mu_w.setter
+    def mu_w(self, value):
+        N, B = self.N, self.B
+        self._mu_w = expand_scalar(value, (N, B))
+
+    @property
+    def mu_b(self):
+        return self._mu_b
+
+    @mu_b.setter
+    def mu_b(self, value):
+        self._mu_b = expand_scalar(value, (1,))
+
+    @property
+    def S_w(self):
+        return self._S_w
+
+    @S_w.setter
+    def S_w(self, value):
+        N, B = self.N, self.B
+        self._S_w = expand_cov(value, (N, B, B))
+
+    @property
+    def S_b(self):
+        return self._S_b
+
+    @S_b.setter
+    def S_b(self, value):
+        assert np.isscalar(value)
+        self._S_b = expand_cov(value, (1, 1))
+
+    @property
+    def natural_params(self):
+        # Compute information form parameters
+        N, B = self.N, self.B
+        J_w = np.zeros((N, B, B))
+        h_w = np.zeros((N, B))
+        for n in range(N):
+            J_w[n] = np.linalg.inv(self.S_w[n])
+            h_w[n] = J_w[n].dot(self.mu_w[n])
+
+        J_b = np.linalg.inv(self.S_b)
+        h_b = J_b.dot(self.mu_b)
+
+        return J_w, h_w, J_b, h_b
 
     @property
     def deterministic_sparsity(self):
@@ -158,8 +181,7 @@ class _SparseScalarRegressionBase(GibbsSampling):
 
 
     def extract_data(self, data):
-        D, N, B = self.D, self.N, self.B
-        assert D == 1, "Only supporting scalar regressions"
+        N, B = self.N, self.B
 
         assert isinstance(data, tuple) and len(data) == 2
         X, y = data
@@ -171,11 +193,10 @@ class _SparseScalarRegressionBase(GibbsSampling):
         return X, y
 
     def activation(self, X):
-        D, N, B = self.D, self.N, self.B
-        assert D == 1, "Only supporting scalar regression"
+        N, B = self.N, self.B
         X = self._flatten_X(X)
 
-        W = np.reshape((self.a[:, None] * self.W[0]), (N * B,))
+        W = np.reshape((self.a[:, None] * self.W), (N * B,))
         b = self.b[0]
         return X.dot(W) + b
 
@@ -191,13 +212,13 @@ class _SparseScalarRegressionBase(GibbsSampling):
         Compute the prior statistics (information form Gaussian
         potentials) for the complete set of weights and biases.
         """
-        D, N, B = self.D, self.N, self.B
-        assert D == 1, "Only supporting scalar regressions"
+        N, B = self.N, self.B
 
-        J_prior = block_diag(*self.J_w[0], self.J_b)
+        J_w, h_w, J_b, h_b = self.natural_params
+        J_prior = block_diag(*J_w, J_b)
         assert J_prior.shape == (N*B+1, N*B+1)
 
-        h_prior = np.concatenate((self.h_w.ravel(), self.h_b.ravel()))
+        h_prior = np.concatenate((h_w.ravel(), h_b.ravel()))
         assert h_prior.shape == (N*B+1,)
         return J_prior, h_prior
 
@@ -207,8 +228,7 @@ class _SparseScalarRegressionBase(GibbsSampling):
         potentials) for each dataset.  Polya-gamma regressions will
         have to override this class.
         """
-        D, N, B = self.D, self.N, self.B
-        assert D ==1, "Only supporting scalar regressions"
+        N, B = self.N, self.B
 
         J_lkhd = np.zeros((N*B+1, N*B+1))
         h_lkhd = np.zeros(N*B+1)
@@ -262,10 +282,7 @@ class _SparseScalarRegressionBase(GibbsSampling):
     def _collapsed_resample_a(self, J_prior, h_prior, J_post, h_post):
         """
         """
-        D, N, B, rho = self.D, self.N, self.B, self.rho
-        assert D == 1, "Only supporting scalar regressions"
-
-
+        N, B, rho = self.N, self.B, self.rho
         perm = npr.permutation(self.N)
 
         ml_prev = self._marginal_likelihood(J_prior, h_prior, J_post, h_post)
@@ -307,8 +324,7 @@ class _SparseScalarRegressionBase(GibbsSampling):
         """
         Resample the weight of a connection (synapse)
         """
-        D, N, B = self.D, self.N, self.B
-        assert D == 1, "Only supporting scalar regressions"
+        N, B = self.N, self.B
 
         a = np.concatenate((np.repeat(self.a, self.B), [1])).astype(np.bool)
         Jp = J_post[np.ix_(a, a)]
@@ -319,9 +335,9 @@ class _SparseScalarRegressionBase(GibbsSampling):
 
         # Set bias and weights
         self.W *= 0
-        self.W[0, self.a, :] = W[:-1].reshape((-1,B))
+        self.W[self.a, :] = W[:-1].reshape((-1,B))
         # self.W = np.reshape(W[:-1], (D,N,B))
-        self.b = np.reshape(W[-1], (D,))
+        self.b = np.reshape(W[-1], (1,))
 
 
     def _marginal_likelihood(self, J_prior, h_prior, J_post, h_post):
@@ -365,10 +381,10 @@ class SparseGaussianRegression(_SparseScalarRegressionBase):
     """
     The standard case of a sparse regression with Gaussian observations.
     """
-    def __init__(self, N, B, D=1,
+    def __init__(self, N, B,
                  a_0=2.0, b_0=2.0, eta=None,
                  **kwargs):
-        super(SparseGaussianRegression, self).__init__(N, B, D=D, **kwargs)
+        super(SparseGaussianRegression, self).__init__(N, B, **kwargs)
 
         # Initialize the noise model
         assert np.isscalar(a_0) and a_0 > 0
@@ -382,15 +398,13 @@ class SparseGaussianRegression(_SparseScalarRegressionBase):
             self.eta = sample_invgamma(self.a_0, self.b_0)
 
     def log_likelihood(self, x):
-        D, N, B, eta = self.D, self.N, self.B, self.eta
-        assert D == 1, "Only supporting scalar regressions"
+        N, B, eta = self.N, self.B, self.eta
 
         X, y = self.extract_data(x)
         return -0.5 * np.log(2*np.pi*eta) -0.5 * (y-self.mean(X))**2 / eta
 
     def rvs(self,size=[], X=None, psi=None):
-        D, N, B = self.D, self.N, self.B
-        assert D == 1, "Only supporting scalar regressions"
+        N, B = self.N, self.B
 
         if psi is None:
             if X is None:
@@ -417,8 +431,7 @@ class SparseGaussianRegression(_SparseScalarRegressionBase):
         return self.activation(X)
 
     def _resample_eta(self, datas):
-        D, N, B = self.D, self.N, self.B
-        assert D == 1, "Only supporting scalar regressions"
+        N, B = self.N, self.B
 
         alpha = self.a_0
         beta = self.b_0

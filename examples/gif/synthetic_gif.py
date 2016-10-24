@@ -41,7 +41,6 @@ plt.pause(0.1)
 test_model = \
     SparseBernoulliGLM(N, basis=basis,
                        regression_kwargs=dict(S_w=10.0, mu_b=-2.))
-
 test_model.add_data(Y)
 
 # Plot the test model
@@ -58,12 +57,19 @@ def _update(m, itr):
     test_model.plot(handles=handles,
                     pltslice=slice(0, 500),
                     title="Sample {}".format(itr+1))
+    fig.savefig("examples/gif/test_model_{:03d}.jpg".format(itr+1))
+
     return _collect(m)
 
 N_samples = 100
 samples = []
 for itr in progprint_xrange(N_samples):
     samples.append(_update(test_model, itr))
+
+# Create the gif
+import subprocess
+cmd = "convert -delay 20 -loop 0 examples/gif/test_model_*.jpg examples/gif/test_model.gif"
+subprocess.run(cmd, shell=True)
 
 # Unpack the samples
 samples = zip(*samples)
@@ -75,7 +81,7 @@ plt.plot(lps)
 plt.xlabel("Iteration")
 plt.ylabel("Log Likelihood")
 plt.tight_layout()
-fig.savefig("examples/gif/lls.png")
+fig.savefig("examples/gif/lls.jpg")
 
 # Plot the posterior mean and variance
 W_mean = W_smpls[N_samples//2:].mean(0)

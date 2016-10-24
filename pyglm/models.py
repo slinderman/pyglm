@@ -1,10 +1,11 @@
 import numpy as np
-from pybasicbayes.abstractions import Model
+from pybasicbayes.abstractions import ModelGibbsSampling
 
+import pyglm.networks
 import pyglm.regression
 from pyglm.utils.basis import convolve_with_basis
 
-class NonlinearAutoregressiveModel(Model):
+class NonlinearAutoregressiveModel(ModelGibbsSampling):
     """
     The "generalized linear model" in neuroscience is really
     a vector autoregressive model. As the name suggests,
@@ -52,7 +53,7 @@ class NonlinearAutoregressiveModel(Model):
     # Expose the autoregressive weights and adjacency matrix
     @property
     def weights(self):
-        return np.array([r.W[0] for r in self.regressions])
+        return np.array([r.W for r in self.regressions])
 
     @property
     def adjacency(self):
@@ -199,14 +200,53 @@ class NonlinearAutoregressiveModel(Model):
             pltslice=pltslice,
             N_to_plot=N_to_plot)
 
+class HierarchicalNonlinearAutoregressiveModel(NonlinearAutoregressiveModel):
+    """
+    The network GLM is really just a hierarchical AR model. We specify a
+    prior distribution on the weights of a collection of conditionally
+    independent AR models. Since these weights are naturally interpreted
+    as a network, we refer to these as "network" AR models, or "network GLMs".
+    """
+
+    def __init__(self, N, network, regressions, basis=None, B=10):
+        """
+        The only difference here is that we also provide a 'network' object,
+        which specifies a prior distribution on the regression weights.
+
+        :param network:
+        """
+        super(HierarchicalNonlinearAutoregressiveModel, self). \
+            __init__(N, regressions, basis=basis, B=B)
+
+        self.network = network
+
+    def resample_model(self):
+        super(HierarchicalNonlinearAutoregressiveModel, self).resample_model()
+        self.resample_network()
+
+    def resample_network(self):
+        net = self.network
+        net.resample((self.adjacency, self.weights))
+
+        # Update the regression hyperparameters
+        for n, reg in enumerate(self.regressions):
+            reg.S_w = net.sigma_W[n]
+            reg.mu_w = net.mu_W[n]
+            reg.rho = net.rho[n]
 
 # Alias the "GLM"
 GLM = NonlinearAutoregressiveModel
+NetworkGLM = HierarchicalNonlinearAutoregressiveModel
 
 # Define default GLMs for various regression classes
 class _DefaultMixin(object):
+    _network_class = None
     _regression_class = None
-    def __init__(self, N, B=10, basis=None, **kwargs):
+    def __init__(self, N, B=10, basis=None,
+                 network=None,
+                 network_kwargs=None,
+                 regressions=None,
+                 regression_kwargs=None):
         """
         :param N:             Observation dimension.
         :param basis:         Basis onto which the preceding activity is projected.
@@ -216,17 +256,28 @@ class _DefaultMixin(object):
         :param kwargs:        arguments to the corresponding regression constructor.
         """
         B = B if basis is None else basis.shape[1]
-        regressions = [self._regression_class(N, B, **kwargs) for _ in range(N)]
-        super(_DefaultMixin, self).__init__(N, regressions, B=B, basis=basis)
+        if network is None:
+            network_kwargs = dict() if network_kwargs is None else network_kwargs
+            network = self._network_class(N, B, **network_kwargs)
 
-class GaussianGLM(_DefaultMixin, GLM):
+        if regressions is None:
+            regression_kwargs = dict() if regression_kwargs is None else regression_kwargs
+            regressions = [self._regression_class(N, B, **regression_kwargs) for _ in range(N)]
+        super(_DefaultMixin, self).__init__(N, network, regressions, B=B, basis=basis)
+
+
+class GaussianGLM(_DefaultMixin, NetworkGLM):
+    _network_class = pyglm.networks.NIWDenseNetwork
     _regression_class = pyglm.regression.GaussianRegression
 
-class SparseGaussianGLM(_DefaultMixin, GLM):
+class SparseGaussianGLM(_DefaultMixin, NetworkGLM):
+    _network_class = pyglm.networks.NIWFixedSparsityNetwork
     _regression_class = pyglm.regression.SparseGaussianRegression
 
-class BernoulliGLM(_DefaultMixin, GLM):
+class BernoulliGLM(_DefaultMixin, NetworkGLM):
+    _network_class = pyglm.networks.NIWDenseNetwork
     _regression_class = pyglm.regression.BernoulliRegression
 
-class SparseBernoulliGLM(_DefaultMixin, GLM):
+class SparseBernoulliGLM(_DefaultMixin, NetworkGLM):
+    _network_class = pyglm.networks.NIWFixedSparsityNetwork
     _regression_class = pyglm.regression.SparseBernoulliRegression

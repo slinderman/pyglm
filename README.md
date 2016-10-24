@@ -120,7 +120,7 @@ Then we can install `pypolyagamma` using `clang-omp` and `clang-omp++` as our `C
     cd pypolyagamma
     CC=clang-omp CXX=clang-omp++ python setup.py install
 
-Your environment should now be setup properly to either build a development or standard version of PyGLM.  Depending on whether you want to build a development install or a standard install you will need to use one of the two following sets of commands:
+Your environment should now be set up properly to either build a development or standard version of PyGLM.  Depending on whether you want to build a development install or a standard install you will need to use one of the two following sets of commands:
 
     # Go back to the PyGLM directory
     cd pyglm

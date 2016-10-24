@@ -55,3 +55,6 @@ target/
 
 # Specific files
 /*.pdf
+
+# Gif files
+examples/gif/test_model_*.jpg
