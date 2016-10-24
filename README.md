@@ -1,4 +1,4 @@
-# PyGLM: Bayesian Inference for nonlinear autoregressive models of count data
+# PyGLM: Bayesian inference for nonlinear autoregressive models of count data
 
 Neural circuits contain heterogeneous groups of neurons that differ in
 type, location, connectivity, and basic response properties. However,
@@ -21,6 +21,14 @@ trains.  We demonstrate the effectiveness of our method with
 applications to synthetic data and multi-neuron recordings in primate
 retina, revealing latent patterns of neural types and locations from
 spike trains alone.
+
+# References
+Scott W. Linderman, Ryan P. Adams, and Jonathan W. Pillow. Bayesian latent
+structure discovery from multi-neuron recordings. _Advances in Neural Information
+Processing Systems_, 2016.
+
+Scott W. Linderman. _Bayesian methods for discovering structure in neural spike
+trains_. PhD thesis, Harvard University, 2016.
 
 # Example
 We provide a number of classes for building and fitting such models.
