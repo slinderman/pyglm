@@ -271,7 +271,7 @@ class GaussianGLM(_DefaultMixin, NetworkGLM):
     _regression_class = pyglm.regression.GaussianRegression
 
 class SparseGaussianGLM(_DefaultMixin, NetworkGLM):
-    _network_class = pyglm.networks.NIWFixedSparsityNetwork
+    _network_class = pyglm.networks.NIWSparseNetwork
     _regression_class = pyglm.regression.SparseGaussianRegression
 
 class BernoulliGLM(_DefaultMixin, NetworkGLM):
@@ -279,5 +279,5 @@ class BernoulliGLM(_DefaultMixin, NetworkGLM):
     _regression_class = pyglm.regression.BernoulliRegression
 
 class SparseBernoulliGLM(_DefaultMixin, NetworkGLM):
-    _network_class = pyglm.networks.NIWFixedSparsityNetwork
+    _network_class = pyglm.networks.NIWSparseNetwork
     _regression_class = pyglm.regression.SparseBernoulliRegression

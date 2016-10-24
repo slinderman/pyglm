@@ -75,7 +75,7 @@ class _NetworkModel(GibbsSampling):
 
 class _IndependentGaussianMixin(_NetworkModel):
     """
-    Each weight is an independent Bernoulli.
+    Each weight is an independent Gaussian with a shared NIW prior.
     Special case the self-connections.
     """
     def __init__(self, N, B,
@@ -86,7 +86,7 @@ class _IndependentGaussianMixin(_NetworkModel):
 
         mu_0 = expand_scalar(mu_0, (B,))
         sigma_0 = expand_cov(sigma_0, (B,B))
-        self._gaussian = Gaussian(mu_0=mu_0, sigma_0=sigma_0, kappa_0=kappa_0, nu_0=nu_0)
+        self._gaussian = Gaussian(mu_0=mu_0, sigma_0=sigma_0, kappa_0=kappa_0, nu_0=max(nu_0, B+2.))
 
         self.is_diagonal_weight_special = is_diagonal_weight_special
         if is_diagonal_weight_special:
@@ -270,6 +270,6 @@ class NIWDenseNetwork(_DenseAdjacencyMixin,
                       _IndependentGaussianMixin):
     pass
 
-class NIWFixedSparsityNetwork(_FixedAdjacencyMixin,
-                              _IndependentGaussianMixin):
+class NIWSparseNetwork(_FixedAdjacencyMixin,
+                       _IndependentGaussianMixin):
     pass
