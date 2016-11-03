@@ -102,39 +102,23 @@ network and firing rates.
 ![Posterior Mean](examples/gif/posterior_mean.jpg)
 
 # Installation
+PyGLM requires [pypolyagamma](https://github.com/slinderman/pypolyagamma)
+for its Bayesian inference algorithms.  This dependency will automatically
+be installed if you do not already have it, but by default, `pip` will not
+install the parallel version. If you want to use parallel resampling, look
+at the [pypolyagamma](https://github.com/slinderman/pypolyagamma) homepage
+for instructions on installing from source with OpenMP.
 
-This is a set of instructions for installing PyGLM on OSX.
+To install `pyglm` from source, first clone the repo
 
-To install this requires compiling with OpenMP support, but OSX does not come with this support in its default `clang`. Thus you will need to either install `clang-omp` or install GNU `gcc`. The instructions below are for `clang-omp`, but the procedure for using GNU gcc is analogous:
-
-    # install clang with OpenMP support (needed to compile later packages)
-    brew update
-    brew install clang-omp
-
-Then, `pypolyagamma` is a dependency that requires OpenMP, GSL, and a few other packages included in the `requirements.txt`. To build `pypolyagamma` requires building it with the appropriate C and C++ compiler, which in this case will be `clang-omp` and `clang-omp++`. However, because it also requires other packages, namely `Cython` and `numpy` we will first install the requirements from `requirements.txt`:
-
-    # install other dependencies
-    pip install -r requirements.txt
-
-To install `pypolyagamma`, first we will need to install `gsl`, which is a non-python specific dependency: 
-
-    # install gslrandom with OpenMP support
-    brew install gsl
-
-Then we can install `pypolyagamma` using `clang-omp` and `clang-omp++` as our `C` and `C++` compilers.
-
-    # Move to directory where you want pypolyagamma installed
-    git clone git@github.com:slinderman/pypolyagamma.git
-    cd pypolyagamma
-    CC=clang-omp CXX=clang-omp++ python setup.py install
-
-Your environment should now be set up properly to either build a development or standard version of PyGLM.  Depending on whether you want to build a development install or a standard install you will need to use one of the two following sets of commands:
-
-    # Go back to the PyGLM directory
+    git clone git@github.com:slinderman/pyglm.git
     cd pyglm
 
-    # if you want to develop the library, run:
+Then install in developer mode:
+
     pip install -e .
 
-    # for a standard install, run:
+Or use the standard install:
+
     python setup.py install
+
