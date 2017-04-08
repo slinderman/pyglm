@@ -40,32 +40,32 @@ from pyglm.utils.utils import logistic, expand_scalar, expand_cov
 class _SparseScalarRegressionBase(GibbsSampling):
     """
     Base class for the sparse regression.
+    We assume the outputs are scalar.
 
-    We assume the output dimension D = 1
-
+    T: number of observations
     N: number of input groups
     B: input dimension for each group
-    inputs: X \in R^{N \times B}
-    outputs: y \in R^D
+    inputs: X \in R^{T x N x B}
+    outputs: y \in R^T
 
     model:
 
-    y_d = \sum_{n=1}^N a_{d,n} * (w_{d,n} \dot x_n) + b_d + noise
+    y_t = \sum_{n=1}^N a_{n} * (w_{n} \dot x_{t,n}) + b + noise
 
     where:
 
     a_n \in {0,1}      is a binary indicator
-    w_{d,n} \in R^B    is a weight matrix for group n
+    w_n \in R^  B      is a weight vector for group n
     x_n \in R^B        is the input for group n
-    b \in R^D          is a bias vector
+    b \in R            is a bias vector
 
     hyperparameters:
 
     rho in [0,1]^N     probability of a_n for each group n
-    mu_w in R^{DxNxB}  mean of weight matrices
-    S_w in R^{DxNxBxB} covariance for each row of the the weight matrices
-    mu_b in R^D        mean of the bias vector
-    S_b in R^{DxD}     covariance of the bias vector
+    mu_w in R^{NxB}    mean of weight matrices
+    S_w in R^{NxBxB}   covariance for each row of the the weight matrices
+    mu_b in R          mean of the bias vector
+    S_b in R_+         covariance of the bias vector
 
     """
     __metaclass__ = abc.ABCMeta
