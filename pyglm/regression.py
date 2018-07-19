@@ -311,7 +311,7 @@ class _SparseScalarRegressionBase(GibbsSampling):
             # se_lps = np.sum(np.exp(lps-max_lps))
             # lse_lps = np.log(se_lps) + max_lps
             # ps = np.exp(lps - lse_lps)
-            # v_smpl = npr.rand() < ps[1]å
+            # v_smpl = npr.rand() < ps[1]
             v_smpl = sample_discrete_from_log(lps)
             self.a[n] = v_smpl
 
